@@ -3,6 +3,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>chiptune-audio 控制台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
 <style>
   /* 單欄控制台：音量 → 音效（預設、滑桿、波形、參數）→ 音樂，手機上由上往下操作 */
@@ -59,6 +61,7 @@
     <div class="row">
       <label class="inline">總音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:10rem"></label>
       <label class="inline"><input id="mute" type="checkbox"> 靜音</label>
+      <button id="stopAll">■ 停止全部音效</button>
     </div>
   </section>
 
@@ -74,7 +77,8 @@
       <span class="muted" id="sfxInfo"></span>
     </div>
     <pre id="sfxJson" tabindex="0"></pre>
-    <p class="muted">複製的參數可直接傳給 <code>audio.playSfx({...})</code>，或加進 <code>SFX_PRESETS</code>。</p>
+    <p class="muted">複製的參數可直接傳給 <code>audio.playSfx({...})</code>，或加進 <code>SFX_PRESETS</code>。
+      「雜訊種子」只在波形為 NOISE 時有作用，換個數字即得到不同質地的雜訊。</p>
   </section>
 
   <section>
@@ -87,6 +91,7 @@
     </div>
     <div class="row" style="margin-top:12px">
       <button class="primary" id="playMusic">▶ 播放音樂</button>
+      <button id="preloadMusic" title="先算好並快取，播放時就不會卡頓">⤓ 預先算好</button>
       <button id="stopMusic">■ 停止</button>
       <span class="muted" id="musicInfo"></span>
     </div>
@@ -114,6 +119,7 @@ const SLIDERS = [
   ['sustain', '持續', 0, 1, 0.01],
   ['decay', '衰減', 0, 1.5, 0.01],
   ['vol', '音量', 0, 1, 0.01],
+  ['seed', '雜訊種子', 1, 64, 1],
 ];
 const WAVE_NAMES = Object.keys(WAVE);   // SQUARE, SAW, TRIANGLE, NOISE
 
@@ -171,9 +177,12 @@ function refresh() {
     inputs[key].value = params[key];
     inputs[key].nextElementSibling.textContent = round(params[key]);
   }
+  const t0 = performance.now();
   const samples = renderSfx(params);
+  const ms = performance.now() - t0;
   drawWave(samples);
-  $('sfxInfo').textContent = `${(samples.length / SAMPLE_RATE).toFixed(2)} 秒`;
+  $('sfxInfo').textContent =
+    `${(samples.length / SAMPLE_RATE).toFixed(2)} 秒 · 合成 ${ms.toFixed(1)} ms`;
   $('sfxJson').textContent = JSON.stringify(diffParams());
 }
 
@@ -196,6 +205,7 @@ function drawWave(samples) {
 }
 
 $('playSfx').onclick = () => audio.playSfx(params);
+$('stopAll').onclick = () => audio.stopAllSfx();
 $('randomSfx').onclick = () => {
   const p = {};
   for (const [key, , min, max, step] of SLIDERS) p[key] = Math.round((min + Math.random() * (max - min)) / step) * step;
@@ -218,16 +228,35 @@ $('copySfx').onclick = async () => {
 
 // Music
 for (const m of Object.keys(MOODS)) $('mood').add(new Option(m));
+
+function musicOptions() {
+  return { seed: +$('seed').value || 1, mood: $('mood').value, bars: +$('bars').value };
+}
+
+// 合成整首循環會花十幾毫秒；先算好就能在播放時立即開始。
+function preloadMusic() {
+  const opts = musicOptions();
+  const t0 = performance.now();
+  audio.preloadMusic(opts);
+  const ms = performance.now() - t0;
+  const song = generateSong(opts);
+  $('musicInfo').textContent =
+    `已備妥：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒 · 合成 ${ms.toFixed(1)} ms`;
+}
+
 function playMusic() {
-  const opts = { seed: +$('seed').value || 1, mood: $('mood').value, bars: +$('bars').value };
+  const opts = musicOptions();
   audio.playMusic(opts);
   const song = generateSong(opts);
-  $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * 15 / song.bpm).toFixed(1)} 秒`;
+  $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒`;
 }
+
 $('playMusic').onclick = playMusic;
+$('preloadMusic').onclick = preloadMusic;
 $('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); playMusic(); };
 $('stopMusic').onclick = () => { audio.stopMusic(); $('musicInfo').textContent = ''; };
-for (const id of ['mood', 'bars', 'seed']) $(id).onchange = () => { if (audio.music) playMusic(); };
+for (const id of ['mood', 'bars']) $(id).onchange = () => { if (audio.music) playMusic(); };
+$('seed').onchange = () => { if (audio.music) playMusic(); };
 
 $('volume').oninput = (e) => audio.setVolume(+e.target.value);
 $('mute').onchange = (e) => audio.setMuted(e.target.checked);

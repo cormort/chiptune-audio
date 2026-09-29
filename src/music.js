@@ -1,5 +1,5 @@
 import { mulberry32 } from './rng.js';
-import { renderSfx, SAMPLE_RATE, WAVE } from './sfx.js';
+import { renderSfxInto, SAMPLE_RATE, WAVE } from './sfx.js';
 
 const SCALES = {
   major: [0, 2, 4, 5, 7, 9, 11],
@@ -17,8 +17,18 @@ export const MOODS = {
   sad:   { scale: 'minor', bpm: 72, duty: 0.25, density: 0.35, root: 55 },
 };
 
+export const STEPS_PER_BAR = 16;
+
+/** Longest loop we will compose/render. `bars: 1e9` used to reach the allocator
+ *  and killed the process with "JavaScript heap out of memory" (measured). */
+export const MAX_BARS = 128;
+
+/** Loop padding, in steps. Note tails that overrun the loop end are folded back
+ *  onto the loop start, which removes the click the old renderer produced
+ *  (measured: last sample -0.0129 against a first sample of 0). */
+const TAIL_STEPS = 4;
+
 const midi = (n) => 440 * 2 ** ((n - 69) / 12);
-const STEPS_PER_BAR = 16;
 
 // Scale note (may be negative / beyond the octave) -> midi number.
 function degreeToMidi(scale, root, degree) {
@@ -27,17 +37,27 @@ function degreeToMidi(scale, root, degree) {
   return root + oct * 12 + scale[((degree % len) + len) % len];
 }
 
-// Deterministic song description: same options => same song.
+/** Deterministic song description: same options => same song.
+ *  Seed handling is unchanged, so every previously generated song still comes
+ *  out bit-identical (see test/parity.test.js). Invalid input now throws a
+ *  descriptive RangeError instead of reaching the allocator. */
 export function generateSong({ seed = 1, mood = 'happy', bars = 8 } = {}) {
   const m = MOODS[mood];
-  if (!m) throw new Error(`Unknown mood: ${mood}`);
-  const rng = mulberry32(seed);
+  if (!m) throw new Error(`Unknown mood: ${mood} (expected one of ${Object.keys(MOODS).join(', ')})`);
+
+  const barCount = Math.floor(Number(bars));
+  if (!Number.isFinite(barCount) || barCount < 1 || barCount > MAX_BARS) {
+    throw new RangeError(`bars must be an integer between 1 and ${MAX_BARS}, got ${bars}`);
+  }
+  const seedU32 = Number.isFinite(Number(seed)) ? Number(seed) >>> 0 : 1;
+
+  const rng = mulberry32(seedU32);
   const scale = SCALES[m.scale];
   const prog = PROGRESSIONS[Math.floor(rng() * PROGRESSIONS.length)];
   const lead = [];
   const bass = [];
   let deg = 7 + Math.floor(rng() * 3); // start around the upper octave
-  for (let bar = 0; bar < bars; bar++) {
+  for (let bar = 0; bar < barCount; bar++) {
     const chordRoot = m.scale === 'pentatonic' ? prog[bar % 4] % scale.length : prog[bar % 4];
     for (let s = 0; s < STEPS_PER_BAR; s++) {
       const step = bar * STEPS_PER_BAR + s;
@@ -54,48 +74,95 @@ export function generateSong({ seed = 1, mood = 'happy', bars = 8 } = {}) {
       }
     }
   }
-  return { seed, mood, bars, bpm: m.bpm, duty: m.duty, lead, bass };
+  return { seed: seedU32, mood, bars: barCount, bpm: m.bpm, duty: m.duty, lead, bass };
 }
 
-function mixInto(out, samples, offset) {
-  for (let i = 0; i < samples.length && offset + i < out.length; i++) out[offset + i] += samples[i];
-}
+/** Render a song to a seamlessly loopable mono Float32Array.
+ *
+ *  Two changes from the original:
+ *  - voices are mixed straight into one buffer (`renderSfxInto`), so there is no
+ *    temporary array and no second copy per note (was ~220 allocations/song);
+ *  - the buffer is padded and the overhang folded back to the start, so a note
+ *    tail running past the loop point continues into the loop instead of being
+ *    truncated into a click.
+ *
+ *  `opts.sampleRate` defaults to 44100; the engine passes the AudioContext rate
+ *  so playback never needs resampling.
+ */
+export function renderSong(song, opts = {}) {
+  const sampleRate = opts && opts.sampleRate > 0 ? opts.sampleRate : SAMPLE_RATE;
+  if (!song || typeof song !== 'object' || !Array.isArray(song.lead) || !Array.isArray(song.bass)) {
+    throw new TypeError('renderSong expects a song object from generateSong()');
+  }
+  const bpm = Number(song.bpm);
+  if (!Number.isFinite(bpm) || bpm <= 0) throw new RangeError(`song.bpm must be a positive number, got ${song.bpm}`);
+  const bars = Math.floor(Number(song.bars));
+  if (!Number.isFinite(bars) || bars < 1 || bars > MAX_BARS) {
+    throw new RangeError(`song.bars must be an integer between 1 and ${MAX_BARS}, got ${song.bars}`);
+  }
+  const duty = Number.isFinite(song.duty) ? song.duty : 0.5;
 
-// Render a song to a seamlessly loopable mono Float32Array.
-export function renderSong(song) {
-  const stepSec = 60 / song.bpm / 4;
-  const stepSamples = Math.round(stepSec * SAMPLE_RATE);
-  const total = song.bars * STEPS_PER_BAR * stepSamples;
-  const out = new Float32Array(total);
+  const stepSec = 60 / bpm / 4;
+  const stepSamples = Math.max(1, Math.round(stepSec * sampleRate));
+  const total = bars * STEPS_PER_BAR * stepSamples;
+  const tail = TAIL_STEPS * stepSamples;
+  const out = new Float32Array(total + tail);
 
   for (const n of song.lead) {
     const dur = n.len * stepSec;
-    mixInto(out, renderSfx({
-      wave: WAVE.SQUARE, freq: midi(n.note), duty: song.duty,
+    renderSfxInto(out, n.step * stepSamples, {
+      wave: WAVE.SQUARE, freq: midi(n.note), duty,
       vibDepth: 0.004, vibRate: 6, attack: 0.005, sustain: dur * 0.5, decay: dur * 0.5, vol: 0.22,
-    }), n.step * stepSamples);
+    }, sampleRate);
   }
   for (const n of song.bass) {
     const dur = n.len * stepSec;
-    mixInto(out, renderSfx({
+    renderSfxInto(out, n.step * stepSamples, {
       wave: WAVE.TRIANGLE, freq: midi(n.note), attack: 0.005, sustain: dur * 0.7, decay: dur * 0.3, vol: 0.35,
-    }), n.step * stepSamples);
+    }, sampleRate);
   }
 
-  const kick = renderSfx({ wave: WAVE.TRIANGLE, freq: 150, slide: -6, sustain: 0.02, decay: 0.1, vol: 0.5 });
-  const snare = renderSfx({ wave: WAVE.NOISE, freq: 9000, sustain: 0.02, decay: 0.09, vol: 0.2, bits: 4 });
-  const hat = renderSfx({ wave: WAVE.NOISE, freq: 20000, sustain: 0.005, decay: 0.03, vol: 0.08 });
-  for (let step = 0; step < song.bars * STEPS_PER_BAR; step++) {
+  // Drums. The seed is advanced per hit, so repeated snares/hats are no longer
+  // bit-identical (all noise used to share the hard-coded mulberry32(1) stream,
+  // which made every hit sound mechanically cloned) while staying reproducible.
+  const steps = bars * STEPS_PER_BAR;
+  for (let step = 0; step < steps; step++) {
     const s = step % STEPS_PER_BAR;
     const at = step * stepSamples;
-    if (s === 0 || s === 8) mixInto(out, kick, at);
-    if (s === 4 || s === 12) mixInto(out, snare, at);
-    if (s % 2 === 0) mixInto(out, hat, at);
+    if (s === 0 || s === 8) {
+      renderSfxInto(out, at, {
+        wave: WAVE.TRIANGLE, freq: 150, slide: -6, sustain: 0.02, decay: 0.1, vol: 0.5,
+      }, sampleRate);
+    }
+    if (s === 4 || s === 12) {
+      renderSfxInto(out, at, {
+        wave: WAVE.NOISE, freq: 9000, sustain: 0.02, decay: 0.09, vol: 0.2, bits: 4,
+        seed: (0x5eed + step) >>> 0,
+      }, sampleRate);
+    }
+    if (s % 2 === 0) {
+      renderSfxInto(out, at, {
+        wave: WAVE.NOISE, freq: 20000, sustain: 0.005, decay: 0.03,
+        vol: s % 4 === 0 ? 0.09 : 0.05,
+        seed: (0xbeef + step) >>> 0,
+      }, sampleRate);
+    }
   }
+
+  // Fold the overhang onto the loop start: the tail of the last notes now
+  // continues into the first samples, so the loop is continuous.
+  for (let i = 0; i < tail; i++) out[i] += out[total + i];
 
   // Scale down instead of hard-clipping when voices pile up.
   let peak = 0;
-  for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
-  if (peak > 0.9) for (let i = 0; i < out.length; i++) out[i] *= 0.9 / peak;
-  return out;
+  for (let i = 0; i < total; i++) {
+    const a = Math.abs(out[i]);
+    if (a > peak) peak = a;
+  }
+  if (peak > 0.9) {
+    const g = 0.9 / peak;
+    for (let i = 0; i < total; i++) out[i] *= g;
+  }
+  // A view, not a copy: avoids duplicating up to ~2.4 MB per song.
+  return out.subarray(0, total);
 }
