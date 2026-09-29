@@ -67,6 +67,7 @@
   .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   .key.white { color: var(--key-white-text); }
   .key b { font-weight: 700; color: inherit; }
+  .key i { font-style: normal; line-height: .6; }
 
   /* 混音台：每個聲部一條直立推桿 */
   .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
@@ -113,6 +114,7 @@
     <h2>鍵盤</h2>
     <div class="row">
       <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+      <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
       <span class="muted" id="keyInfo">用上方音效的參數，依音高演奏</span>
     </div>
     <div class="keys" id="keys"></div>
@@ -329,14 +331,28 @@ const noteName = (n) => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
     } else {
       white++;
     }
-    el.innerHTML = `<b></b>${KEYMAP[i].toUpperCase()}`;
+    el.innerHTML = '<b></b><i></i><span></span>';
     el.dataset.i = i;
     keyEls.push(el);
     $('keys').append(el);
   }
 }
+// 簡譜: 1 = C; a dot above marks each octave above the keyboard's lowest one.
+const NUMBERS = ['1', '#1', '2', '#2', '3', '4', '#4', '5', '#5', '6', '#6', '7'];
+const OCTAVE_DOTS = ['', '·', '··'];
+function keyLabel(i) {
+  switch ($('keyLabel').value) {
+    case 'name': return NOTE_NAMES[i % 12];
+    case 'num': return NUMBERS[i % 12];
+    default: return KEYMAP[i].toUpperCase();
+  }
+}
 function labelKeys() {
-  keyEls.forEach((el, i) => { el.firstChild.textContent = i % 12 === 0 ? noteName(baseMidi() + i) : ''; });
+  keyEls.forEach((el, i) => {
+    el.firstChild.textContent = i % 12 === 0 ? noteName(baseMidi() + i) : '';
+    el.children[1].textContent = $('keyLabel').value === 'num' ? OCTAVE_DOTS[Math.floor(i / 12)] : '';
+    el.lastChild.textContent = keyLabel(i);
+  });
 }
 function playKey(i) {
   const n = baseMidi() + i;
@@ -370,6 +386,7 @@ addEventListener('keydown', (e) => {
   playKey(i);
 });
 $('octave').onchange = labelKeys;
+$('keyLabel').onchange = labelKeys;
 labelKeys();
 
 // Mixer. Fader level, mute and solo are UI state; the engine only sees the result.
