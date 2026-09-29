@@ -13,8 +13,10 @@ const skip = hasBaseline ? false : 'baseline/ not present';
 // produced must still be reproduced exactly. A refactor that silently changed the
 // note stream would be a breaking change for anyone who shipped a seed.
 test('generateSong is bit-identical to the original for every mood/seed/bars', { skip }, async () => {
-  const { generateSong: genOld } = await import('../baseline/src/index.js');
-  for (const mood of Object.keys(MOODS)) {
+  const { generateSong: genOld, MOODS: OLD_MOODS } = await import('../baseline/src/index.js');
+  // Moods added after the baseline have nothing to compare against.
+  for (const mood of Object.keys(OLD_MOODS)) {
+    assert.deepEqual(MOODS[mood], OLD_MOODS[mood], `${mood} spec changed`);
     for (const seed of [0, 1, 2, 7, 42, 1337, 99999, 4294967295]) {
       for (const bars of [1, 2, 4, 8]) {
         const opts = { seed, mood, bars };

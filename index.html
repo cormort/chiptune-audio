@@ -200,9 +200,15 @@ const inputs = {};
   }
 }
 
+const SFX_LABELS = {
+  coin: '金幣', jump: '跳躍', laser: '雷射', hit: '擊中', explosion: '爆炸', powerup: '強化',
+  select: '選取', gameover: '遊戲結束', win: '勝利', shoot: '射擊', blip: '對話', click: '點擊',
+  hurt: '受傷', pickup: '拾取', heal: '補血', levelup: '升級', door: '開門', step: '腳步',
+  bounce: '彈跳', alarm: '警報', teleport: '傳送', charge: '蓄力', error: '錯誤', splash: '水花',
+};
 for (const name of Object.keys(SFX_PRESETS)) {
   const b = document.createElement('button');
-  b.textContent = name;
+  b.textContent = SFX_LABELS[name] ? `${SFX_LABELS[name]} ${name}` : name;
   b.dataset.preset = name;
   b.onclick = () => { load(SFX_PRESETS[name], name); audio.playSfx(params); };
   $('presets').append(b);
@@ -279,7 +285,11 @@ $('copySfx').onclick = async () => {
 };
 
 // Music
-for (const m of Object.keys(MOODS)) $('mood').add(new Option(m));
+const MOOD_LABELS = {
+  happy: '快樂', calm: '平靜', tense: '緊張', sad: '悲傷', heroic: '英勇', playful: '俏皮',
+  dreamy: '夢幻', mysterious: '神秘', spooky: '恐怖', boss: '魔王戰', groovy: '藍調律動',
+};
+for (const m of Object.keys(MOODS)) $('mood').add(new Option(MOOD_LABELS[m] ? `${MOOD_LABELS[m]} ${m}` : m, m));
 
 function musicOptions() {
   return { seed: +$('seed').value || 1, mood: $('mood').value, bars: +$('bars').value };
