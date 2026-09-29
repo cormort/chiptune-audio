@@ -63,6 +63,32 @@ renderSong(song, { mix: { bass: 0 } });   // same weighting when rendering offli
 Levels are 0..1. Part levels are baked into the rendered loop (one re-render, ~15-25 ms),
 so change them on slider release rather than on every input event.
 
+### Keyboard instruments
+
+```js
+import { instrumentNote } from './src/index.js';
+
+const note = audio.playNote(instrumentNote('organ', 60)); // key down: C4 on the organ
+note.release(0.08);                                       // key up: fade out
+```
+
+Instruments: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`.
+
+### MIDI remix
+
+```js
+import { parseMidi } from './src/index.js';
+
+const midi = parseMidi(await file.arrayBuffer());   // format 0/1, throws on bad input
+audio.playMidi(midi, {
+  tracks: [{ instrument: 'saw' }, { mute: true }], // per track: instrument, volume, mute, transpose
+  speed: 1.25,
+  loop: true,
+});
+```
+
+Channel 10 is rendered as chip drums. Renders are capped at 5 minutes.
+
 ### Lifecycle
 
 ```js
@@ -78,8 +104,11 @@ master filter from the start. It is off by default so existing sounds are unchan
 
 `index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
 按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
-音樂可選情緒、種子、小節數。「鍵盤」區用目前的音效參數依音高演奏（可點擊，
-或用電腦鍵盤 Z–M / Q–U），「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。ES module 不能用 `file://` 開，要用 HTTP 服務：
+音樂可選情緒、種子、小節數。「MIDI 重新混音」可匯入 .mid 檔，每個軌道換成晶片樂器、調音量與速度；
+「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
+
+`keyboard.html` 是電子琴：12 種樂器，按住發聲、放開停止，可彈和弦；
+可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），琴鍵標示可切換電腦按鍵、音名或簡譜。ES module 不能用 `file://` 開，要用 HTTP 服務：
 
 ```bash
 npx serve .        # 或 python3 -m http.server

@@ -1,5 +1,6 @@
 import { renderSfx, SFX_PRESETS, SAMPLE_RATE, normalizeSfx } from './sfx.js';
 import { generateSong, renderSong } from './music.js';
+import { renderMidi } from './midi.js';
 
 // Rendered AudioBuffers kept around, bounded so a game that sprays custom
 // parameter objects cannot grow the heap without limit.
@@ -120,6 +121,33 @@ export class ChiptuneAudio {
    *  opts.rate  playback rate, default 1 (reuse one buffer at several pitches)
    *  opts.gain  per-playback gain multiplier, default 1 */
   playSfx(name, opts = {}) {
+    const voice = this._startSfx(name, opts, false);
+    return voice ? voice.src : null;
+  }
+
+  /** Play a held note: `params` are SFX params (see instrumentNote()). Returns a
+   *  handle whose release(fade) fades the note out, e.g. on key up. */
+  playNote(params, opts = {}) {
+    const voice = this._startSfx(params, opts, true);
+    if (!voice) return null;
+    const { src, gain } = voice;
+    let released = false;
+    return {
+      source: src,
+      release: (fade = 0.08) => {
+        if (released || !this.ctx) return;
+        released = true;
+        const f = Number.isFinite(fade) && fade > 0 ? fade : 0.005;
+        const now = this.ctx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setTargetAtTime(0, now, f / 4);
+        try { src.stop(now + f); } catch { /* already stopped */ }
+      },
+    };
+  }
+
+  /** `withGain` forces a per-voice gain node, so playNote can fade it. */
+  _startSfx(name, opts, withGain) {
     const byName = typeof name === 'string';
     let params;
     if (byName) {
@@ -150,8 +178,9 @@ export class ChiptuneAudio {
     }
     const g0 = Number(opts.gain);
     const gain = (Number.isFinite(g0) ? g0 : 1) * this.mix.sfx;
-    if (gain !== 1) {
-      const g = ctx.createGain();
+    let g = null;
+    if (gain !== 1 || withGain) {
+      g = ctx.createGain();
       g.gain.value = gain < 0 ? 0 : gain;
       node.connect(g);
       node = g;
@@ -161,7 +190,7 @@ export class ChiptuneAudio {
     src.onended = () => { this._active.delete(src); node.disconnect(); };
     this._active.add(src);
     src.start();
-    return src;
+    return { src, gain: g };
   }
 
   /** Build (and cache) a song's AudioBuffer without playing it. Call this from a
@@ -230,12 +259,43 @@ export class ChiptuneAudio {
       this.musicBus.gain.cancelScheduledValues(now);
       this.musicBus.gain.setTargetAtTime(m.music, now, 0.015);
     }
-    if (partsChanged && this.music) {
+    if (partsChanged && this.music && this._musicOptions) {
       const dur = this.music.buffer.duration;
       const pos = dur > 0 ? (this.ctx.currentTime - this._musicStart) % dur : 0;
       this._startMusic(this._musicOptions, pos);
     }
     return { ...m };
+  }
+
+  /** Render a parsed MIDI file (see parseMidi/renderMidi) and play it on the
+   *  music bus, replacing any song. opts.offset starts playback that many
+   *  seconds in, so a re-rendered remix can continue where it was. */
+  playMidi(midi, opts = {}) {
+    this.stopMusic();
+    const ctx = this._ensure();
+    const samples = renderMidi(midi, { ...opts, sampleRate: this.sampleRate });
+    if (samples.length === 0) return null;
+    const buf = ctx.createBuffer(1, samples.length, this.sampleRate);
+    buf.getChannelData(0).set(samples);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = !!opts.loop;
+    src.connect(this.musicBus);
+    const offset = Number.isFinite(opts.offset) && opts.offset > 0 ? opts.offset % buf.duration : 0;
+    src.start(0, offset);
+    src.onended = () => { if (this.music === src) { this.music = null; src.disconnect(); } };
+    this.music = src;
+    this._musicOptions = null; // part levels (setMix lead/bass/drums) do not apply
+    this._musicStart = ctx.currentTime - offset;
+    return src;
+  }
+
+  /** Seconds into the playing music (wraps for loops), or 0 when nothing plays. */
+  get musicTime() {
+    if (!this.music || !this.ctx) return 0;
+    const t = this.ctx.currentTime - this._musicStart;
+    const dur = this.music.buffer.duration;
+    return this.music.loop && dur > 0 ? t % dur : Math.min(t, dur);
   }
 
   stopMusic() {

@@ -11,7 +11,6 @@
   :root {
     --bg: #f3f4f7; --panel: #ffffff; --text: #1b1d24; --muted: #62677a;
     --line: #d9dce5; --accent: #3558d6; --accent-text: #ffffff; --wave: #3558d6;
-    --key-white: #ffffff; --key-white-text: #62677a; --key-black: #22252f; --key-black-text: #c6cad8;
     --font-display: "Silkscreen", ui-monospace, monospace;
     --font-body: system-ui, -apple-system, "Noto Sans TC", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -20,14 +19,12 @@
     :root:not([data-theme="light"]) {
       --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
       --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
-      --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
     --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
-    --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -56,18 +53,21 @@
   .muted { color: var(--muted); font-size: 13px; }
   label.inline { display: inline-flex; gap: 6px; align-items: center; }
 
-  /* 鍵盤：白鍵平均分寬，黑鍵以百分比絕對定位在兩個白鍵之間 */
-  .keys { position: relative; display: flex; height: 150px; margin: 12px 0 8px; user-select: none; touch-action: none; }
-  .key { position: relative; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 0 0 6px;
-         display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-         font: 11px/1.2 var(--font-mono); color: var(--muted); cursor: pointer; }
-  .key.white { flex: 1; min-width: 0; background: var(--key-white); margin-right: -1px; }
-  .key.black { position: absolute; top: 0; height: 60%; z-index: 1; background: var(--key-black);
-               color: var(--key-black-text); border-color: var(--key-black); }
-  .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  .key.white { color: var(--key-white-text); }
-  .key b { font-weight: 700; color: inherit; }
-  .key i { font-style: normal; line-height: .6; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+  a { color: var(--accent); }
+
+  /* MIDI 軌道：名稱｜樂器｜音量｜靜音，窄螢幕時名稱獨佔一行 */
+  .track { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7rem 4.5rem; gap: 8px; align-items: center;
+           padding: 8px 0; border-top: 1px solid var(--line); }
+  .track:first-child { border-top: 0; }
+  .track .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track .tname small { display: block; color: var(--muted); font: 12px var(--font-mono); }
+  .track.muted-track .tname { opacity: .5; }
+  @media (max-width: 560px) {
+    .track { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+    .track .tname { grid-column: 1 / -1; }
+  }
+  #midiTracks { margin: 12px 0; }
 
   /* 混音台：每個聲部一條直立推桿 */
   .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
@@ -84,7 +84,10 @@
 </style>
 
 <main>
-  <h1>chiptune-audio 控制台</h1>
+  <header>
+    <h1>chiptune-audio 控制台</h1>
+    <a href="keyboard.html">電子琴 →</a>
+  </header>
 
   <section>
     <div class="row">
@@ -111,18 +114,6 @@
   </section>
 
   <section>
-    <h2>鍵盤</h2>
-    <div class="row">
-      <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
-      <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
-      <span class="muted" id="keyInfo">用上方音效的參數，依音高演奏</span>
-    </div>
-    <div class="keys" id="keys"></div>
-    <p class="muted">電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
-      上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度；按住滑過琴鍵可連續彈奏。</p>
-  </section>
-
-  <section>
     <h2>音樂</h2>
     <div class="row">
       <label class="inline">情緒 <select id="mood"></select></label>
@@ -139,6 +130,26 @@
   </section>
 
   <section>
+    <h2>MIDI 重新混音</h2>
+    <div class="row">
+      <input id="midiFile" type="file" accept=".mid,.midi,audio/midi,audio/x-midi">
+      <span class="muted" id="midiInfo">匯入 .mid 檔，每個軌道都能換成晶片樂器</span>
+    </div>
+    <div id="midiTracks"></div>
+    <div class="row">
+      <label class="inline">速度 <select id="midiSpeed">
+        <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+      <label class="inline"><input id="midiLoop" type="checkbox"> 循環</label>
+      <button class="primary" id="playMidi" disabled>▶ 播放 MIDI</button>
+      <button id="stopMidi" disabled>■ 停止</button>
+      <span class="muted" id="midiStatus"></span>
+    </div>
+    <p class="muted">播放中換樂器、音量或速度，會重新合成並從原位置接著播。MIDI 走「音樂」匯流排，
+      混音台的主旋律／貝斯／鼓組推桿只作用於上方產生的音樂。第 10 聲道（打擊樂）預設為鼓組。</p>
+  </section>
+
+  <section>
     <h2>混音</h2>
     <div class="mixer" id="mixer"></div>
     <div class="row">
@@ -151,7 +162,10 @@
 </main>
 
 <script type="module">
-import { ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE } from './src/index.js';
+import {
+  ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
+  INSTRUMENTS, parseMidi,
+} from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
 const $ = (id) => document.getElementById(id);
@@ -306,9 +320,14 @@ function preloadMusic() {
     `已備妥：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒 · 合成 ${ms.toFixed(1)} ms`;
 }
 
+// Which kind of music owns audio.music, so the song controls never replace a MIDI.
+let nowPlaying = null;   // 'song' | 'midi' | null
+
 function playMusic() {
   const opts = musicOptions();
   audio.playMusic(opts);
+  nowPlaying = 'song';
+  $('midiStatus').textContent = '';
   const song = generateSong(opts);
   $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒`;
 }
@@ -316,88 +335,104 @@ function playMusic() {
 $('playMusic').onclick = playMusic;
 $('preloadMusic').onclick = preloadMusic;
 $('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); playMusic(); };
-$('stopMusic').onclick = () => { audio.stopMusic(); $('musicInfo').textContent = ''; };
-for (const id of ['mood', 'bars']) $(id).onchange = () => { if (audio.music) playMusic(); };
-$('seed').onchange = () => { if (audio.music) playMusic(); };
+$('stopMusic').onclick = () => { if (nowPlaying === 'song') stopAllMusic(); };
+const songPlaying = () => audio.music && nowPlaying === 'song';
+for (const id of ['mood', 'bars']) $(id).onchange = () => { if (songPlaying()) playMusic(); };
+$('seed').onchange = () => { if (songPlaying()) playMusic(); };
 
-// Keyboard: current SFX params, retuned to each note.
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-// Tracker layout; index = semitones above the keyboard's lowest C.
-const KEYMAP = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
-                'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i'];
-const keyEls = [];
-const baseMidi = () => 12 * (+$('octave').value + 1);   // C4 = midi 60
-const noteName = (n) => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
-{
-  const WHITES = 15;   // two octaves plus the top C
-  let white = 0;
-  for (let i = 0; i < KEYMAP.length; i++) {
-    const black = NOTE_NAMES[i % 12].includes('#');
-    const el = document.createElement('div');
-    el.className = `key ${black ? 'black' : 'white'}`;
-    if (black) {
-      el.style.left = `${(white - 0.3) / WHITES * 100}%`;
-      el.style.width = `${0.6 / WHITES * 100}%`;
-    } else {
-      white++;
-    }
-    el.innerHTML = '<b></b><i></i><span></span>';
-    el.dataset.i = i;
-    keyEls.push(el);
-    $('keys').append(el);
-  }
+function stopAllMusic() {
+  audio.stopMusic();
+  nowPlaying = null;
+  $('musicInfo').textContent = '';
+  $('midiStatus').textContent = '';
 }
-// 簡譜: 1 = C; a dot above marks each octave above the keyboard's lowest one.
-const NUMBERS = ['1', '#1', '2', '#2', '3', '4', '#4', '5', '#5', '6', '#6', '7'];
-const OCTAVE_DOTS = ['', '·', '··'];
-function keyLabel(i) {
-  switch ($('keyLabel').value) {
-    case 'name': return NOTE_NAMES[i % 12];
-    case 'num': return NUMBERS[i % 12];
-    default: return KEYMAP[i].toUpperCase();
+
+// MIDI remix: parse once, then re-render with each track's chip instrument.
+const INSTRUMENT_LABELS = {
+  square: '方波', pulse25: '脈衝 25%', pulse12: '脈衝 12.5%', triangle: '三角波', saw: '鋸齒波',
+  organ: '風琴', flute: '長笛', strings: '弦樂', brass: '銅管', piano: '鋼琴', pluck: '撥弦', bell: '鐘聲',
+  drums: '鼓組',
+};
+let midi = null;
+let midiTracks = [];      // per-track { instrument, volume, mute }, indexed like midi.tracks
+let midiSpeed = 1;
+
+$('midiFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    midi = parseMidi(await file.arrayBuffer());
+  } catch (err) {
+    midi = null;
+    $('midiInfo').textContent = `無法讀取：${err.message}`;
+    buildTracks();
+    return;
   }
-}
-function labelKeys() {
-  keyEls.forEach((el, i) => {
-    el.firstChild.textContent = i % 12 === 0 ? noteName(baseMidi() + i) : '';
-    el.children[1].textContent = $('keyLabel').value === 'num' ? OCTAVE_DOTS[Math.floor(i / 12)] : '';
-    el.lastChild.textContent = keyLabel(i);
+  midiTracks = midi.tracks.map((t) => ({ instrument: t.instrument, volume: 1, mute: false }));
+  const notes = midi.tracks.reduce((n, t) => n + t.notes.length, 0);
+  $('midiInfo').textContent = midi.tracks.length
+    ? `${file.name}：${fmtTime(midi.duration)}，${midi.tracks.length} 軌，${notes} 個音符`
+    : `${file.name} 裡沒有音符`;
+  buildTracks();
+};
+
+const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function buildTracks() {
+  const wrap = $('midiTracks');
+  wrap.textContent = '';
+  const has = !!(midi && midi.tracks.length);
+  $('playMidi').disabled = !has;
+  $('stopMidi').disabled = !has;
+  if (!has) return;
+  midi.tracks.forEach((t, i) => {
+    const s = midiTracks[i];
+    const row = document.createElement('div');
+    row.className = 'track';
+    row.innerHTML = `<div class="tname"></div><select aria-label="樂器"></select>
+      <input type="range" min="0" max="1" step="0.01" aria-label="音量">
+      <label class="inline"><input type="checkbox"> 靜音</label>`;
+    const nameEl = row.querySelector('.tname');
+    nameEl.textContent = t.name;
+    const small = document.createElement('small');
+    small.textContent = `聲道 ${t.channel + 1} · ${t.notes.length} 音符`;
+    nameEl.append(small);
+    const sel = row.querySelector('select');
+    for (const k of [...Object.keys(INSTRUMENTS), 'drums']) sel.add(new Option(INSTRUMENT_LABELS[k] || k, k));
+    sel.value = s.instrument;
+    sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
+    const vol = row.querySelector('input[type=range]');
+    vol.value = s.volume;
+    vol.onchange = () => { s.volume = +vol.value; remixIfPlaying(); };
+    const mute = row.querySelector('input[type=checkbox]');
+    mute.onchange = () => { s.mute = mute.checked; row.classList.toggle('muted-track', s.mute); remixIfPlaying(); };
+    wrap.append(row);
   });
 }
-function playKey(i) {
-  const n = baseMidi() + i;
-  const freq = 440 * 2 ** ((n - 69) / 12);
-  audio.playSfx({ ...params, freq });
-  const el = keyEls[i];
-  el.classList.add('down');
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('down'), 150);
-  $('keyInfo').textContent = `${noteName(n)} · ${freq.toFixed(1)} Hz`;
+
+async function playMidi(offset = 0) {
+  $('midiStatus').textContent = '合成中…';
+  await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
+  const t0 = performance.now();
+  audio.playMidi(midi, { tracks: midiTracks, speed: midiSpeed, loop: $('midiLoop').checked, offset });
+  const ms = performance.now() - t0;
+  nowPlaying = 'midi';
+  $('musicInfo').textContent = '';
+  $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
 }
-let dragging = false;
-$('keys').onpointerdown = (e) => {
-  const el = e.target.closest('.key');
-  if (!el) return;
-  dragging = true;
-  el.releasePointerCapture?.(e.pointerId);   // touch captures to the key; release so pointerover reaches the others
-  playKey(+el.dataset.i);
+
+function remixIfPlaying(speedRatio = 1) {
+  if (audio.music && nowPlaying === 'midi') playMidi(audio.musicTime * speedRatio);
+}
+
+$('playMidi').onclick = () => playMidi();
+$('stopMidi').onclick = () => { if (nowPlaying === 'midi') stopAllMusic(); };
+$('midiSpeed').onchange = (e) => {
+  const old = midiSpeed;
+  midiSpeed = +e.target.value;
+  remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
 };
-$('keys').onpointerover = (e) => {
-  const el = e.target.closest('.key');
-  if (dragging && el && e.buttons) playKey(+el.dataset.i);
-};
-addEventListener('pointerup', () => { dragging = false; });
-addEventListener('keydown', (e) => {
-  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.target.closest('input, select, textarea')) return;
-  const i = KEYMAP.indexOf(e.key.toLowerCase());
-  if (i < 0) return;
-  e.preventDefault();
-  playKey(i);
-});
-$('octave').onchange = labelKeys;
-$('keyLabel').onchange = labelKeys;
-labelKeys();
+$('midiLoop').onchange = () => remixIfPlaying();
 
 // Mixer. Fader level, mute and solo are UI state; the engine only sees the result.
 const STRIPS = [
