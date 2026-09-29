@@ -11,6 +11,7 @@
   :root {
     --bg: #f3f4f7; --panel: #ffffff; --text: #1b1d24; --muted: #62677a;
     --line: #d9dce5; --accent: #3558d6; --accent-text: #ffffff; --wave: #3558d6;
+    --key-white: #ffffff; --key-white-text: #62677a; --key-black: #22252f; --key-black-text: #c6cad8;
     --font-display: "Silkscreen", ui-monospace, monospace;
     --font-body: system-ui, -apple-system, "Noto Sans TC", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -19,12 +20,14 @@
     :root:not([data-theme="light"]) {
       --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
       --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
+      --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
     --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
+    --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -52,6 +55,32 @@
         overflow-x: auto; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
   .muted { color: var(--muted); font-size: 13px; }
   label.inline { display: inline-flex; gap: 6px; align-items: center; }
+
+  /* 鍵盤：白鍵平均分寬，黑鍵以百分比絕對定位在兩個白鍵之間 */
+  .keys { position: relative; display: flex; height: 150px; margin: 12px 0 8px; user-select: none; touch-action: none; }
+  .key { position: relative; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 0 0 6px;
+         display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+         font: 11px/1.2 var(--font-mono); color: var(--muted); cursor: pointer; }
+  .key.white { flex: 1; min-width: 0; background: var(--key-white); margin-right: -1px; }
+  .key.black { position: absolute; top: 0; height: 60%; z-index: 1; background: var(--key-black);
+               color: var(--key-black-text); border-color: var(--key-black); }
+  .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .key.white { color: var(--key-white-text); }
+  .key b { font-weight: 700; color: inherit; }
+  .key i { font-style: normal; line-height: .6; }
+
+  /* 混音台：每個聲部一條直立推桿 */
+  .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
+  .strip { flex: 1 1 5.5rem; max-width: 8rem; display: flex; flex-direction: column; align-items: center; gap: 6px;
+           padding: 10px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .strip.bus { border-color: var(--accent); }
+  .strip .name { font-size: 13px; }
+  .strip .val { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .strip input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 2rem; height: 9rem; }
+  .strip .row { gap: 4px; justify-content: center; }
+  .strip button { min-height: 1.9rem; padding: .2rem .55rem; font: 12px var(--font-mono); }
+  .strip button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
+  .strip.silent input[type=range] { opacity: .4; }
 </style>
 
 <main>
@@ -82,6 +111,18 @@
   </section>
 
   <section>
+    <h2>鍵盤</h2>
+    <div class="row">
+      <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+      <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
+      <span class="muted" id="keyInfo">用上方音效的參數，依音高演奏</span>
+    </div>
+    <div class="keys" id="keys"></div>
+    <p class="muted">電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
+      上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度；按住滑過琴鍵可連續彈奏。</p>
+  </section>
+
+  <section>
     <h2>音樂</h2>
     <div class="row">
       <label class="inline">情緒 <select id="mood"></select></label>
@@ -95,6 +136,17 @@
       <button id="stopMusic">■ 停止</button>
       <span class="muted" id="musicInfo"></span>
     </div>
+  </section>
+
+  <section>
+    <h2>混音</h2>
+    <div class="mixer" id="mixer"></div>
+    <div class="row">
+      <button id="resetMix">重設混音</button>
+      <span class="muted" id="mixInfo"></span>
+    </div>
+    <p class="muted">音效、音樂兩條匯流排即時生效；主旋律、貝斯、鼓組放開推桿時才重新合成音樂，並從原位置接著播。
+      M 靜音、S 獨奏（只作用於音樂聲部）。</p>
   </section>
 </main>
 
@@ -257,6 +309,142 @@ $('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 999
 $('stopMusic').onclick = () => { audio.stopMusic(); $('musicInfo').textContent = ''; };
 for (const id of ['mood', 'bars']) $(id).onchange = () => { if (audio.music) playMusic(); };
 $('seed').onchange = () => { if (audio.music) playMusic(); };
+
+// Keyboard: current SFX params, retuned to each note.
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// Tracker layout; index = semitones above the keyboard's lowest C.
+const KEYMAP = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
+                'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i'];
+const keyEls = [];
+const baseMidi = () => 12 * (+$('octave').value + 1);   // C4 = midi 60
+const noteName = (n) => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+{
+  const WHITES = 15;   // two octaves plus the top C
+  let white = 0;
+  for (let i = 0; i < KEYMAP.length; i++) {
+    const black = NOTE_NAMES[i % 12].includes('#');
+    const el = document.createElement('div');
+    el.className = `key ${black ? 'black' : 'white'}`;
+    if (black) {
+      el.style.left = `${(white - 0.3) / WHITES * 100}%`;
+      el.style.width = `${0.6 / WHITES * 100}%`;
+    } else {
+      white++;
+    }
+    el.innerHTML = '<b></b><i></i><span></span>';
+    el.dataset.i = i;
+    keyEls.push(el);
+    $('keys').append(el);
+  }
+}
+// 簡譜: 1 = C; a dot above marks each octave above the keyboard's lowest one.
+const NUMBERS = ['1', '#1', '2', '#2', '3', '4', '#4', '5', '#5', '6', '#6', '7'];
+const OCTAVE_DOTS = ['', '·', '··'];
+function keyLabel(i) {
+  switch ($('keyLabel').value) {
+    case 'name': return NOTE_NAMES[i % 12];
+    case 'num': return NUMBERS[i % 12];
+    default: return KEYMAP[i].toUpperCase();
+  }
+}
+function labelKeys() {
+  keyEls.forEach((el, i) => {
+    el.firstChild.textContent = i % 12 === 0 ? noteName(baseMidi() + i) : '';
+    el.children[1].textContent = $('keyLabel').value === 'num' ? OCTAVE_DOTS[Math.floor(i / 12)] : '';
+    el.lastChild.textContent = keyLabel(i);
+  });
+}
+function playKey(i) {
+  const n = baseMidi() + i;
+  const freq = 440 * 2 ** ((n - 69) / 12);
+  audio.playSfx({ ...params, freq });
+  const el = keyEls[i];
+  el.classList.add('down');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('down'), 150);
+  $('keyInfo').textContent = `${noteName(n)} · ${freq.toFixed(1)} Hz`;
+}
+let dragging = false;
+$('keys').onpointerdown = (e) => {
+  const el = e.target.closest('.key');
+  if (!el) return;
+  dragging = true;
+  el.releasePointerCapture?.(e.pointerId);   // touch captures to the key; release so pointerover reaches the others
+  playKey(+el.dataset.i);
+};
+$('keys').onpointerover = (e) => {
+  const el = e.target.closest('.key');
+  if (dragging && el && e.buttons) playKey(+el.dataset.i);
+};
+addEventListener('pointerup', () => { dragging = false; });
+addEventListener('keydown', (e) => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('input, select, textarea')) return;
+  const i = KEYMAP.indexOf(e.key.toLowerCase());
+  if (i < 0) return;
+  e.preventDefault();
+  playKey(i);
+});
+$('octave').onchange = labelKeys;
+$('keyLabel').onchange = labelKeys;
+labelKeys();
+
+// Mixer. Fader level, mute and solo are UI state; the engine only sees the result.
+const STRIPS = [
+  ['sfx', '音效', true], ['music', '音樂', true],
+  ['lead', '主旋律', false], ['bass', '貝斯', false], ['drums', '鼓組', false],
+];
+const strips = {};
+for (const [key, label, bus] of STRIPS) {
+  const el = document.createElement('div');
+  el.className = `strip${bus ? ' bus' : ''}`;
+  el.innerHTML = `<span class="name">${label}</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" aria-label="${label}音量">
+    <div class="row"><button data-act="mute" title="靜音">M</button>${bus ? '' : '<button data-act="solo" title="獨奏">S</button>'}</div>`;
+  const s = { el, level: 1, mute: false, solo: false, fader: el.querySelector('input') };
+  s.fader.oninput = () => { s.level = +s.fader.value; paintMix(); if (bus) applyMix(); };
+  s.fader.onchange = () => { if (!bus) applyMix(); };
+  el.querySelector('.row').onclick = (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+    s[act] = !s[act];
+    paintMix();
+    applyMix();
+  };
+  strips[key] = s;
+  $('mixer').append(el);
+}
+function effectiveMix() {
+  const anySolo = STRIPS.some(([k]) => strips[k].solo);
+  const out = {};
+  for (const [k, , bus] of STRIPS) {
+    const s = strips[k];
+    out[k] = s.mute || (!bus && anySolo && !s.solo) ? 0 : s.level;
+  }
+  return out;
+}
+function paintMix() {
+  const eff = effectiveMix();
+  for (const [k] of STRIPS) {
+    const s = strips[k];
+    s.fader.value = s.level;
+    s.el.querySelector('.val').textContent = `${Math.round(s.level * 100)}%`;
+    for (const b of s.el.querySelectorAll('button')) b.classList.toggle('on', s[b.dataset.act]);
+    s.el.classList.toggle('silent', eff[k] === 0);
+  }
+}
+function applyMix() {
+  const t0 = performance.now();
+  audio.setMix(effectiveMix());
+  const ms = performance.now() - t0;
+  $('mixInfo').textContent = ms > 2 ? `重新合成音樂 ${ms.toFixed(1)} ms` : '';
+}
+$('resetMix').onclick = () => {
+  for (const [k] of STRIPS) Object.assign(strips[k], { level: 1, mute: false, solo: false });
+  paintMix();
+  applyMix();
+};
+paintMix();
 
 $('volume').oninput = (e) => audio.setVolume(+e.target.value);
 $('mute').onchange = (e) => audio.setMuted(e.target.checked);

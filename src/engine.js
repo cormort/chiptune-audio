@@ -11,6 +11,9 @@ const clamp01 = (v, fallback) => {
   return Number.isFinite(n) ? (n < 0 ? 0 : n > 1 ? 1 : n) : fallback;
 };
 
+const MIX_KEYS = ['sfx', 'music', 'lead', 'bass', 'drums'];
+const PART_KEYS = ['lead', 'bass', 'drums'];
+
 const isSong = (o) => !!o && typeof o === 'object' && Array.isArray(o.lead) && Array.isArray(o.bass);
 
 // Cache key built from normalised values, so `{}`, `{ freq: 440 }` and a preset
@@ -33,6 +36,11 @@ export class ChiptuneAudio {
     this.master = null;
     this.filter = null;
     this.music = null;
+    this.musicBus = null;
+    /** Mixer levels, each 0..1: the sfx/music buses and the three music parts. */
+    this.mix = { sfx: 1, music: 1, lead: 1, bass: 1, drums: 1 };
+    this._musicOptions = null;
+    this._musicStart = 0;
     this.sfxCache = new Map();
     this._songCache = new Map();
     this._active = new Set();
@@ -62,6 +70,9 @@ export class ChiptuneAudio {
       } else {
         this.master.connect(this.ctx.destination);
       }
+      this.musicBus = this.ctx.createGain();
+      this.musicBus.gain.value = this.mix.music;
+      this.musicBus.connect(this.master);
       this._applyVolume(true);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -137,8 +148,9 @@ export class ChiptuneAudio {
       src.connect(panner);
       node = panner;
     }
-    const gain = Number(opts.gain);
-    if (Number.isFinite(gain) && gain !== 1) {
+    const g0 = Number(opts.gain);
+    const gain = (Number.isFinite(g0) ? g0 : 1) * this.mix.sfx;
+    if (gain !== 1) {
       const g = ctx.createGain();
       g.gain.value = gain < 0 ? 0 : gain;
       node.connect(g);
@@ -159,14 +171,18 @@ export class ChiptuneAudio {
     this._ensure();
     const song = isSong(options) ? options : generateSong(options);
     const rate = this.sampleRate;
+    const m = this.mix;
+    const unity = m.lead === 1 && m.bass === 1 && m.drums === 1;
     const key = (song.seed !== undefined && song.mood !== undefined && song.bars !== undefined)
-      ? `${rate}|${song.seed >>> 0}|${song.mood}|${song.bars}|${song.bpm}|${song.duty}`
+      ? `${rate}|${song.seed >>> 0}|${song.mood}|${song.bars}|${song.bpm}|${song.duty}|${m.lead},${m.bass},${m.drums}`
       : null;
     if (key) {
       const hit = this._songCache.get(key);
       if (hit) return hit;
     }
-    const samples = renderSong(song, { sampleRate: rate });
+    const samples = renderSong(song, unity
+      ? { sampleRate: rate }
+      : { sampleRate: rate, mix: { lead: m.lead, bass: m.bass, drums: m.drums } });
     if (samples.length === 0) return null;
     const buf = this.ctx.createBuffer(1, samples.length, rate);
     buf.getChannelData(0).set(samples);
@@ -176,6 +192,10 @@ export class ChiptuneAudio {
   /** Play a loop. `options` is either generateSong options ({seed, mood, bars})
    *  or an already-generated song object. */
   playMusic(options = {}) {
+    return this._startMusic(options, 0);
+  }
+
+  _startMusic(options, offset) {
     this.stopMusic();
     const ctx = this._ensure();
     const buf = this.preloadMusic(options);
@@ -183,10 +203,39 @@ export class ChiptuneAudio {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.connect(this.master);
-    src.start();
+    src.connect(this.musicBus);
+    src.start(0, offset);
     this.music = src;
+    this._musicOptions = options;
+    this._musicStart = ctx.currentTime - offset;
     return src;
+  }
+
+  /** Set mixer levels (each 0..1; omitted keys are unchanged).
+   *  `sfx` and `music` are buses and apply instantly (`sfx` to sounds started
+   *  afterwards). `lead`/`bass`/`drums` are baked into the rendered loop, so
+   *  changing them re-renders the playing song and resumes it where it was. */
+  setMix(levels = {}) {
+    const m = this.mix;
+    let partsChanged = false;
+    for (const k of MIX_KEYS) {
+      if (!(k in levels)) continue;
+      const v = clamp01(levels[k], m[k]);
+      if (v === m[k]) continue;
+      m[k] = v;
+      if (PART_KEYS.includes(k)) partsChanged = true;
+    }
+    if (this.musicBus) {
+      const now = this.ctx.currentTime;
+      this.musicBus.gain.cancelScheduledValues(now);
+      this.musicBus.gain.setTargetAtTime(m.music, now, 0.015);
+    }
+    if (partsChanged && this.music) {
+      const dur = this.music.buffer.duration;
+      const pos = dur > 0 ? (this.ctx.currentTime - this._musicStart) % dur : 0;
+      this._startMusic(this._musicOptions, pos);
+    }
+    return { ...m };
   }
 
   stopMusic() {
@@ -233,6 +282,7 @@ export class ChiptuneAudio {
       const ctx = this.ctx;
       this.ctx = null;
       this.master = null;
+      this.musicBus = null;
       this.filter = null;
       if (ctx.state !== 'closed') await ctx.close();
     }

@@ -52,6 +52,17 @@ audio.playSfx('coin', { pan: -0.5, rate: 1.25, gain: 0.8 });
 `rate` reuses one rendered buffer at a different pitch — useful for footsteps, coin combos,
 or a rising pitch as a timer runs down.
 
+### Mixer
+
+```js
+audio.setMix({ sfx: 0.8, music: 0.5 });   // buses, applied instantly
+audio.setMix({ drums: 0, lead: 0.7 });    // music parts: re-renders the loop, resumes in place
+renderSong(song, { mix: { bass: 0 } });   // same weighting when rendering offline
+```
+
+Levels are 0..1. Part levels are baked into the rendered loop (one re-render, ~15-25 ms),
+so change them on slider release rather than on every input event.
+
 ### Lifecycle
 
 ```js
@@ -67,7 +78,8 @@ master filter from the start. It is off by default so existing sounds are unchan
 
 `index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
 按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
-音樂可選情緒、種子、小節數。ES module 不能用 `file://` 開，要用 HTTP 服務：
+音樂可選情緒、種子、小節數。「鍵盤」區用目前的音效參數依音高演奏（可點擊，
+或用電腦鍵盤 Z–M / Q–U），「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。ES module 不能用 `file://` 開，要用 HTTP 服務：
 
 ```bash
 npx serve .        # 或 python3 -m http.server

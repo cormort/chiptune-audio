@@ -87,7 +87,8 @@ export function generateSong({ seed = 1, mood = 'happy', bars = 8 } = {}) {
  *    truncated into a click.
  *
  *  `opts.sampleRate` defaults to 44100; the engine passes the AudioContext rate
- *  so playback never needs resampling.
+ *  so playback never needs resampling. `opts.mix` ({ lead, bass, drums }, each
+ *  0..1, default 1) weights the parts.
  */
 export function renderSong(song, opts = {}) {
   const sampleRate = opts && opts.sampleRate > 0 ? opts.sampleRate : SAMPLE_RATE;
@@ -106,18 +107,78 @@ export function renderSong(song, opts = {}) {
   const stepSamples = Math.max(1, Math.round(stepSec * sampleRate));
   const total = bars * STEPS_PER_BAR * stepSamples;
   const tail = TAIL_STEPS * stepSamples;
-  const out = new Float32Array(total + tail);
+  const len = total + tail;
 
+  // Without a mix every voice goes into one buffer (the original, cheapest path).
+  // With a mix each part gets its own buffer so it can be weighted, while the
+  // normalisation gain still comes from the unity mix: a soloed part plays at
+  // the same level it has inside the full song.
+  const mix = opts && opts.mix;
+  if (!mix) {
+    const out = new Float32Array(len);
+    renderParts(song, out, out, out, stepSec, stepSamples, duty, sampleRate);
+    foldTail(out, total, tail);
+    const peak = peakOf(out, total);
+    if (peak > 0.9) {
+      const g = 0.9 / peak;
+      for (let i = 0; i < total; i++) out[i] *= g;
+    }
+    // A view, not a copy: avoids duplicating up to ~2.4 MB per song.
+    return out.subarray(0, total);
+  }
+
+  const lead = new Float32Array(len);
+  const bass = new Float32Array(len);
+  const drums = new Float32Array(len);
+  renderParts(song, lead, bass, drums, stepSec, stepSamples, duty, sampleRate);
+  foldTail(lead, total, tail);
+  foldTail(bass, total, tail);
+  foldTail(drums, total, tail);
+  let peak = 0;
+  for (let i = 0; i < total; i++) {
+    const a = Math.abs(lead[i] + bass[i] + drums[i]);
+    if (a > peak) peak = a;
+  }
+  const g = peak > 0.9 ? 0.9 / peak : 1;
+  const gl = mixGain(mix.lead) * g, gb = mixGain(mix.bass) * g, gd = mixGain(mix.drums) * g;
+  // Reuse the lead buffer as the output.
+  for (let i = 0; i < total; i++) lead[i] = lead[i] * gl + bass[i] * gb + drums[i] * gd;
+  return lead.subarray(0, total);
+}
+
+/** Part gain, 0..1; anything missing or non-finite means unity. */
+function mixGain(v) {
+  return typeof v === 'number' && Number.isFinite(v) ? (v < 0 ? 0 : v > 1 ? 1 : v) : 1;
+}
+
+function peakOf(buf, n) {
+  let peak = 0;
+  for (let i = 0; i < n; i++) {
+    const a = Math.abs(buf[i]);
+    if (a > peak) peak = a;
+  }
+  return peak;
+}
+
+// Fold the overhang onto the loop start: the tail of the last notes now
+// continues into the first samples, so the loop is continuous.
+function foldTail(buf, total, tail) {
+  for (let i = 0; i < tail; i++) buf[i] += buf[total + i];
+}
+
+/** Mix every note into the given part buffers (which may all be the same one). */
+function renderParts(song, leadOut, bassOut, drumsOut, stepSec, stepSamples, duty, sampleRate) {
+  const bars = Math.floor(Number(song.bars));
   for (const n of song.lead) {
     const dur = n.len * stepSec;
-    renderSfxInto(out, n.step * stepSamples, {
+    renderSfxInto(leadOut, n.step * stepSamples, {
       wave: WAVE.SQUARE, freq: midi(n.note), duty,
       vibDepth: 0.004, vibRate: 6, attack: 0.005, sustain: dur * 0.5, decay: dur * 0.5, vol: 0.22,
     }, sampleRate);
   }
   for (const n of song.bass) {
     const dur = n.len * stepSec;
-    renderSfxInto(out, n.step * stepSamples, {
+    renderSfxInto(bassOut, n.step * stepSamples, {
       wave: WAVE.TRIANGLE, freq: midi(n.note), attack: 0.005, sustain: dur * 0.7, decay: dur * 0.3, vol: 0.35,
     }, sampleRate);
   }
@@ -130,39 +191,22 @@ export function renderSong(song, opts = {}) {
     const s = step % STEPS_PER_BAR;
     const at = step * stepSamples;
     if (s === 0 || s === 8) {
-      renderSfxInto(out, at, {
+      renderSfxInto(drumsOut, at, {
         wave: WAVE.TRIANGLE, freq: 150, slide: -6, sustain: 0.02, decay: 0.1, vol: 0.5,
       }, sampleRate);
     }
     if (s === 4 || s === 12) {
-      renderSfxInto(out, at, {
+      renderSfxInto(drumsOut, at, {
         wave: WAVE.NOISE, freq: 9000, sustain: 0.02, decay: 0.09, vol: 0.2, bits: 4,
         seed: (0x5eed + step) >>> 0,
       }, sampleRate);
     }
     if (s % 2 === 0) {
-      renderSfxInto(out, at, {
+      renderSfxInto(drumsOut, at, {
         wave: WAVE.NOISE, freq: 20000, sustain: 0.005, decay: 0.03,
         vol: s % 4 === 0 ? 0.09 : 0.05,
         seed: (0xbeef + step) >>> 0,
       }, sampleRate);
     }
   }
-
-  // Fold the overhang onto the loop start: the tail of the last notes now
-  // continues into the first samples, so the loop is continuous.
-  for (let i = 0; i < tail; i++) out[i] += out[total + i];
-
-  // Scale down instead of hard-clipping when voices pile up.
-  let peak = 0;
-  for (let i = 0; i < total; i++) {
-    const a = Math.abs(out[i]);
-    if (a > peak) peak = a;
-  }
-  if (peak > 0.9) {
-    const g = 0.9 / peak;
-    for (let i = 0; i < total; i++) out[i] *= g;
-  }
-  // A view, not a copy: avoids duplicating up to ~2.4 MB per song.
-  return out.subarray(0, total);
 }

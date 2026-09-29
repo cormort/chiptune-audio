@@ -281,3 +281,42 @@ test('playing after stopMusic works (engine is reusable)', () => {
   const again = a.playMusic({ seed: 1, bars: 2 });
   assert.ok(again.started);
 });
+
+test('music plays through the music bus, which setMix ramps', () => {
+  const a = mk();
+  const src = a.playMusic({ seed: 1, bars: 2 });
+  assert.equal(src.connections[0], a.musicBus);
+  assert.equal(a.musicBus.connections[0], a.master);
+  a.setMix({ music: 0.3 });
+  assert.equal(a.musicBus.gain.value, 0.3);
+  assert.ok(a.musicBus.gain.calls.some((c) => c[0] === 'setTargetAtTime'));
+});
+
+test('setMix sfx level scales new one-shots', () => {
+  const a = mk();
+  a.setMix({ sfx: 0.5 });
+  const gain = a.playSfx('coin', { gain: 0.8 }).connections[0];
+  assert.equal(gain.kind, 'gain');
+  assert.equal(gain.gain.value, 0.4);
+  a.setMix({ sfx: 1 });
+  assert.equal(a.playSfx('coin').connections[0], a.master, 'unity sfx level adds no node');
+});
+
+test('setMix part levels re-render the playing loop, clamp, and keep other keys', () => {
+  const a = mk();
+  const first = a.playMusic({ seed: 1, bars: 2 });
+  const mix = a.setMix({ drums: 0, lead: 7, nope: 1 });
+  assert.deepEqual(mix, { sfx: 1, music: 1, lead: 1, bass: 1, drums: 0 });
+  assert.ok(first.stopped, 'old loop replaced');
+  assert.notEqual(a.music, first);
+  assert.notEqual(a.music.buffer, first.buffer, 'new render for the new mix');
+  a.setMix({ drums: 1 });
+  assert.equal(a.music.buffer, first.buffer, 'unity mix is served from the song cache');
+});
+
+test('setMix before any audio just records the levels', () => {
+  const a = mk();
+  assert.doesNotThrow(() => a.setMix({ lead: 0.2 }));
+  assert.equal(a.ctx, null);
+  assert.equal(a.mix.lead, 0.2);
+});
