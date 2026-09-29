@@ -279,7 +279,11 @@ $('copySfx').onclick = async () => {
 };
 
 // Music
-for (const m of Object.keys(MOODS)) $('mood').add(new Option(m));
+const MOOD_LABELS = {
+  happy: '快樂', calm: '平靜', tense: '緊張', sad: '悲傷', heroic: '英勇', playful: '俏皮',
+  dreamy: '夢幻', mysterious: '神秘', spooky: '恐怖', boss: '魔王戰', groovy: '藍調律動',
+};
+for (const m of Object.keys(MOODS)) $('mood').add(new Option(MOOD_LABELS[m] ? `${MOOD_LABELS[m]} ${m}` : m, m));
 
 function musicOptions() {
   return { seed: +$('seed').value || 1, mood: $('mood').value, bars: +$('bars').value };

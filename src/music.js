@@ -5,6 +5,11 @@ const SCALES = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
   pentatonic: [0, 2, 4, 7, 9],
+  dorian: [0, 2, 3, 5, 7, 9, 10],
+  phrygian: [0, 1, 3, 5, 7, 8, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
+  harmonicMinor: [0, 2, 3, 5, 7, 8, 11],
+  blues: [0, 3, 5, 6, 7, 10],
 };
 
 // Chord progressions as scale-degree roots (7-note scales).
@@ -15,6 +20,14 @@ export const MOODS = {
   calm:  { scale: 'pentatonic', bpm: 96, duty: 0.25, density: 0.4, root: 57 },
   tense: { scale: 'minor', bpm: 164, duty: 0.125, density: 0.85, root: 57 },
   sad:   { scale: 'minor', bpm: 72, duty: 0.25, density: 0.35, root: 55 },
+  // Added later; the four above are frozen (see test/parity.test.js).
+  heroic:     { scale: 'major', bpm: 152, duty: 0.25, density: 0.75, root: 62 },
+  playful:    { scale: 'pentatonic', bpm: 128, duty: 0.5, density: 0.8, root: 64 },
+  dreamy:     { scale: 'lydian', bpm: 100, duty: 0.25, density: 0.45, root: 64 },
+  mysterious: { scale: 'dorian', bpm: 88, duty: 0.125, density: 0.45, root: 57 },
+  spooky:     { scale: 'phrygian', bpm: 76, duty: 0.125, density: 0.4, root: 52 },
+  boss:       { scale: 'harmonicMinor', bpm: 180, duty: 0.125, density: 0.95, root: 52 },
+  groovy:     { scale: 'blues', bpm: 116, duty: 0.5, density: 0.6, root: 55 },
 };
 
 export const STEPS_PER_BAR = 16;

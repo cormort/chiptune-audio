@@ -73,10 +73,12 @@ export declare function renderSfxInto(
   sampleRate?: number,
 ): number;
 
-export type Mood = 'happy' | 'calm' | 'tense' | 'sad';
+export type Mood =
+  | 'happy' | 'calm' | 'tense' | 'sad'
+  | 'heroic' | 'playful' | 'dreamy' | 'mysterious' | 'spooky' | 'boss' | 'groovy';
 
 export interface MoodSpec {
-  scale: 'major' | 'minor' | 'pentatonic';
+  scale: 'major' | 'minor' | 'pentatonic' | 'dorian' | 'phrygian' | 'lydian' | 'harmonicMinor' | 'blues';
   bpm: number;
   duty: number;
   density: number;
