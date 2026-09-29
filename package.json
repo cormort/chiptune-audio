@@ -1,0 +1,10 @@
+{
+  "name": "chiptune-audio",
+  "version": "0.1.0",
+  "description": "Zero-dependency 8-bit sound effect and music engine for browser games (Web Audio).",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": "./src/index.js",
+  "scripts": { "test": "node --test test/*.test.js" },
+  "license": "MIT"
+}
