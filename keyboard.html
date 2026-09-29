@@ -3,6 +3,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>chiptune-audio 電子琴</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121420" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chiptune">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
@@ -92,6 +99,9 @@
 </main>
 
 <script type="module">
+// Offline / installable app (see sw.js). Service workers need http(s), not file://.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
 import { ChiptuneAudio, INSTRUMENTS, instrumentNote, noteFreq } from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });

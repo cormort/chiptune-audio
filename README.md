@@ -114,6 +114,14 @@ master filter from the start. It is off by default so existing sounds are unchan
 npx serve .        # 或 python3 -m http.server
 ```
 
+### 安裝成 App（PWA）
+
+兩個頁面都可以安裝：Chrome／Edge 網址列的「安裝」圖示，或手機瀏覽器的「加到主畫面」。
+安裝後可離線使用；長按 App 圖示有「電子琴」捷徑。
+`sw.js` 先用快取回應，同時在背景更新，所以部署新版後要**重新開啟一次**才會看到。
+改了 `sw.js` 的檔案清單時，記得同步調高裡面的 `VERSION`。
+Service worker 只在 HTTPS 或 `localhost` 上啟用。
+
 ## Tests
 
 ```bash
