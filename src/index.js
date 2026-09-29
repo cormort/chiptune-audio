@@ -7,3 +7,4 @@ export { generateSong, renderSong, MOODS, STEPS_PER_BAR, MAX_BARS } from './musi
 export { mulberry32 } from './rng.js';
 export { INSTRUMENTS, HOLD_SECONDS, instrumentNote, noteFreq } from './instruments.js';
 export { parseMidi, renderMidi, MAX_MIDI_SECONDS } from './midi.js';
+export { encodeWav } from './wav.js';

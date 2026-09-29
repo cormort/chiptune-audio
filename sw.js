@@ -2,13 +2,13 @@
 // that each request is answered from the cache at once and refreshed from the
 // network in the background (stale-while-revalidate), so the app works offline
 // and picks up changes on the next load. Bump VERSION to drop old caches.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `chiptune-${VERSION}`;
 const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
-  'src/instruments.js', 'src/midi.js',
+  'src/instruments.js', 'src/midi.js', 'src/wav.js',
 ];
 
 self.addEventListener('install', (e) => {
