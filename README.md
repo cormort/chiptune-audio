@@ -100,12 +100,26 @@ await audio.dispose();       // closes the AudioContext; call it in an SPA
 Construct with `new ChiptuneAudio({ filter: { type: 'lowpass', freq: 11000 } })` to enable the
 master filter from the start. It is off by default so existing sounds are unchanged.
 
+## Command line (for scripts and AI agents)
+
+```bash
+node bin/chiptune.js sfx coin -o coin.wav
+node bin/chiptune.js music --mood boss --seed 7 -o boss.wav
+node bin/chiptune.js midi song.mid --track 1=saw --speed 1.2 -o remix.wav
+```
+
+Each command writes a WAV and prints a JSON summary (length, peak, RMS, the parameters
+used), so a result can be checked without listening. [AGENTS.md](AGENTS.md) is the guide
+for AI agents: every command, parameter ranges, and how to judge the output.
+`encodeWav(samples, sampleRate)` is exported for your own renders.
+
 ## 控制台（手動操作）
 
 `index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
 按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
 音樂可選情緒、種子、小節數。「MIDI 重新混音」可匯入 .mid 檔，每個軌道換成晶片樂器、調音量與速度；
 「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
+音效、音樂、MIDI 都有「⤓ WAV」按鈕可下載音檔。
 
 `keyboard.html` 是電子琴：12 種樂器，按住發聲、放開停止，可彈和弦；
 可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），琴鍵標示可切換電腦按鍵、音名或簡譜。ES module 不能用 `file://` 開，要用 HTTP 服務：

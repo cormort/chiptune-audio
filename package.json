@@ -6,6 +6,9 @@
   "main": "src/index.js",
   "module": "src/index.js",
   "types": "types/index.d.ts",
+  "bin": {
+    "chiptune": "bin/chiptune.js"
+  },
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
@@ -16,7 +19,9 @@
   "sideEffects": false,
   "files": [
     "src",
+    "bin",
     "types",
+    "AGENTS.md",
     "LICENSE",
     "README.md"
   ],

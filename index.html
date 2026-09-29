@@ -113,6 +113,7 @@
       <button class="primary" id="playSfx">▶ 播放</button>
       <button id="randomSfx">隨機</button>
       <button id="copySfx">複製參數</button>
+      <button id="wavSfx">⤓ WAV</button>
       <span class="muted" id="sfxInfo"></span>
     </div>
     <pre id="sfxJson" tabindex="0"></pre>
@@ -132,6 +133,7 @@
       <button class="primary" id="playMusic">▶ 播放音樂</button>
       <button id="preloadMusic" title="先算好並快取，播放時就不會卡頓">⤓ 預先算好</button>
       <button id="stopMusic">■ 停止</button>
+      <button id="wavMusic" title="下載一個循環（套用混音台的聲部音量）">⤓ WAV</button>
       <span class="muted" id="musicInfo"></span>
     </div>
   </section>
@@ -150,6 +152,7 @@
       <label class="inline"><input id="midiLoop" type="checkbox"> 循環</label>
       <button class="primary" id="playMidi" disabled>▶ 播放 MIDI</button>
       <button id="stopMidi" disabled>■ 停止</button>
+      <button id="wavMidi" disabled title="用目前的樂器、音量與速度下載">⤓ WAV</button>
       <span class="muted" id="midiStatus"></span>
     </div>
     <p class="muted">播放中換樂器、音量或速度，會重新合成並從原位置接著播。MIDI 走「音樂」匯流排，
@@ -174,7 +177,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
-  INSTRUMENTS, parseMidi,
+  INSTRUMENTS, parseMidi, renderMidi, renderSong, encodeWav,
 } from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
@@ -297,6 +300,19 @@ $('randomSfx').onclick = () => {
   load(p);
   audio.playSfx(params);
 };
+function downloadWav(samples, filename) {
+  const url = URL.createObjectURL(new Blob([encodeWav(samples, SAMPLE_RATE)], { type: 'audio/wav' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('wavSfx').onclick = () => {
+  const on = $('presets').querySelector('.on');
+  downloadWav(renderSfx(params), `${on ? on.dataset.preset : 'sfx'}.wav`);
+};
+
 $('copySfx').onclick = async () => {
   const text = JSON.stringify(diffParams());
   try { await navigator.clipboard.writeText(text); $('copySfx').textContent = '已複製'; }
@@ -366,12 +382,14 @@ const INSTRUMENT_LABELS = {
 let midi = null;
 let midiTracks = [];      // per-track { instrument, volume, mute }, indexed like midi.tracks
 let midiSpeed = 1;
+let midiName = 'midi';
 
 $('midiFile').onchange = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   try {
     midi = parseMidi(await file.arrayBuffer());
+    midiName = file.name.replace(/\.midi?$/i, '');
   } catch (err) {
     midi = null;
     $('midiInfo').textContent = `無法讀取：${err.message}`;
@@ -394,6 +412,7 @@ function buildTracks() {
   const has = !!(midi && midi.tracks.length);
   $('playMidi').disabled = !has;
   $('stopMidi').disabled = !has;
+  $('wavMidi').disabled = !has;
   if (!has) return;
   midi.tracks.forEach((t, i) => {
     const s = midiTracks[i];
@@ -443,6 +462,14 @@ $('midiSpeed').onchange = (e) => {
   remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
 };
 $('midiLoop').onchange = () => remixIfPlaying();
+$('wavMidi').onclick = () => {
+  downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`);
+};
+$('wavMusic').onclick = () => {
+  const opts = musicOptions();
+  const { lead, bass, drums } = audio.mix;
+  downloadWav(renderSong(generateSong(opts), { mix: { lead, bass, drums } }), `music-${opts.mood}-${opts.seed}.wav`);
+};
 
 // Mixer. Fader level, mute and solo are UI state; the engine only sees the result.
 const STRIPS = [
