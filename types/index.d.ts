@@ -114,8 +114,22 @@ export interface SongOptions {
 /** Deterministic composition: the same options always produce the same song. */
 export declare function generateSong(options?: SongOptions): Song;
 
+export interface PartMix {
+  /** Square lead level, 0..1. Default 1. */
+  lead?: number;
+  /** Triangle bass level, 0..1. Default 1. */
+  bass?: number;
+  /** Drum level, 0..1. Default 1. */
+  drums?: number;
+}
+
+export interface SongRenderOpts extends RenderOpts {
+  /** Per-part levels. Normalisation still follows the unity mix. */
+  mix?: PartMix;
+}
+
 /** Render a song to a seamlessly loopable mono Float32Array. */
-export declare function renderSong(song: Song, opts?: RenderOpts): Float32Array;
+export declare function renderSong(song: Song, opts?: SongRenderOpts): Float32Array;
 
 /** Seeded PRNG; the same seed always yields the same sequence. */
 export declare function mulberry32(seed: number): () => number;
@@ -138,6 +152,13 @@ export interface ChiptuneAudioOptions {
   filter?: { type?: BiquadFilterType; freq?: number; q?: number } | null;
 }
 
+export interface MixLevels extends PartMix {
+  /** Sound-effect bus level, 0..1. Default 1. */
+  sfx?: number;
+  /** Music bus level, 0..1. Default 1. */
+  music?: number;
+}
+
 export declare class ChiptuneAudio {
   constructor(options?: ChiptuneAudioOptions);
 
@@ -146,6 +167,8 @@ export declare class ChiptuneAudio {
   readonly sfxCache: Map<string, AudioBuffer>;
   volume: number;
   muted: boolean;
+  /** Current mixer levels (use setMix to change them). */
+  readonly mix: Readonly<Required<MixLevels>>;
 
   /** The rate buffers are rendered at; the live context rate once created. */
   readonly sampleRate: number;
@@ -164,6 +187,9 @@ export declare class ChiptuneAudio {
   resume(): Promise<void>;
   setVolume(v: number): void;
   setMuted(m: boolean): void;
+  /** Set mixer levels; `sfx`/`music` apply instantly, part levels re-render
+   *  the playing loop and resume it in place. Returns the new levels. */
+  setMix(levels: MixLevels): Required<MixLevels>;
   /** Adjust the opt-in master filter. Returns false when none is configured. */
   setFilter(freq: number): boolean;
   /** Release the AudioContext and every buffer. */

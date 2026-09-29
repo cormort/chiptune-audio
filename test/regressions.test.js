@@ -194,3 +194,24 @@ test('renderSfxInto tolerates a negative or non-numeric offset', () => {
   assert.doesNotThrow(() => renderSfxInto(out, NaN, { sustain: 0.001, decay: 0.001 }));
   assert.ok(finite(out));
 });
+
+// ---------------------------------------------------------------- mixer
+test('renderSong mix: unity equals the unmixed render, parts sum back to the whole', () => {
+  const song = generateSong({ seed: 42, mood: 'happy', bars: 2 });
+  const full = renderSong(song);
+  const unity = renderSong(song, { mix: {} });
+  const parts = ['lead', 'bass', 'drums'].map((k) =>
+    renderSong(song, { mix: { lead: 0, bass: 0, drums: 0, [k]: 1 } }));
+  assert.equal(unity.length, full.length);
+  for (let i = 0; i < full.length; i++) {
+    assert.ok(Math.abs(unity[i] - full[i]) < 1e-5, `unity sample ${i}`);
+    assert.ok(Math.abs(parts[0][i] + parts[1][i] + parts[2][i] - full[i]) < 1e-5, `parts sample ${i}`);
+  }
+});
+
+test('renderSong mix: all parts at 0 is silence, and levels are clamped', () => {
+  const song = generateSong({ seed: 3, mood: 'tense', bars: 1 });
+  assert.equal(peak(renderSong(song, { mix: { lead: 0, bass: 0, drums: 0 } })), 0);
+  const loud = renderSong(song, { mix: { lead: 5, bass: 5, drums: 5 } });
+  assert.ok(peak(loud) <= 0.9 + 1e-6, 'gains above 1 are clamped to 1');
+});
