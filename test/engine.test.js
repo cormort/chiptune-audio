@@ -320,3 +320,30 @@ test('setMix before any audio just records the levels', () => {
   assert.equal(a.ctx, null);
   assert.equal(a.mix.lead, 0.2);
 });
+
+test('playNote returns a handle whose release fades and stops the voice', async () => {
+  const { instrumentNote } = await import('../src/index.js');
+  const a = mk();
+  const v = a.playNote(instrumentNote('organ', 60));
+  const gain = v.source.connections[0];
+  assert.equal(gain.kind, 'gain', 'a note always gets its own gain node');
+  assert.equal(gain.connections[0], a.master);
+  v.release(0.2);
+  assert.ok(gain.gain.calls.some((c) => c[0] === 'setTargetAtTime' && c[1] === 0), 'faded to 0');
+  assert.ok(v.source.stopped);
+  assert.doesNotThrow(() => v.release(), 'release is idempotent');
+});
+
+test('playMidi plays on the music bus and ignores part levels', async () => {
+  const a = mk();
+  const midi = { duration: 1, tracks: [{ instrument: 'square', notes: [{ time: 0, dur: 0.5, note: 60, vel: 1 }] }] };
+  const src = a.playMidi(midi, { loop: true, offset: 0.25 });
+  assert.equal(src.connections[0], a.musicBus);
+  assert.equal(src.loop, true);
+  assert.equal(a.music, src);
+  assert.ok(Math.abs(a.musicTime - 0.25) < 1e-9, 'offset is reflected in musicTime');
+  a.setMix({ lead: 0 });
+  assert.equal(a.music, src, 'no re-render: lead/bass/drums are for generated songs');
+  a.playMusic({ seed: 1, bars: 2 });
+  assert.ok(src.stopped, 'a song replaces the MIDI');
+});

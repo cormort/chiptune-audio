@@ -135,6 +135,86 @@ export interface SongRenderOpts extends RenderOpts {
 /** Render a song to a seamlessly loopable mono Float32Array. */
 export declare function renderSong(song: Song, opts?: SongRenderOpts): Float32Array;
 
+export type InstrumentName =
+  | 'square' | 'pulse25' | 'pulse12' | 'triangle' | 'saw' | 'organ'
+  | 'flute' | 'strings' | 'brass' | 'piano' | 'pluck' | 'bell';
+
+export interface Instrument {
+  /** Sustain while held (key down / MIDI note length). */
+  hold: boolean;
+  /** Fade in seconds on release; null lets the note ring out. */
+  release: number | null;
+  /** SFX params without `freq`. */
+  params: SfxParams;
+}
+
+export declare const INSTRUMENTS: Record<InstrumentName, Instrument>;
+/** Sustain rendered for a keyboard note whose length is not known yet. */
+export declare const HOLD_SECONDS: number;
+/** MIDI note number to Hz (A4 = 69 = 440 Hz). */
+export declare function noteFreq(note: number): number;
+/** SFX params for one note on an instrument. */
+export declare function instrumentNote(
+  name: InstrumentName,
+  note: number,
+  opts?: { seconds?: number; vel?: number },
+): SfxParams;
+
+export interface MidiNote {
+  /** Start, in seconds. */
+  time: number;
+  /** Length, in seconds. */
+  dur: number;
+  /** MIDI note number. */
+  note: number;
+  /** Velocity, 0..1. */
+  vel: number;
+}
+
+export interface MidiTrack {
+  name: string;
+  /** 0-based; 9 is GM percussion. */
+  channel: number;
+  program: number;
+  /** Suggested voice. */
+  instrument: InstrumentName | 'drums';
+  notes: MidiNote[];
+}
+
+export interface Midi {
+  /** Seconds, to the end of the last note. */
+  duration: number;
+  tracks: MidiTrack[];
+}
+
+export interface MidiTrackSettings {
+  instrument?: InstrumentName | 'drums';
+  /** 0..1. Default 1. */
+  volume?: number;
+  mute?: boolean;
+  /** Semitones. Default 0. */
+  transpose?: number;
+}
+
+export interface MidiRenderOpts extends RenderOpts {
+  /** Per-track overrides, indexed like `midi.tracks`. */
+  tracks?: MidiTrackSettings[];
+  /** Tempo multiplier, 0.25..4. Default 1. */
+  speed?: number;
+}
+
+export declare const MAX_MIDI_SECONDS: number;
+/** Parse a Standard MIDI File; throws on malformed input. */
+export declare function parseMidi(data: ArrayBuffer | ArrayBufferView): Midi;
+/** Render a parsed MIDI file with chip voices to mono PCM. */
+export declare function renderMidi(midi: Midi, opts?: MidiRenderOpts): Float32Array;
+
+export interface NoteHandle {
+  source: AudioBufferSourceNode;
+  /** Fade out over `fade` seconds (default 0.08) and stop. Idempotent. */
+  release(fade?: number): void;
+}
+
 /** Seeded PRNG; the same seed always yields the same sequence. */
 export declare function mulberry32(seed: number): () => number;
 
@@ -185,6 +265,15 @@ export declare class ChiptuneAudio {
 
   /** Play a loop; `options` is generateSong options or an existing song. */
   playMusic(options?: SongOptions | Song): AudioBufferSourceNode | null;
+
+  /** Play a held note; release() it on key up. */
+  playNote(params: SfxParams, opts?: SfxPlayOptions): NoteHandle | null;
+
+  /** Render and play a parsed MIDI file on the music bus (replaces any song). */
+  playMidi(midi: Midi, opts?: Omit<MidiRenderOpts, 'sampleRate'> & { loop?: boolean; offset?: number }): AudioBufferSourceNode | null;
+
+  /** Seconds into the playing music (wraps for loops); 0 when stopped. */
+  readonly musicTime: number;
 
   stopMusic(): void;
   stopAllSfx(): void;
