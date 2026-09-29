@@ -3,7 +3,7 @@ import { mulberry32 } from './rng.js';
 export const SAMPLE_RATE = 44100;
 export const WAVE = { SQUARE: 0, SAW: 1, TRIANGLE: 2, NOISE: 3 };
 
-const DEFAULTS = {
+export const SFX_DEFAULTS = {
   wave: WAVE.SQUARE,
   freq: 440,       // Hz
   slide: 0,        // octaves per second
@@ -22,7 +22,7 @@ const DEFAULTS = {
 
 // Render one sound (sfxr-style parameters) to mono Float32Array samples.
 export function renderSfx(params = {}) {
-  const p = { ...DEFAULTS, ...params };
+  const p = { ...SFX_DEFAULTS, ...params };
   const n = Math.ceil((p.attack + p.sustain + p.decay) * SAMPLE_RATE);
   const out = new Float32Array(n);
   const noise = mulberry32(1);

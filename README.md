@@ -23,7 +23,15 @@ button.onclick = () => {
 audio.setMuted(true); audio.setVolume(0.3); audio.stopMusic();
 ```
 
-Serve the folder over HTTP (e.g. `npx serve`) and open `demo.html` to try it.
+## 控制台（手動操作）
+
+`index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
+按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
+音樂可選情緒、種子、小節數。ES module 不能用 `file://` 開，要用 HTTP 服務：
+
+```bash
+npx serve .        # 或 python3 -m http.server
+```
 
 ## Tests
 
