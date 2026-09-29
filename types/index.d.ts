@@ -49,7 +49,9 @@ export interface SfxParams {
 
 export type SfxName =
   | 'coin' | 'jump' | 'laser' | 'hit' | 'explosion'
-  | 'powerup' | 'select' | 'gameover' | 'win';
+  | 'powerup' | 'select' | 'gameover' | 'win'
+  | 'shoot' | 'blip' | 'click' | 'hurt' | 'pickup' | 'heal' | 'levelup' | 'door'
+  | 'step' | 'bounce' | 'alarm' | 'teleport' | 'charge' | 'error' | 'splash';
 
 export declare const SFX_DEFAULTS: Required<SfxParams>;
 export declare const SFX_PRESETS: Record<SfxName, SfxParams>;

@@ -200,9 +200,15 @@ const inputs = {};
   }
 }
 
+const SFX_LABELS = {
+  coin: '金幣', jump: '跳躍', laser: '雷射', hit: '擊中', explosion: '爆炸', powerup: '強化',
+  select: '選取', gameover: '遊戲結束', win: '勝利', shoot: '射擊', blip: '對話', click: '點擊',
+  hurt: '受傷', pickup: '拾取', heal: '補血', levelup: '升級', door: '開門', step: '腳步',
+  bounce: '彈跳', alarm: '警報', teleport: '傳送', charge: '蓄力', error: '錯誤', splash: '水花',
+};
 for (const name of Object.keys(SFX_PRESETS)) {
   const b = document.createElement('button');
-  b.textContent = name;
+  b.textContent = SFX_LABELS[name] ? `${SFX_LABELS[name]} ${name}` : name;
   b.dataset.preset = name;
   b.onclick = () => { load(SFX_PRESETS[name], name); audio.playSfx(params); };
   $('presets').append(b);
