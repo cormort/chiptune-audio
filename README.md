@@ -3,7 +3,7 @@
 Zero-dependency 8-bit sound effect and music engine for browser games, built on the Web Audio API.
 
 - **SFX**: sfxr-style parametric synthesis (square / saw / triangle / noise, pitch slide, arpeggio, vibrato, bit-crush) with 9 presets: `coin jump laser hit explosion powerup select gameover win`.
-- **Music**: seeded procedural loops (square lead + triangle bass + noise drums). Same seed and mood always give the same song. Moods: `happy`, `calm`, `tense`.
+- **Music**: seeded procedural loops (square lead + triangle bass + noise drums). Same seed and mood always give the same song. Moods: `happy`, `calm`, `tense`, `sad`.
 - The synthesis core renders to plain `Float32Array`, so it is testable in Node; only `ChiptuneAudio` touches Web Audio.
 
 ## Usage

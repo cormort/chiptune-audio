@@ -31,6 +31,7 @@ test('every mood renders a loopable, sane, non-silent song', () => {
     assert.equal(pcm.length, expected, mood);
     assert.ok(sane(pcm), mood);
     assert.ok(peak(pcm) > 0.1, mood);
+    assert.ok(peak(pcm) <= 0.9 + 1e-6, `${mood} would clip`);
   }
 });
 

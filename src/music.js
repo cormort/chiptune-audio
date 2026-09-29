@@ -14,6 +14,7 @@ export const MOODS = {
   happy: { scale: 'major', bpm: 140, duty: 0.5, density: 0.7, root: 60 },
   calm:  { scale: 'pentatonic', bpm: 96, duty: 0.25, density: 0.4, root: 57 },
   tense: { scale: 'minor', bpm: 164, duty: 0.125, density: 0.85, root: 57 },
+  sad:   { scale: 'minor', bpm: 72, duty: 0.25, density: 0.35, root: 55 },
 };
 
 const midi = (n) => 440 * 2 ** ((n - 69) / 12);
@@ -92,6 +93,9 @@ export function renderSong(song) {
     if (s % 2 === 0) mixInto(out, hat, at);
   }
 
-  for (let i = 0; i < out.length; i++) out[i] = Math.max(-1, Math.min(1, out[i]));
+  // Scale down instead of hard-clipping when voices pile up.
+  let peak = 0;
+  for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
+  if (peak > 0.9) for (let i = 0; i < out.length; i++) out[i] *= 0.9 / peak;
   return out;
 }
