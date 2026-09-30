@@ -182,7 +182,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
-  INSTRUMENTS, parseMidi, renderMidi, renderSong, encodeWav,
+  INSTRUMENTS, INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, encodeWav,
 } from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
@@ -378,12 +378,7 @@ function stopAllMusic() {
   $('midiStatus').textContent = '';
 }
 
-// MIDI remix: parse once, then re-render with each track's chip instrument.
-const INSTRUMENT_LABELS = {
-  square: '方波', pulse25: '脈衝 25%', pulse12: '脈衝 12.5%', triangle: '三角波', saw: '鋸齒波',
-  organ: '風琴', flute: '長笛', strings: '弦樂', brass: '銅管', piano: '鋼琴', pluck: '撥弦', bell: '鐘聲',
-  drums: '鼓組',
-};
+// MIDI remix: parse once, then re-render with each track's instrument.
 let midi = null;
 let midiTracks = [];      // per-track { instrument, volume, mute }, indexed like midi.tracks
 let midiSpeed = 1;
@@ -470,7 +465,11 @@ function buildTracks() {
     small.textContent = `聲道 ${t.channel + 1} · ${t.notes.length} 音符`;
     nameEl.append(small);
     const sel = row.querySelector('select');
-    for (const k of [...Object.keys(INSTRUMENTS), 'drums']) sel.add(new Option(INSTRUMENT_LABELS[k] || k, k));
+    // Chip voices only: a realistic voice costs ~15x per sample and the midi
+    // renderer lays down every note's full tail, which would freeze the tab.
+    // `real:<name>` is still available through the library and the CLI.
+    for (const k of Object.keys(INSTRUMENT_BANKS.chip)) sel.add(new Option(INSTRUMENT_LABELS.chip[k] || k, k));
+    sel.add(new Option('鼓組', 'drums'));
     sel.value = s.instrument;
     sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
     const vol = row.querySelector('input[type=range]');
@@ -558,11 +557,21 @@ function paintMix() {
     s.el.classList.toggle('silent', eff[k] === 0);
   }
 }
+// Bus levels apply instantly, but lead/bass/drums are baked into the rendered
+// loop: committing them costs a full re-render (tens of ms on a long loop), and
+// mute/solo/reset each used to pay it separately. Apply the buses at once and
+// coalesce a burst of part changes into one render.
+let mixTimer = 0;
 function applyMix() {
-  const t0 = performance.now();
-  audio.setMix(effectiveMix());
-  const ms = performance.now() - t0;
-  $('mixInfo').textContent = ms > 2 ? `重新合成音樂 ${ms.toFixed(1)} ms` : '';
+  const eff = effectiveMix();
+  clearTimeout(mixTimer);
+  audio.setMix({ sfx: eff.sfx, music: eff.music });
+  mixTimer = setTimeout(() => {
+    const t0 = performance.now();
+    audio.setMix(effectiveMix());
+    const ms = performance.now() - t0;
+    $('mixInfo').textContent = ms > 2 ? `重新合成音樂 ${ms.toFixed(1)} ms` : '';
+  }, 120);
 }
 $('resetMix').onclick = () => {
   for (const [k] of STRIPS) Object.assign(strips[k], { level: 1, mute: false, solo: false });

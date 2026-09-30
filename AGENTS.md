@@ -66,6 +66,19 @@ Pass as JSON or `--param key=value`. Out-of-range values are clamped (never an e
 | `decay` | 0–30 s | 0.1 | Fade-out |
 | `vol` | 0–1 | 0.5 | Level |
 | `seed` | integer | 1 | Noise pattern; change it for varied hits |
+| `h2` | 0–1 | 0 | 2nd harmonic (octave) level |
+| `h3` | 0–1 | 0 | 3rd harmonic (octave + fifth) level |
+| `h4` | 0–1 | 0 | 4th harmonic (two octaves) level |
+| `h5` | 0–1 | 0 | 5th harmonic (two octaves + major third) level |
+| `unison` | 0–2 | 0 | Extra detuned copies: 1 one above, 2 above and below |
+| `detune` | 0–50 cents | 10 | Spread between those copies |
+| `cutoff` | 0–20000 Hz | 0 | One-pole lowpass on this voice; 0 = off |
+| `chiff` | 0–1 | 0 | Noise burst mixed into the attack (hammer, breath, pick) |
+
+The last eight are the *timbre* params: all zero is a plain chip voice (the cheap path
+every preset uses), and any of them switches that voice to an additive one. `normalizeSfx`
+carries them only when they are set, so a default voice keeps the object shape — and the
+speed — it always had.
 
 Length = `attack + sustain + decay` (capped at 30 s).
 
@@ -92,8 +105,22 @@ can repeat:
 - `--volume N=0..1`, `--transpose N=<semitones>`
 - `--speed 0.25..4` for the whole piece
 
-Instruments: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell drums`.
-Output is capped at 5 minutes.
+Instruments come in two banks, `chip` (one oscillator) and `real` (additive harmonics,
+detuned copies an attack transient and a per-voice lowpass). A bare name is chip;
+`real:piano`, `real:bass`, `real:marimba`, ... address the other bank:
+
+- chip: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`
+- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`
+
+A realistic voice costs ~10-15x a chip voice per sample and every note's full tail is
+rendered, so a long piece can take minutes (measured: 15 s of MIDI with
+`real:piano`/`real:bass`/`real:strings`/`drums` took 13.5 s against 0.85 s for the same file
+with chip voices). Use it for short pieces or accept the wait.
+
+Output is capped at 5 minutes. A malformed file that retriggers a pitch without ever
+sending its note-off cannot stack voices: at most 8 pending note-ons are kept per
+channel/pitch (the oldest is stolen), so render time and memory stay bounded by the file's
+structure instead of by the number of unmatched on-notes.
 
 ## Use it in a browser game (library)
 

@@ -35,6 +35,22 @@ export interface SfxParams {
   arpTime?: number;
   /** Bit-crush depth in bits, 0..16; 0 disables it. Default 0. */
   bits?: number;
+  /** 2nd harmonic (the octave) level, 0..1. Default 0 (off). */
+  h2?: number;
+  /** 3rd harmonic (octave + fifth) level, 0..1. Default 0 (off). */
+  h3?: number;
+  /** 4th harmonic (two octaves) level, 0..1. Default 0 (off). */
+  h4?: number;
+  /** 5th harmonic (two octaves + major third) level, 0..1. Default 0 (off). */
+  h5?: number;
+  /** Extra detuned copies for width: 0 off, 1 one above, 2 above and below. */
+  unison?: number;
+  /** Detune between those copies, in cents, 0..50. Default 10. */
+  detune?: number;
+  /** One-pole lowpass on this voice, in Hz; 0 disables it. Default 0. */
+  cutoff?: number;
+  /** Noise burst mixed into the attack (hammer, breath, pick), 0..1. Default 0. */
+  chiff?: number;
   /** Attack in seconds. Default 0.005. */
   attack?: number;
   /** Sustain in seconds. Default 0.1. */
@@ -56,8 +72,15 @@ export type SfxName =
 export declare const SFX_DEFAULTS: Required<SfxParams>;
 export declare const SFX_PRESETS: Record<SfxName, SfxParams>;
 
+/** The timbre params (h2..h5, unison, detune, cutoff, chiff). */
+export type TimbreParams = Pick<SfxParams, 'h2' | 'h3' | 'h4' | 'h5' | 'unison' | 'detune' | 'cutoff' | 'chiff'>;
+
+/** Every chip param, plus the timbre params only when they are set: a sparse
+ *  object keeps the single-oscillator render loop at full speed. */
+export type NormalizedSfx = Required<Omit<SfxParams, keyof TimbreParams>> & TimbreParams;
+
 /** Coerce arbitrary input into a complete, finite, in-range parameter set. */
-export declare function normalizeSfx(params?: SfxParams): Required<SfxParams>;
+export declare function normalizeSfx(params?: SfxParams): NormalizedSfx;
 
 export interface RenderOpts {
   /** Defaults to 44100. The engine passes the AudioContext rate. */
@@ -139,6 +162,18 @@ export type InstrumentName =
   | 'square' | 'pulse25' | 'pulse12' | 'triangle' | 'saw' | 'organ'
   | 'flute' | 'strings' | 'brass' | 'piano' | 'pluck' | 'bell';
 
+export type RealisticInstrumentName =
+  | 'piano' | 'epiano' | 'organ' | 'strings' | 'flute' | 'brass'
+  | 'guitar' | 'bell' | 'bass' | 'harp' | 'choir' | 'marimba';
+
+/** Any instrument in either bank: a bare chip name, or `real:<name>` (and
+ *  `chip:<name>`) to pick the bank explicitly. */
+export type AnyInstrumentName =
+  | InstrumentName | RealisticInstrumentName
+  | `real:${RealisticInstrumentName}` | `chip:${InstrumentName}`;
+
+export type InstrumentBank = 'chip' | 'real';
+
 export interface Instrument {
   /** Sustain while held (key down / MIDI note length). */
   hold: boolean;
@@ -146,19 +181,42 @@ export interface Instrument {
   release: number | null;
   /** SFX params without `freq`. */
   params: SfxParams;
+  /** Realistic bank only: lowpass cutoff as a multiple of the note frequency. */
+  tone?: number;
 }
 
 export declare const INSTRUMENTS: Record<InstrumentName, Instrument>;
+/** The same twelve slots voiced as acoustic instruments (additive harmonics,
+ *  detuned copies, an attack transient and a per-voice lowpass). */
+export declare const REALISTIC_INSTRUMENTS: Record<RealisticInstrumentName, Instrument>;
+export declare const INSTRUMENT_BANKS: {
+  chip: Record<InstrumentName, Instrument>;
+  real: Record<RealisticInstrumentName, Instrument>;
+};
+/** Chinese labels for every slot, per bank. */
+export declare const INSTRUMENT_LABELS: {
+  chip: Record<InstrumentName, string>;
+  real: Record<RealisticInstrumentName, string>;
+};
 /** Sustain rendered for a keyboard note whose length is not known yet. */
 export declare const HOLD_SECONDS: number;
 /** MIDI note number to Hz (A4 = 69 = 440 Hz). */
 export declare function noteFreq(note: number): number;
+/** Look up an instrument in either bank; null when the name is unknown. */
+export declare function resolveInstrument(
+  name: string,
+  bank?: InstrumentBank,
+): { name: string; bank: InstrumentBank; spec: Instrument } | null;
+/** Every selectable name, `real:` ones included. */
+export declare function instrumentNames(): string[];
 /** SFX params for one note on an instrument. */
 export declare function instrumentNote(
-  name: InstrumentName,
+  name: AnyInstrumentName,
   note: number,
-  opts?: { seconds?: number; vel?: number },
+  opts?: { seconds?: number; vel?: number; bank?: InstrumentBank },
 ): SfxParams;
+/** Fade on key release, or null when the note rings out on its own. */
+export declare function instrumentRelease(name: AnyInstrumentName, bank?: InstrumentBank): number | null;
 
 export interface MidiNote {
   /** Start, in seconds. */
@@ -188,7 +246,7 @@ export interface Midi {
 }
 
 export interface MidiTrackSettings {
-  instrument?: InstrumentName | 'drums';
+  instrument?: AnyInstrumentName | 'drums';
   /** 0..1. Default 1. */
   volume?: number;
   mute?: boolean;

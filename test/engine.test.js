@@ -347,3 +347,16 @@ test('playMidi plays on the music bus and ignores part levels', async () => {
   a.playMusic({ seed: 1, bars: 2 });
   assert.ok(src.stopped, 'a song replaces the MIDI');
 });
+
+test('setMix skips the re-render when the part levels are already playing', () => {
+  const a = mk();
+  const first = a.playMusic({ seed: 1, bars: 2 });
+  const created = a.ctx.buffersCreated;
+  a.setMix({ lead: 1, bass: 1, drums: 1 });   // already playing: nothing to bake
+  assert.equal(a.ctx.buffersCreated, created, 'no re-render for unchanged part levels');
+  assert.equal(a.music, first, 'the loop keeps playing');
+  assert.ok(!first.stopped);
+  a.setMix({ lead: 0.5 });                    // a real change still re-renders
+  assert.ok(a.ctx.buffersCreated > created);
+  assert.ok(first.stopped);
+});

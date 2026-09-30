@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util';
 import {
   renderSfx, normalizeSfx, SFX_PRESETS, SFX_DEFAULTS, WAVE,
   generateSong, renderSong, MOODS, STEPS_PER_BAR,
-  parseMidi, renderMidi, INSTRUMENTS, encodeWav,
+  parseMidi, renderMidi, INSTRUMENTS, REALISTIC_INSTRUMENTS, instrumentNames, resolveInstrument, encodeWav,
 } from '../src/index.js';
 
 const HELP = `chiptune: 8-bit sound effects, music and MIDI remixes as WAV files.
@@ -89,7 +89,7 @@ function list(what = 'all') {
   const all = {
     presets: SFX_PRESETS,
     moods: MOODS,
-    instruments: [...Object.keys(INSTRUMENTS), 'drums'],
+    instruments: [...instrumentNames(), 'drums'],
     params: { defaults: SFX_DEFAULTS, waves: WAVE_NAMES },
   };
   if (what === 'all') return all;
@@ -153,7 +153,7 @@ function midi(file, o, rate) {
     instrument: s.instrument || t.instrument, volume: s.volume ?? 1, mute: !!s.mute, transpose: s.transpose ?? 0,
   });
   if (o.info) {
-    return { file, duration: m.duration, instruments: [...Object.keys(INSTRUMENTS), 'drums'], tracks: m.tracks.map((t, i) => describe(t, i)) };
+    return { file, duration: m.duration, instruments: [...instrumentNames(), 'drums'], tracks: m.tracks.map((t, i) => describe(t, i)) };
   }
 
   const settings = m.tracks.map(() => ({}));
@@ -164,7 +164,7 @@ function midi(file, o, rate) {
   };
   for (const [k, v] of pairs(o.track, '--track')) {
     if (v === 'mute') at(k, '--track').mute = true;
-    else if (v === 'drums' || INSTRUMENTS[v]) at(k, '--track').instrument = v;
+    else if (v === 'drums' || resolveInstrument(v)) at(k, '--track').instrument = v;
     else throw new UsageError(`--track ${k}: unknown instrument "${v}" (see: chiptune list instruments)`);
   }
   for (const [k, v] of pairs(o.volume, '--volume')) at(k, '--volume').volume = num(v, `--volume ${k}`);

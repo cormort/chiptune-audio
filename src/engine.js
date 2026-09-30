@@ -42,6 +42,9 @@ export class ChiptuneAudio {
     this.mix = { sfx: 1, music: 1, lead: 1, bass: 1, drums: 1 };
     this._musicOptions = null;
     this._musicStart = 0;
+    /** Part levels baked into the playing loop, so setMix can skip a re-render
+     *  when a fader or mute ends up asking for what is already playing. */
+    this._playedParts = null;
     this.sfxCache = new Map();
     this._songCache = new Map();
     this._active = new Set();
@@ -237,6 +240,7 @@ export class ChiptuneAudio {
     this.music = src;
     this._musicOptions = options;
     this._musicStart = ctx.currentTime - offset;
+    this._playedParts = { lead: this.mix.lead, bass: this.mix.bass, drums: this.mix.drums };
     return src;
   }
 
@@ -259,7 +263,12 @@ export class ChiptuneAudio {
       this.musicBus.gain.cancelScheduledValues(now);
       this.musicBus.gain.setTargetAtTime(m.music, now, 0.015);
     }
-    if (partsChanged && this.music && this._musicOptions) {
+    // A part level is baked into the rendered loop, so it costs a full re-render
+    // (~30-45 ms for 8 bars). Doing it for levels that are already playing would
+    // be pure waste: mute, solo and reset all funnel through here.
+    const played = this._playedParts;
+    const sameParts = !!played && PART_KEYS.every((k) => played[k] === m[k]);
+    if (partsChanged && this.music && this._musicOptions && !sameParts) {
       const dur = this.music.buffer.duration;
       const pos = dur > 0 ? (this.ctx.currentTime - this._musicStart) % dur : 0;
       this._startMusic(this._musicOptions, pos);
@@ -286,6 +295,7 @@ export class ChiptuneAudio {
     src.onended = () => { if (this.music === src) { this.music = null; src.disconnect(); } };
     this.music = src;
     this._musicOptions = null; // part levels (setMix lead/bass/drums) do not apply
+    this._playedParts = null;
     this._musicStart = ctx.currentTime - offset;
     return src;
   }
@@ -302,6 +312,7 @@ export class ChiptuneAudio {
     if (!this.music) return;
     const src = this.music;
     this.music = null;
+    this._playedParts = null;
     try { src.stop(); } catch { /* already stopped */ }
     src.disconnect();
   }

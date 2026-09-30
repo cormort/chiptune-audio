@@ -1,5 +1,5 @@
 import { renderSfxInto, SAMPLE_RATE, WAVE } from './sfx.js';
-import { INSTRUMENTS, instrumentNote } from './instruments.js';
+import { INSTRUMENTS, instrumentNote, resolveInstrument } from './instruments.js';
 
 /** Longest MIDI render, in seconds. Later notes are dropped: a 5-minute mono
  *  buffer at 48 kHz is already ~58 MB. */
@@ -9,6 +9,10 @@ export const MAX_MIDI_SECONDS = 300;
 const TAIL_SECONDS = 1.5;
 
 const DRUM_CHANNEL = 9; // GM channel 10
+
+/** Pending note-ons kept per (channel, pitch) before the oldest is stolen.
+ *  Bounds what a malformed file can ask the renderer for; see parseMidi(). */
+const MAX_PENDING_NOTES = 8;
 
 /** Parse a Standard MIDI File (format 0 or 1).
  *  Returns { duration, tracks } where every track is one (MTrk, channel) pair
@@ -105,8 +109,16 @@ export function parseMidi(data) {
       const d2 = kind === 0xc0 || kind === 0xd0 ? 0 : u8();
       if (kind === 0x90 && d2 > 0) {
         const k = `${ch}:${d1}`;
-        if (!open.has(k)) open.set(k, []);
-        open.get(k).push({ tick, vel: d2 });
+        let q = open.get(k);
+        if (!q) { q = []; open.set(k, q); }
+        // A retriggered pitch that never gets its note-off would otherwise leave
+        // one pending note per retrigger, and every pending note becomes a voice
+        // ringing to the end of the piece: a 16 KB file could ask for thousands
+        // of stacked voices (measured: 4000 note-ons = 2.7 s of rendering and
+        // 35 MB). Any synth steals the oldest voice here; eight is already more
+        // overlap than the engine can use. Well-formed files never reach it.
+        if (q.length >= MAX_PENDING_NOTES) q.shift();
+        q.push({ tick, vel: d2 });
       } else if (kind === 0x80 || kind === 0x90) {
         const q = open.get(`${ch}:${d1}`);
         const on = q && q.shift();
@@ -229,7 +241,7 @@ export function renderMidi(midi, opts = {}) {
     const volume = Number.isFinite(s.volume) ? Math.min(1, Math.max(0, s.volume)) : 1;
     if (volume === 0) return;
     const instrument = s.instrument || track.instrument;
-    if (instrument !== 'drums' && !INSTRUMENTS[instrument]) throw new Error(`Unknown instrument: ${instrument}`);
+    if (instrument !== 'drums' && !resolveInstrument(instrument)) throw new Error(`Unknown instrument: ${instrument}`);
     const transpose = Number.isFinite(s.transpose) ? Math.round(s.transpose) : 0;
 
     let hit = 0;

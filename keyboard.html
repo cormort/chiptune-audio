@@ -81,6 +81,11 @@
 
   <section>
     <h2>樂器</h2>
+    <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
+      <button id="bankChip" class="on" aria-pressed="true">晶片音色</button>
+      <button id="bankReal" aria-pressed="false">寫實音色</button>
+      <span class="muted" id="bankHint"></span>
+    </div>
     <div class="instruments" id="instruments"></div>
   </section>
 
@@ -93,6 +98,8 @@
     <div class="keys" id="keys"></div>
     <div id="held" aria-live="polite"></div>
     <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。
+      「晶片音色」是單一振盪器的 8-bit 聲；「寫實音色」疊上泛音、微走音與起音雜訊，並加上單聲部低通，
+      聽起來接近真實樂器（仍是即時合成，沒有取樣檔）。
       電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
       上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。</p>
   </section>
@@ -102,30 +109,57 @@
 // Offline / installable app (see sw.js). Service workers need http(s), not file://.
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-import { ChiptuneAudio, INSTRUMENTS, instrumentNote, noteFreq } from './src/index.js';
+import {
+  ChiptuneAudio, INSTRUMENT_BANKS, INSTRUMENT_LABELS, instrumentNote, instrumentRelease, noteFreq,
+} from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
 const $ = (id) => document.getElementById(id);
 
-const INSTRUMENT_LABELS = {
-  square: '方波', pulse25: '脈衝 25%', pulse12: '脈衝 12.5%', triangle: '三角波', saw: '鋸齒波',
-  organ: '風琴', flute: '長笛', strings: '弦樂', brass: '銅管', piano: '鋼琴', pluck: '撥弦', bell: '鐘聲',
-};
+// Two voicings of the same twelve slots: `chip` is one oscillator, `real` stacks
+// harmonics, detuned copies and an attack transient (see src/instruments.js).
+let bank = 'chip';
 let instrument = 'square';
-for (const name of Object.keys(INSTRUMENTS)) {
-  const b = document.createElement('button');
-  b.textContent = INSTRUMENT_LABELS[name] || name;
-  b.dataset.name = name;
-  b.onclick = () => { instrument = name; paintInstruments(); };
-  $('instruments').append(b);
+
+function buildInstruments() {
+  const wrap = $('instruments');
+  wrap.textContent = '';
+  const labels = INSTRUMENT_LABELS[bank];
+  for (const name of Object.keys(INSTRUMENT_BANKS[bank])) {
+    const b = document.createElement('button');
+    b.textContent = labels[name] || name;
+    b.dataset.name = name;
+    b.onclick = () => { instrument = name; paintInstruments(); };
+    wrap.append(b);
+  }
+  paintInstruments();
 }
 function paintInstruments() {
   for (const b of $('instruments').children) {
-    b.classList.toggle('on', b.dataset.name === instrument);
-    b.setAttribute('aria-pressed', b.dataset.name === instrument);
+    const on = b.dataset.name === instrument;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
   }
 }
-paintInstruments();
+function setBank(next) {
+  if (bank === next) return;
+  bank = next;
+  // Keep the same slot when the new bank has it (piano, organ, flute, ...).
+  if (!INSTRUMENT_BANKS[bank][instrument]) instrument = Object.keys(INSTRUMENT_BANKS[bank])[0];
+  for (const [id, name] of [['bankChip', 'chip'], ['bankReal', 'real']]) {
+    const on = bank === name;
+    $(id).classList.toggle('on', on);
+    $(id).setAttribute('aria-pressed', String(on));
+  }
+  $('bankHint').textContent = bank === 'real'
+    ? '疊泛音、微走音與起音雜訊，接近真實樂器'
+    : '單一振盪器，8-bit 遊戲音色';
+  buildInstruments();
+}
+$('bankChip').onclick = () => setBank('chip');
+$('bankReal').onclick = () => setBank('real');
+buildInstruments();
+$('bankHint').textContent = '單一振盪器，8-bit 遊戲音色';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 // Tracker layout; index = semitones above the keyboard's lowest C.
@@ -171,20 +205,21 @@ function labelKeys() {
   });
 }
 
-// A held note: which key, the engine handle, and the instrument it started
-// with (so switching instruments mid-chord releases each note correctly).
+// A held note: which key, the engine handle, and the instrument and bank it
+// started with (so switching either mid-chord still releases every note with the
+// right fade).
 const held = new Set();
 function noteOn(i) {
   const n = baseMidi() + i;
-  const voice = audio.playNote(instrumentNote(instrument, n));
-  const note = { i, n, voice, instrument };
+  const voice = audio.playNote(instrumentNote(instrument, n, { bank }));
+  const note = { i, n, voice, instrument, bank };
   held.add(note);
   paintHeld();
   return note;
 }
 function noteOff(note) {
   if (!note || !held.delete(note)) return;
-  const fade = INSTRUMENTS[note.instrument].release;
+  const fade = instrumentRelease(note.instrument, note.bank);
   if (note.voice && fade !== null) note.voice.release(fade);
   paintHeld();
 }
@@ -219,7 +254,9 @@ addEventListener('pointercancel', pointerEnd);
 const byKey = new Map();
 addEventListener('keydown', (e) => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.target.closest('input, select, textarea')) return;
+  // The target is not always an Element (a synthetic event on window, or a
+  // browser that reports document), and typing in a control must not play notes.
+  if (e.target && e.target.closest && e.target.closest('input, select, textarea')) return;
   const k = e.key.toLowerCase();
   const i = KEYMAP.indexOf(k);
   if (i < 0 || byKey.has(k)) return;

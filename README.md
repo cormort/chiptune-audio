@@ -2,7 +2,7 @@
 
 Zero-dependency 8-bit sound effect and music engine for browser games, built on the Web Audio API.
 
-- **SFX**: sfxr-style parametric synthesis (square / saw / triangle / noise, pitch slide, arpeggio, vibrato, bit-crush) with 24 presets: `coin jump laser hit explosion powerup select gameover win shoot blip click hurt pickup heal levelup door step bounce alarm teleport charge error splash`.
+- **SFX**: sfxr-style parametric synthesis (square / saw / triangle / noise, pitch slide, arpeggio, vibrato, bit-crush, plus additive harmonics, detuned unison, an attack transient and a per-voice lowpass for acoustic voicings) with 24 presets: `coin jump laser hit explosion powerup select gameover win shoot blip click hurt pickup heal levelup door step bounce alarm teleport charge error splash`.
 - **Music**: seeded procedural loops (square lead + triangle bass + noise drums). Same seed and mood always give the same song. Moods: `happy`, `calm`, `tense`, `sad`, `heroic`, `playful`, `dreamy`, `mysterious`, `spooky`, `boss`, `groovy`.
 - The synthesis core renders to plain `Float32Array`, so it is testable in Node; only `ChiptuneAudio` touches Web Audio.
 
@@ -60,19 +60,29 @@ audio.setMix({ drums: 0, lead: 0.7 });    // music parts: re-renders the loop, r
 renderSong(song, { mix: { bass: 0 } });   // same weighting when rendering offline
 ```
 
-Levels are 0..1. Part levels are baked into the rendered loop (one re-render, ~15-25 ms),
-so change them on slider release rather than on every input event.
+Levels are 0..1. Part levels are baked into the rendered loop (one re-render, ~30-45 ms for
+an 8-bar loop — measured, longer loops cost more), so change them on slider release rather
+than on every input event. Changing a part level to the one already playing is skipped.
 
 ### Keyboard instruments
 
 ```js
-import { instrumentNote } from './src/index.js';
+import { instrumentNote, instrumentRelease } from './src/index.js';
 
-const note = audio.playNote(instrumentNote('organ', 60)); // key down: C4 on the organ
-note.release(0.08);                                       // key up: fade out
+const note = audio.playNote(instrumentNote('organ', 60));        // key down: C4 on the organ
+note.release(instrumentRelease('organ'));                        // key up: fade out
 ```
 
-Instruments: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`.
+Two banks of twelve slots, `chip` (one oscillator, 8-bit) and `real` (additive harmonics,
+detuned copies, an attack transient and a per-voice lowpass — synthesis, not samples):
+
+- chip: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`
+- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`
+
+`instrumentNote(name, note, opts)` takes `bank: 'real'` (or a `real:<name>` prefix) and
+`vel`, and its output is ordinary SFX params — `renderSfx(instrumentNote('real:piano', 60))`
+renders one note. A realistic voice costs roughly 10-15x a chip voice per sample, which is
+why the pages keep it on the keyboard rather than in a MIDI remix.
 
 ### MIDI remix
 
@@ -88,6 +98,11 @@ audio.playMidi(midi, {
 ```
 
 Channel 10 is rendered as chip drums. Renders are capped at 5 minutes.
+
+A track can use either bank: `{ instrument: 'real:piano' }` (or the CLI's
+`--track 1=real:piano`). Realistic voices cost ~10-15x a chip voice per sample and the
+renderer lays down every note's full tail, so a long piece can take minutes — chip voices
+stay the default for that reason.
 
 ### Lifecycle
 
@@ -123,8 +138,9 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
 音效、音樂、MIDI 都有「⤓ WAV」按鈕可下載音檔。
 
-`keyboard.html` 是電子琴：12 種樂器，按住發聲、放開停止，可彈和弦；
-可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），琴鍵標示可切換電腦按鍵、音名或簡譜。ES module 不能用 `file://` 開，要用 HTTP 服務：
+`keyboard.html` 是電子琴：12 個樂器格，按住發聲、放開停止，可彈和弦；
+上方「晶片音色／寫實音色」切換兩套音色庫（寫實音色疊泛音、微走音與起音雜訊，再加單聲部低通，
+仍是即時合成、沒有取樣檔）；可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），琴鍵標示可切換電腦按鍵、音名或簡譜。ES module 不能用 `file://` 開，要用 HTTP 服務：
 
 ```bash
 npx serve .        # 或 python3 -m http.server
@@ -179,7 +195,9 @@ is bit-identical to 0.1.0 for every seed/mood/bars (enforced by a test).
 `preloadMusic`, `stopAllSfx`, `resume`, `setFilter`, `dispose`, per-play `pan`/`rate`/`gain`,
 `playSfx`/`playMusic` return values, `opts.sampleRate`, `types/index.d.ts`, `LICENSE`.
 
-**Performance** (`node test/bench.js`, Node 24, min-of-batches after warm-up):
+**Performance** (`node test/bench.js`, min-of-batches after warm-up). The 0.1.0 column is
+the release's own measured numbers and is historical; absolute times move with the machine,
+so re-run the bench instead of trusting a table:
 
 | | 0.1.0 | 0.2.0 | |
 | --- | --- | --- | --- |
@@ -187,6 +205,13 @@ is bit-identical to 0.1.0 for every seed/mood/bars (enforced by a test).
 | 4 moods × 8-bar loop render | 174.8 ms | 62.7 ms | **2.8×** |
 | `renderSong('happy', 8 bars)` | 38.3 ms | 14.1 ms | **2.7×** |
 | `explosion` preset | 0.996 ms | 0.232 ms | 4.3× |
+
+Re-measured for this revision (Node 26, Apple silicon, `node test/bench.js src` vs
+`... baseline`, where `baseline/` is the frozen pre-0.2.0 copy): the four original moods at
+8 bars are **127 ms** against the baseline's **325 ms** (2.6×), 25 SFX renders take
+**5.3 ms** against the baseline's 10 in **8.8 ms** (0.21 vs 0.88 ms per sound), and the
+song heap is **6.1 MB** against 3.7 MB — the render paths now allocate one buffer instead of
+one per note, but the song cache and dictionary-mode params cost a little more.
 
 The wins come from: mixing voices straight into one buffer instead of allocating and copying
 one array per note (~220 allocations/song removed); replacing the per-sample `Math.pow` pitch
