@@ -14,12 +14,77 @@ const DRUM_CHANNEL = 9; // GM channel 10
  *  Bounds what a malformed file can ask the renderer for; see parseMidi(). */
 const MAX_PENDING_NOTES = 8;
 
+const ascii = (bytes, at, s) => {
+  if (at < 0 || at + s.length > bytes.length) return false;
+  for (let i = 0; i < s.length; i++) if (bytes[at + i] !== s.charCodeAt(i)) return false;
+  return true;
+};
+
+/** True when a Standard MIDI header starts at `at`. The declared header length
+ *  and format have to be plausible *and* a chunk id has to follow, so the four
+ *  letters "MThd" appearing by chance inside some other kind of file do not
+ *  qualify. */
+function isMThdAt(bytes, at) {
+  if (at + 14 > bytes.length || !ascii(bytes, at, 'MThd')) return false;
+  const len = ((bytes[at + 4] << 24) | (bytes[at + 5] << 16) | (bytes[at + 6] << 8) | bytes[at + 7]) >>> 0;
+  const format = (bytes[at + 8] << 8) | bytes[at + 9];
+  const after = at + 8 + len;
+  if (len < 6 || len > 1024 || format > 2 || after + 4 > bytes.length) return false;
+  for (let i = 0; i < 4; i++) {           // MTrk, or an XF/unknown chunk
+    const b = bytes[after + i];
+    if (b < 0x20 || b > 0x7e) return false;
+  }
+  return true;
+}
+
+/** Offset of the MIDI header, skipping the wrappers these files really arrive
+ *  in: a RIFF/RMID container (what Windows tools write, extension .rmi or
+ *  .mid), an ID3 tag glued on by an editor, or a few stray bytes. -1 when there
+ *  is no plausible header anywhere — a file that only *claims* to be MIDI has
+ *  nothing to find. */
+function findMThd(bytes) {
+  if (isMThdAt(bytes, 0)) return 0;
+  if (ascii(bytes, 0, 'RIFF')) {
+    // chunk list: 4-byte id, 4-byte length (little-endian here), payload, pad
+    let pos = 12;
+    while (pos + 8 <= bytes.length) {
+      const len = (bytes[pos + 4] | (bytes[pos + 5] << 8) | (bytes[pos + 6] << 16) | (bytes[pos + 7] << 24)) >>> 0;
+      if (ascii(bytes, pos, 'data')) {
+        const end = Math.min(bytes.length, pos + 8 + len);
+        for (let at = pos + 8; at + 14 <= end; at++) if (isMThdAt(bytes, at)) return at;
+      }
+      pos += 8 + len + (len & 1);
+    }
+  }
+  for (let at = 1; at + 14 <= bytes.length; at++) if (isMThdAt(bytes, at)) return at;
+  return -1;
+}
+
+/** What a file that holds no MIDI actually looks like, so the error says
+ *  something more useful than "missing header". */
+function describeContainer(bytes) {
+  if (ascii(bytes, 0, 'RIFF')) {
+    return ascii(bytes, 8, 'WAVE') ? 'a RIFF/WAVE audio file (.wav), not MIDI' : 'a RIFF container without MIDI data';
+  }
+  if (ascii(bytes, 0, 'ID3')) return 'an MP3 file (ID3 tag), not MIDI';
+  if (ascii(bytes, 0, 'FORM')) return 'an IFF/AIFF file, not MIDI';
+  if (ascii(bytes, 0, 'fLaC')) return 'a FLAC file, not MIDI';
+  if (ascii(bytes, 0, 'OggS')) return 'an Ogg file, not MIDI';
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return 'gzip-compressed data';
+  if (ascii(bytes, 0, 'PK')) return 'a ZIP archive';
+  if (bytes[0] === 0x3c || ascii(bytes, 0, '<!DO') || ascii(bytes, 0, '{') || ascii(bytes, 0, '[')) {
+    return 'text or markup, not MIDI (a download page, or a file saved as .mid by a browser?)';
+  }
+  return 'not a Standard MIDI File';
+}
+
 /** Parse a Standard MIDI File (format 0 or 1).
  *  Returns { duration, tracks } where every track is one (MTrk, channel) pair
  *  that has notes: { name, channel, program, instrument, notes }, and each note
  *  is { time, dur, note, vel } in seconds (vel 0..1). `instrument` is a
  *  suggested INSTRUMENTS key, or 'drums' for channel 10.
- *  Throws an Error for anything that is not a well-formed MIDI file. */
+ *  RIFF/RMID containers and tag-prefixed files are unwrapped to their MIDI
+ *  payload; anything else throws an Error that names what the file looks like. */
 export function parseMidi(data) {
   const bytes = data instanceof Uint8Array ? data
     : data instanceof ArrayBuffer ? new Uint8Array(data)
@@ -27,6 +92,7 @@ export function parseMidi(data) {
     : null;
   if (!bytes) throw new TypeError('parseMidi expects an ArrayBuffer or Uint8Array');
 
+  const start = findMThd(bytes);
   let pos = 0;
   const fail = (why) => { throw new Error(`Invalid MIDI file: ${why}`); };
   const need = (n) => { if (pos + n > bytes.length) fail('unexpected end of data'); };
@@ -44,6 +110,8 @@ export function parseMidi(data) {
     return fail('variable-length number longer than 4 bytes');
   };
 
+  if (start < 0) fail(`no MThd header — the file looks like ${describeContainer(bytes)}`);
+  pos = start;
   if (tag() !== 'MThd') fail('missing MThd header');
   const headerLen = u32();
   if (headerLen < 6) fail('header too short');

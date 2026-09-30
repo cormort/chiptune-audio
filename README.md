@@ -89,7 +89,7 @@ why the pages keep it on the keyboard rather than in a MIDI remix.
 ```js
 import { parseMidi } from './src/index.js';
 
-const midi = parseMidi(await file.arrayBuffer());   // .mid or .smf, format 0/1, throws on bad input
+const midi = parseMidi(await file.arrayBuffer());   // .mid/.smf/.rmi, format 0/1, throws on bad input
 audio.playMidi(midi, {
   tracks: [{ instrument: 'saw' }, { mute: true }], // per track: instrument, volume, mute, transpose
   speed: 1.25,
@@ -97,7 +97,10 @@ audio.playMidi(midi, {
 });
 ```
 
-Channel 10 is rendered as chip drums. Renders are capped at 5 minutes.
+The parser locates the MIDI header rather than trusting the file to start with it, so
+RIFF/RMID containers, tag-prefixed files and stray padding all load; anything without MIDI
+in it throws an error that names what the file actually is. Channel 10 is rendered as chip
+drums, and renders are capped at 5 minutes.
 
 A track can use either bank: `{ instrument: 'real:piano' }` (or the CLI's
 `--track 1=real:piano`). Realistic voices cost ~10-15x a chip voice per sample and the
@@ -133,7 +136,8 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 
 `index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
 按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
-音樂可選情緒、種子、小節數。「MIDI 重新混音」可用檔案挑選器選 .mid／.smf 檔（兩者格式相同），
+音樂可選情緒、種子、小節數。「MIDI 重新混音」可用檔案挑選器選 .mid／.smf 檔（兩者格式相同，
+.rmi、gzip 壓縮、或前面帶 ID3 標籤的檔案也會自動找到 MIDI 標頭），
 或直接把檔案拖進該區塊，載入後預設自動播放；每個軌道換成晶片樂器、調音量與速度；
 「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
 音效、音樂、MIDI 都有「⤓ WAV」按鈕可下載音檔。

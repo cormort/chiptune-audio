@@ -57,6 +57,45 @@ test('parseMidi rejects malformed input with an Error, never a hang', () => {
   assert.throws(() => parseMidi('nope'), TypeError);
 });
 
+test('parseMidi unwraps the containers these files really arrive in', () => {
+  const bare = smf(0, 480, [track([[0, ...tempo(500000)], [0, 0x90, 60, 100], [240, 0x80, 60, 0]])]);
+  const asc = (s) => [...s].map((c) => c.charCodeAt(0));
+  const le32 = (n) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+  const cat = (...parts) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  };
+  // RIFF/RMID is what Windows tools write (.rmi, and .mid files from them too).
+  const rmid = cat(new Uint8Array(asc('RIFF')), new Uint8Array(le32(4 + 8 + bare.length)),
+    new Uint8Array(asc('RMID')), new Uint8Array(asc('data')), new Uint8Array(le32(bare.length)), bare);
+  // An ID3 tag glued on by an editor, and a few stray bytes are equally common.
+  const tagged = cat(new Uint8Array([...asc('ID3'), 3, 0, 0, 0, 0, 0, 0x20, 0x40]), new Uint8Array(256), bare);
+  const padded = cat(new Uint8Array(16).fill(0x20), bare);
+  const junk = cat(new Uint8Array([0, 0, 0, 0, 1, 2, 3, 4]), bare);
+
+  for (const [what, bytes] of [['bare', bare], ['RIFF/RMID', rmid], ['ID3', tagged], ['padding', padded], ['junk', junk]]) {
+    const midi = parseMidi(bytes);
+    assert.equal(midi.tracks.length, 1, what);
+    assert.equal(midi.tracks[0].notes.length, 1, what);
+    assert.ok(Math.abs(midi.duration - 0.25) < 1e-9, what);
+    assert.equal(midi.tracks[0].notes[0].note, 60, what);
+  }
+
+  // A file that only claims to be MIDI must say what it actually looks like.
+  const message = (bytes) => {
+    try { parseMidi(bytes); return ''; } catch (e) { return e.message; }
+  };
+  assert.match(message(cat(new Uint8Array(asc('RIFF')), new Uint8Array(le32(100)), new Uint8Array(asc('WAVEfmt ')), new Uint8Array(40))), /RIFF\/WAVE audio file/);
+  assert.match(message(new TextEncoder().encode('<!DOCTYPE html><html>404</html>')), /text or markup/);
+  assert.match(message(new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 1, 2, 3])), /gzip-compressed/);
+  assert.match(message(cat(new Uint8Array([...asc('ID3'), 3, 0, 0, 0, 0, 0, 0, 0]), new Uint8Array(200))), /MP3 file/);
+  assert.match(message(new Uint8Array([1, 2, 3])), /not a Standard MIDI File/);
+  // Letters that merely look like a header are not one.
+  assert.match(message(new TextEncoder().encode('MThd is a nice four letter word, honestly it is')), /not a Standard MIDI File|no MThd header/);
+});
+
 test('renderMidi: length, peak, mute, speed and overrides', () => {
   const midi = parseMidi(smf(1, 480, [
     track([[0, ...tempo(500000)]]),

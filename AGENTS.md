@@ -96,7 +96,13 @@ The loop is seamless: loop the file in the game.
 ## MIDI remix
 
 `.mid` and `.smf` name the same Standard MIDI File format, so both work
-anywhere a MIDI file is expected (formats 0 and 1). Run `--info` first: it lists
+anywhere a MIDI file is expected (formats 0 and 1). `parseMidi` finds the MThd
+header itself, so it also reads the wrappers these files arrive in: RIFF/RMID
+(.rmi), a file with an ID3 tag or a few stray bytes in front, and `song.mid.gz`
+(the console page inflates gzip in the browser). A file with no MIDI in it throws
+an error naming what it looks like (`RIFF/WAVE audio file`, `MP3 file`, `text or
+markup`, `gzip-compressed data`, ...) rather than a bare "missing header". Run
+`--info` first: it lists
 every track (numbered from 1) with its channel, note count and the suggested
 instrument. Channel 10 defaults to `drums`. Per-track flags are `N=value` and
 can repeat:

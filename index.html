@@ -144,9 +144,9 @@
   <section id="midiSection">
     <h2>MIDI 重新混音</h2>
     <div class="row">
-      <input id="midiFile" type="file" accept=".mid,.midi,.smf,audio/midi,audio/x-midi,application/x-midi">
+      <input id="midiFile" type="file" accept=".mid,.midi,.smf,.kar,.rmi,audio/midi,audio/x-midi,application/x-midi">
       <label class="inline"><input id="midiAutoPlay" type="checkbox" checked> 載入後自動播放</label>
-      <span class="muted" id="midiInfo">匯入 .mid / .smf 檔，或把檔案拖進這一區</span>
+      <span class="muted" id="midiInfo">匯入 .mid / .smf 檔（.rmi、gzip 壓縮或前面帶標籤的檔案也可以），或拖進這一區</span>
     </div>
     <div id="midiTracks"></div>
     <div class="row">
@@ -384,14 +384,26 @@ let midiTracks = [];      // per-track { instrument, volume, mute }, indexed lik
 let midiSpeed = 1;
 let midiName = 'midi';
 
-// .mid and .smf are the same format; .kar (MIDI + lyrics) too. parseMidi reads
-// the MThd header, so a file with any of these names — or none — still loads.
-const MIDI_FILE = /\.(mid|midi|smf|kar)$/i;
+// .mid and .smf are the same format; .kar (MIDI + lyrics) and .rmi (RIFF-wrapped)
+// too. parseMidi finds the MThd header itself, so a renamed file, a RIFF/RMID
+// container or one with an ID3 tag glued on the front all still load.
+const MIDI_FILE = /\.(mid|midi|smf|kar|rmi)$/i;
+
+/** Some archives ship `song.mid.gz`; browsers can inflate it natively. */
+async function midiBytes(file) {
+  const buf = await file.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if (head[0] === 0x1f && head[1] === 0x8b && typeof DecompressionStream === 'function') {
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).arrayBuffer();
+  }
+  return buf;
+}
 
 async function loadMidiFile(file) {
   let parsed;
   try {
-    parsed = parseMidi(await file.arrayBuffer());
+    parsed = parseMidi(await midiBytes(file));
   } catch (err) {
     // Drop whatever was playing: it no longer matches what the panel shows.
     if (nowPlaying === 'midi') stopAllMusic();

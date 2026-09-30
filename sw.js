@@ -2,7 +2,7 @@
 // that each request is answered from the cache at once and refreshed from the
 // network in the background (stale-while-revalidate), so the app works offline
 // and picks up changes on the next load. Bump VERSION to drop old caches.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = `chiptune-${VERSION}`;
 const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
