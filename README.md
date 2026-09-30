@@ -79,7 +79,7 @@ Instruments: `square pulse25 pulse12 triangle saw organ flute strings brass pian
 ```js
 import { parseMidi } from './src/index.js';
 
-const midi = parseMidi(await file.arrayBuffer());   // format 0/1, throws on bad input
+const midi = parseMidi(await file.arrayBuffer());   // .mid or .smf, format 0/1, throws on bad input
 audio.playMidi(midi, {
   tracks: [{ instrument: 'saw' }, { mute: true }], // per track: instrument, volume, mute, transpose
   speed: 1.25,
@@ -106,6 +106,7 @@ master filter from the start. It is off by default so existing sounds are unchan
 node bin/chiptune.js sfx coin -o coin.wav
 node bin/chiptune.js music --mood boss --seed 7 -o boss.wav
 node bin/chiptune.js midi song.mid --track 1=saw --speed 1.2 -o remix.wav
+node bin/chiptune.js midi song.smf --info        # .smf is the same Standard MIDI File format
 ```
 
 Each command writes a WAV and prints a JSON summary (length, peak, RMS, the parameters
@@ -117,7 +118,8 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 
 `index.html` 是手動試聽與調參的控制台：選預設音效、拉滑桿即時聽、看波形，
 按「複製參數」把 JSON 貼進遊戲（`audio.playSfx({...})` 或加進 `SFX_PRESETS`）；
-音樂可選情緒、種子、小節數。「MIDI 重新混音」可匯入 .mid 檔，每個軌道換成晶片樂器、調音量與速度；
+音樂可選情緒、種子、小節數。「MIDI 重新混音」可用檔案挑選器選 .mid／.smf 檔（兩者格式相同），
+或直接把檔案拖進該區塊，載入後預設自動播放；每個軌道換成晶片樂器、調音量與速度；
 「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
 音效、音樂、MIDI 都有「⤓ WAV」按鈕可下載音檔。
 

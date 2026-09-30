@@ -19,8 +19,8 @@ Usage:
   chiptune sfx <preset | JSON params> [--param key=value ...] [-o out.wav]
   chiptune music [--mood happy] [--seed 1] [--bars 8] [--loops 1]
                  [--mix lead=1 --mix bass=1 --mix drums=1] [-o out.wav]
-  chiptune midi <file.mid> --info
-  chiptune midi <file.mid> [--track N=instrument|mute] [--volume N=0..1]
+  chiptune midi <file.mid|file.smf> --info
+  chiptune midi <file.mid|file.smf> [--track N=instrument|mute] [--volume N=0..1]
                  [--transpose N=semitones] [--speed 1] [-o out.wav]
 
 Common options:
@@ -143,7 +143,7 @@ function music(o, rate) {
 }
 
 function midi(file, o, rate) {
-  if (!file) throw new UsageError('midi needs a .mid file');
+  if (!file) throw new UsageError('midi needs a file (.mid or .smf)');
   let data;
   try { data = readFileSync(file); } catch (e) { throw new UsageError(`cannot read ${file}: ${e.code || e.message}`); }
   let m;

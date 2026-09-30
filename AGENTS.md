@@ -21,7 +21,7 @@ node bin/chiptune.js sfx '{"wave":3,"freq":3000,"slide":-2,"decay":0.4}' -o whoo
 node bin/chiptune.js music --mood boss --seed 7 --bars 8 -o boss.wav      # seamless loop
 node bin/chiptune.js music --mood calm --seed 3 --loops 4 --mix drums=0 -o menu.wav
 node bin/chiptune.js midi song.mid --info        # list tracks before remixing
-node bin/chiptune.js midi song.mid --track 1=pulse25 --track 3=mute --transpose 2=-12 --speed 1.2 -o remix.wav
+node bin/chiptune.js midi song.smf --track 1=pulse25 --track 3=mute --transpose 2=-12 --speed 1.2 -o remix.wav
 ```
 
 Example summary (`sfx coin`):
@@ -82,9 +82,11 @@ The loop is seamless: loop the file in the game.
 
 ## MIDI remix
 
-Formats 0 and 1. Run `--info` first: it lists every track (numbered from 1) with
-its channel, note count and the suggested instrument. Channel 10 defaults to
-`drums`. Per-track flags are `N=value` and can repeat:
+`.mid` and `.smf` name the same Standard MIDI File format, so both work
+anywhere a MIDI file is expected (formats 0 and 1). Run `--info` first: it lists
+every track (numbered from 1) with its channel, note count and the suggested
+instrument. Channel 10 defaults to `drums`. Per-track flags are `N=value` and
+can repeat:
 
 - `--track N=<instrument>` or `--track N=mute`
 - `--volume N=0..1`, `--transpose N=<semitones>`

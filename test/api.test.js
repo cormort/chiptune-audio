@@ -23,6 +23,19 @@ test('the demo console only calls engine methods that exist', () => {
   }
 });
 
+test('the demo console accepts .mid and .smf files for MIDI remix', () => {
+  const input = html.match(/<input id="midiFile"[^>]*>/);
+  assert.ok(input, 'could not find the MIDI file input');
+  const accept = (input[0].match(/accept="([^"]*)"/) || [])[1];
+  assert.ok(accept, 'the MIDI file input has no accept list');
+  const exts = accept.split(',').map((s) => s.trim());
+  for (const ext of ['.mid', '.midi', '.smf']) {
+    assert.ok(exts.includes(ext), `the MIDI file input rejects ${ext}`);
+  }
+  assert.ok(html.includes('id="midiAutoPlay"'), 'the load-then-play toggle is missing');
+  assert.ok(html.includes('id="midiSection"'), 'the drop target is missing');
+});
+
 test('the demo module script parses', async () => {
   // Evaluating it would need a DOM, but a syntax error surfaces as SyntaxError
   // at parse time, before any of that. A resolve/runtime failure is not a
