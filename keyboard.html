@@ -83,7 +83,9 @@
     <h2>樂器</h2>
     <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
       <button id="bankChip" class="on" aria-pressed="true">晶片音色</button>
-      <button id="bankReal" aria-pressed="false">寫實音色</button>
+      <button id="bankReal" aria-pressed="false">寫實合成</button>
+      <button id="bankAcoustic" aria-pressed="false">物理擬真鋼琴</button>
+      <button id="bankSample" aria-pressed="false">真實平台鋼琴 (取樣)</button>
       <span class="muted" id="bankHint"></span>
     </div>
     <div class="instruments" id="instruments"></div>
@@ -97,9 +99,11 @@
     </div>
     <div class="keys" id="keys"></div>
     <div id="held" aria-live="polite"></div>
-    <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。
-      「晶片音色」是單一振盪器的 8-bit 聲；「寫實音色」疊上泛音、微走音與起音雜訊，並加上單聲部低通，
-      聽起來接近真實樂器（仍是即時合成，沒有取樣檔）。
+    <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。<br>
+      • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
+      • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
+      • <b>物理擬真鋼琴</b>：基於弦剛度非諧波性與頻率動態衰減物理模型，溫潤自然且 100% 離線。<br>
+      • <b>真實平台鋼琴</b>：Yamaha C5 史坦威等級真實立體聲錄音取樣，支援永久離線快取。<br>
       電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
       上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。</p>
   </section>
@@ -111,26 +115,57 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 
 import {
   ChiptuneAudio, INSTRUMENT_BANKS, INSTRUMENT_LABELS, instrumentNote, instrumentRelease, noteFreq,
+  AcousticPiano, SampledPiano,
 } from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
+const acousticPiano = new AcousticPiano(() => audio._ensure(), () => audio.master);
+const sampledPiano = new SampledPiano(() => audio._ensure(), () => audio.master);
 const $ = (id) => document.getElementById(id);
 
-// Two voicings of the same twelve slots: `chip` is one oscillator, `real` stacks
-// harmonics, detuned copies and an attack transient (see src/instruments.js).
+// Voicing banks: `chip` (8-bit), `real` (12 synthetic slots), `acoustic` (HQ physics), `sample` (Grand Piano samples)
 let bank = 'chip';
 let instrument = 'square';
+
+const ACOUSTIC_INSTRUMENTS = {
+  standard: '標準鋼琴',
+  mellow: '柔和琴音',
+  bright: '明亮鋼琴',
+};
+
+const SAMPLE_INSTRUMENTS = {
+  grand: 'Yamaha C5 平台鋼琴',
+};
 
 function buildInstruments() {
   const wrap = $('instruments');
   wrap.textContent = '';
-  const labels = INSTRUMENT_LABELS[bank];
-  for (const name of Object.keys(INSTRUMENT_BANKS[bank])) {
-    const b = document.createElement('button');
-    b.textContent = labels[name] || name;
-    b.dataset.name = name;
-    b.onclick = () => { instrument = name; paintInstruments(); };
-    wrap.append(b);
+  
+  if (bank === 'acoustic') {
+    for (const [key, label] of Object.entries(ACOUSTIC_INSTRUMENTS)) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.dataset.name = key;
+      b.onclick = () => { instrument = key; paintInstruments(); };
+      wrap.append(b);
+    }
+  } else if (bank === 'sample') {
+    for (const [key, label] of Object.entries(SAMPLE_INSTRUMENTS)) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.dataset.name = key;
+      b.onclick = () => { instrument = key; paintInstruments(); };
+      wrap.append(b);
+    }
+  } else {
+    const labels = INSTRUMENT_LABELS[bank];
+    for (const name of Object.keys(INSTRUMENT_BANKS[bank])) {
+      const b = document.createElement('button');
+      b.textContent = labels[name] || name;
+      b.dataset.name = name;
+      b.onclick = () => { instrument = name; paintInstruments(); };
+      wrap.append(b);
+    }
   }
   paintInstruments();
 }
@@ -144,20 +179,38 @@ function paintInstruments() {
 function setBank(next) {
   if (bank === next) return;
   bank = next;
-  // Keep the same slot when the new bank has it (piano, organ, flute, ...).
-  if (!INSTRUMENT_BANKS[bank][instrument]) instrument = Object.keys(INSTRUMENT_BANKS[bank])[0];
-  for (const [id, name] of [['bankChip', 'chip'], ['bankReal', 'real']]) {
-    const on = bank === name;
-    $(id).classList.toggle('on', on);
-    $(id).setAttribute('aria-pressed', String(on));
+  if (bank === 'acoustic') {
+    instrument = 'standard';
+    $('bankHint').textContent = '多泛音物理頻散與琴槌動態衰減，100% 離線純演算法溫潤琴音';
+  } else if (bank === 'sample') {
+    instrument = 'grand';
+    $('bankHint').textContent = '準備載入真實平台鋼琴取樣（支援 CacheStorage 永久離線快取）...';
+    sampledPiano.preload((loaded, total) => {
+      if (bank === 'sample') {
+        $('bankHint').textContent = `真實平台鋼琴取樣已就緒 (${loaded}/${total})，隨按即響`;
+      }
+    });
+  } else {
+    // Keep the same slot when the new bank has it (piano, organ, flute, ...).
+    if (!INSTRUMENT_BANKS[bank][instrument]) instrument = Object.keys(INSTRUMENT_BANKS[bank])[0];
+    $('bankHint').textContent = bank === 'real'
+      ? '疊泛音、微走音與起音雜訊，接近真實樂器'
+      : '單一振盪器，8-bit 遊戲音色';
   }
-  $('bankHint').textContent = bank === 'real'
-    ? '疊泛音、微走音與起音雜訊，接近真實樂器'
-    : '單一振盪器，8-bit 遊戲音色';
+
+  for (const [id, name] of [['bankChip', 'chip'], ['bankReal', 'real'], ['bankAcoustic', 'acoustic'], ['bankSample', 'sample']]) {
+    const el = $(id);
+    if (!el) continue;
+    const on = bank === name;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-pressed', String(on));
+  }
   buildInstruments();
 }
 $('bankChip').onclick = () => setBank('chip');
 $('bankReal').onclick = () => setBank('real');
+$('bankAcoustic').onclick = () => setBank('acoustic');
+$('bankSample').onclick = () => setBank('sample');
 buildInstruments();
 $('bankHint').textContent = '單一振盪器，8-bit 遊戲音色';
 
@@ -211,7 +264,14 @@ function labelKeys() {
 const held = new Set();
 function noteOn(i) {
   const n = baseMidi() + i;
-  const voice = audio.playNote(instrumentNote(instrument, n, { bank }));
+  let voice;
+  if (bank === 'sample') {
+    voice = sampledPiano.playNote(n, { vel: 0.85 });
+  } else if (bank === 'acoustic') {
+    voice = acousticPiano.playNote(n, { preset: instrument, vel: 0.85 });
+  } else {
+    voice = audio.playNote(instrumentNote(instrument, n, { bank }));
+  }
   const note = { i, n, voice, instrument, bank };
   held.add(note);
   paintHeld();
@@ -219,7 +279,7 @@ function noteOn(i) {
 }
 function noteOff(note) {
   if (!note || !held.delete(note)) return;
-  const fade = instrumentRelease(note.instrument, note.bank);
+  const fade = (note.bank === 'sample' || note.bank === 'acoustic') ? 0.22 : instrumentRelease(note.instrument, note.bank);
   if (note.voice && fade !== null) note.voice.release(fade);
   paintHeld();
 }

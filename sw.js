@@ -8,7 +8,7 @@ const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
-  'src/instruments.js', 'src/midi.js', 'src/wav.js',
+  'src/instruments.js', 'src/midi.js', 'src/wav.js', 'src/piano.js',
 ];
 
 self.addEventListener('install', (e) => {
