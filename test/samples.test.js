@@ -36,6 +36,11 @@ test('the sample library is complete and points at real-looking files', () => {
       assert.equal(url, `${inst.base}${inst.notes[midi]}`, `${where} URL does not match its file`);
       assert.match(url, /\.mp3$/, `${where} ${url} is not an mp3`);
     }
+    // gap 是「相鄰樣本差幾個半音」，也就是中間的音要用播放速率拉多少。UI 拿它提醒
+    // 使用者，所以數字必須跟資料一致——不一致就等於騙人。
+    const gaps = midis.slice(1).map((m, i) => m - midis[i]);
+    assert.equal(inst.gap, Math.max(...gaps), `${where} gap says ${inst.gap}, its notes say ${Math.max(...gaps)}`);
+    assert.ok(inst.gap <= 14, `${where} has a ${inst.gap}-semitone hole in its recordings`);
     assert.equal(sampleName(name), `${SAMPLE_PREFIX}${name}`);
     assert.equal(sampleSynth(name), inst.synth);
     assert.equal(sampleSynth('kazoo'), null);

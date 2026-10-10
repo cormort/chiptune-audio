@@ -155,10 +155,13 @@ renderMidi(midi, { tracks: [{ instrument: 'sampled:violin' }], samples: samples.
 
 Rules that keep it honest and cheap:
 
-- Only the selected instrument is fetched; each instrument carries at most 12 recordings
-  spread across its range, and the notes between them use playback rate (±2 semitones is
-  inaudible). A partial load (offline, a 404) keeps what arrived and retries only the
-  missing files on the next `load()`.
+- Only the selected instrument is fetched; each instrument carries at most 18 recordings
+  spread across its range (18 keeps *all* recordings for nearly every instrument in the
+  source library), and the notes between them use playback rate. `gap` in the data is the
+  widest hole, in semitones, and the UI warns past 6 (the French horn's library has a
+  14-semitone hole: a note in it is transposed 7 semitones, which is audible). A partial
+  load (offline, a 404) keeps what arrived and retries only the missing files on the next
+  `load()`.
 - `renderMidi` mixes recordings through `opts.samples`; a `sampled:` track with no entry
   there throws `Unknown instrument` rather than playing something else. Seek, loop and the
   WAV export keep working because the output is still one PCM buffer.

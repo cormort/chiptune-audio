@@ -114,8 +114,11 @@ renderMidi(midi, { tracks: [{ instrument: 'sampled:violin' }], samples: samples.
 ```
 
 Three things keep this cheap: only the instrument you select is fetched; each instrument
-carries at most 12 recordings spread over its range and the notes between them are reached
-with playback rate (within ±2 semitones that is inaudible); and the decoded samples are
+carries at most 18 recordings spread over its range (18 is enough that nearly every
+instrument keeps *all* the recordings its library has) and the notes between them are
+reached with playback rate — within ±2 semitones that is inaudible, which is why
+`SAMPLE_LIBRARY[name].gap` is published and shown in the UI when a library is sparse (the
+French horn has a 14-semitone hole); and the decoded samples are
 kept in `CacheStorage` (`chiptune-samples-v1`) so the second visit is offline-capable.
 Before a recording arrives — first press, or offline — `SAMPLE_LIBRARY[name].synth` is the
 synthesised voice to play instead, so a key is never silent. A `sampled:` track with no

@@ -70,7 +70,13 @@ function buildInstruments() {
     const b = document.createElement('button');
     b.textContent = names[name] || name;
     b.dataset.name = name;
-    if (bank === 'sample' && SAMPLE_LIBRARY[name]) b.title = `樣本：${SAMPLE_LIBRARY[name].credit}`;
+    if (bank === 'sample' && SAMPLE_LIBRARY[name]) {
+      const inst = SAMPLE_LIBRARY[name];
+      // 樣本庫本身有洞的樂器（例如法國號中間差了 14 個半音）要講清楚：中間的音是
+      // 用播放速率硬拉的，差越多越不像，這不是使用者可以從畫面看出來的事。
+      const wide = inst.gap >= 6 ? `（相鄰錄音差 ${inst.gap} 個半音，中間的音用播放速率內插）` : '';
+      b.title = `樣本：${inst.credit}${wide}`;
+    }
     b.onclick = () => {
       instrument = name;
       paintInstruments();
