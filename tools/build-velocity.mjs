@@ -53,9 +53,13 @@ const midiOf = (name) => {
 
 /**
  * 每個樂器：來源資料夾、中文名、代理合成音色、切多長，以及
- * `layers[note] = { p: 檔名, f: 檔名 }`（`f` 省略＝這個音只有一層）。
+ * `layers[note] = [最弱, 中, 最強]`（由弱到強的檔名；長度就是層數）。
  * 檔名相對於來源 repo。
  */
+/** 單簧管的檔名有規律，用一個小工具產生，避免手抄 33 個檔名抄錯。 */
+const clarinet = (notes) => Object.fromEntries(notes.map((n) => [n,
+  [1, 2, 3].map((v) => `DCClar_susLong_${n}_v${v}_rr1_sum.wav`)]));
+
 const INSTRUMENTS = {
   violin: {
     label: '小提琴',
@@ -64,21 +68,21 @@ const INSTRUMENTS = {
     seconds: 4,
     dir: 'Strings/Solo Violin/Arco Vib',
     layers: {
-      G3: { p: 'LLVln_ArcoVib_G3_p.wav', f: 'LLVln_ArcoVib_G3_f.wav' },
-      A3: { p: 'LLVln_ArcoVib_A3_p.wav', f: 'LLVln_ArcoVib_A3_f.wav' },
-      C4: { p: 'LLVln_ArcoVib_C4_p.wav', f: 'LLVln_ArcoVib_C4_f.wav' },
-      E4: { p: 'LLVln_ArcoVib_E4_p.wav', f: 'LLVln_ArcoVib_E4_f.wav' },
-      G4: { p: 'LLVln_ArcoVib_G4_p.wav', f: 'LLVln_ArcoVib_G4_f.wav' },
-      A4: { p: 'LLVln_ArcoVib_A4_p.wav', f: 'LLVln_ArcoVib_A4_f.wav' },
-      C5: { p: 'LLVln_ArcoVib_C5_p.wav', f: 'LLVln_ArcoVib_C5_f.wav' },
-      E5: { p: 'LLVln_ArcoVib_E5_p.wav', f: 'LLVln_ArcoVib_E5_f.wav' },
-      G5: { p: 'LLVln_ArcoVib_G5_p.wav', f: 'LLVln_ArcoVib_G5_f.wav' },
-      A5: { p: 'LLVln_ArcoVib_A5_p.wav', f: 'LLVln_ArcoVib_A5_f.wav' },
-      C6: { p: 'LLVln_ArcoVib_C6_p.wav', f: 'LLVln_ArcoVib_C6_f.wav' },
-      E6: { p: 'LLVln_ArcoVib_E6_p.wav', f: 'LLVln_ArcoVib_E6_f.wav' },
-      G6: { p: 'LLVln_ArcoVib_G6_p.wav', f: 'LLVln_ArcoVib_G6_f.wav' },
-      A6: { p: 'LLVln_ArcoVib_A6_p.wav', f: 'LLVln_ArcoVib_A6_f.wav' },
-      C7: { p: 'LLVln_ArcoVib_C7_p.wav', f: 'LLVln_ArcoVib_C7_f.wav' },
+      G3: ['LLVln_ArcoVib_G3_p.wav', 'LLVln_ArcoVib_G3_f.wav'],
+      A3: ['LLVln_ArcoVib_A3_p.wav', 'LLVln_ArcoVib_A3_f.wav'],
+      C4: ['LLVln_ArcoVib_C4_p.wav', 'LLVln_ArcoVib_C4_f.wav'],
+      E4: ['LLVln_ArcoVib_E4_p.wav', 'LLVln_ArcoVib_E4_f.wav'],
+      G4: ['LLVln_ArcoVib_G4_p.wav', 'LLVln_ArcoVib_G4_f.wav'],
+      A4: ['LLVln_ArcoVib_A4_p.wav', 'LLVln_ArcoVib_A4_f.wav'],
+      C5: ['LLVln_ArcoVib_C5_p.wav', 'LLVln_ArcoVib_C5_f.wav'],
+      E5: ['LLVln_ArcoVib_E5_p.wav', 'LLVln_ArcoVib_E5_f.wav'],
+      G5: ['LLVln_ArcoVib_G5_p.wav', 'LLVln_ArcoVib_G5_f.wav'],
+      A5: ['LLVln_ArcoVib_A5_p.wav', 'LLVln_ArcoVib_A5_f.wav'],
+      C6: ['LLVln_ArcoVib_C6_p.wav', 'LLVln_ArcoVib_C6_f.wav'],
+      E6: ['LLVln_ArcoVib_E6_p.wav', 'LLVln_ArcoVib_E6_f.wav'],
+      G6: ['LLVln_ArcoVib_G6_p.wav', 'LLVln_ArcoVib_G6_f.wav'],
+      A6: ['LLVln_ArcoVib_A6_p.wav', 'LLVln_ArcoVib_A6_f.wav'],
+      C7: ['LLVln_ArcoVib_C7_p.wav', 'LLVln_ArcoVib_C7_f.wav'],
     },
   },
   cello: {
@@ -88,20 +92,30 @@ const INSTRUMENTS = {
     seconds: 4,
     dir: 'Strings/Cello Section/susvib',
     layers: {
-      C1: { p: 'susvib_C1_v1_1.wav', f: 'susvib_C1_v3_1.wav' },
-      E1: { p: 'susvib_E1_v1_1.wav', f: 'susvib_E1_v3_1.wav' },
-      G1: { p: 'susvib_G1_v1_1.wav', f: 'susvib_G1_v3_1.wav' },
-      B1: { p: 'susvib_B1_v1_1.wav', f: 'susvib_B1_v3_1.wav' },
-      D2: { p: 'susvib_D2_v1_1.wav', f: 'susvib_D2_v3_1.wav' },
-      F2: { p: 'susvib_F2_v1_1.wav', f: 'susvib_F2_v3_1.wav' },
-      A2: { p: 'susvib_A2_v1_1.wav', f: 'susvib_A2_v3_1.wav' },
-      C3: { p: 'susvib_C3_v1_1.wav', f: 'susvib_C3_v3_1.wav' },
-      E3: { p: 'susvib_E3_v1_1.wav', f: 'susvib_E3_v3_1.wav' },
-      G3: { p: 'susvib_G3_v1_1.wav', f: 'susvib_G3_v3_1.wav' },
-      B3: { p: 'susvib_B3_v1_1.wav', f: 'susvib_B3_v3_1.wav' },
-      D4: { p: 'susvib_D4_v1_1.wav', f: 'susvib_D4_v3_1.wav' },
-      F4: { p: 'susvib_F4_v1_1.wav', f: 'susvib_F4_v3_1.wav' },
+      C1: ['susvib_C1_v1_1.wav', 'susvib_C1_v3_1.wav'],
+      E1: ['susvib_E1_v1_1.wav', 'susvib_E1_v3_1.wav'],
+      G1: ['susvib_G1_v1_1.wav', 'susvib_G1_v3_1.wav'],
+      B1: ['susvib_B1_v1_1.wav', 'susvib_B1_v3_1.wav'],
+      D2: ['susvib_D2_v1_1.wav', 'susvib_D2_v3_1.wav'],
+      F2: ['susvib_F2_v1_1.wav', 'susvib_F2_v3_1.wav'],
+      A2: ['susvib_A2_v1_1.wav', 'susvib_A2_v3_1.wav'],
+      C3: ['susvib_C3_v1_1.wav', 'susvib_C3_v3_1.wav'],
+      E3: ['susvib_E3_v1_1.wav', 'susvib_E3_v3_1.wav'],
+      G3: ['susvib_G3_v1_1.wav', 'susvib_G3_v3_1.wav'],
+      B3: ['susvib_B3_v1_1.wav', 'susvib_B3_v3_1.wav'],
+      D4: ['susvib_D4_v1_1.wav', 'susvib_D4_v3_1.wav'],
+      F4: ['susvib_F4_v1_1.wav', 'susvib_F4_v3_1.wav'],
     },
+  },
+  clarinet: {
+    label: '單簧管',
+    credit: 'VSCO 2 Community Edition — Clarinet, susLong（CC0 1.0）',
+    synth: 'real:clarinet',
+    seconds: 4,
+    dir: 'Woodwinds/Clarinet/susLong',
+    // 11 個音、每個音 3 層（v1/v2/v3）。這是來源裡層數最多的樂器之一，
+    // 而且音域從 D2 到 F#5 涵蓋三個八度，不像法國號有 3 層的音只到 C3。
+    layers: clarinet(['F2', 'A#2', 'D3', 'F3', 'A#3', 'D4', 'F4', 'A#4', 'D5', 'F#5']),
   },
   trumpet: {
     label: '小號',
@@ -110,16 +124,16 @@ const INSTRUMENTS = {
     seconds: 4,
     dir: 'Brass/Trumpet/sus',
     layers: {
-      F2: { p: 'Sum_SHTrumpet_sus_F2_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_F2_v3_rr1.wav' },
-      A2: { p: 'Sum_SHTrumpet_sus_A2_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_A2_v3_rr1.wav' },
-      C3: { p: 'Sum_SHTrumpet_sus_C3_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_C3_v3_rr1.wav' },
-      'D#3': { p: 'Sum_SHTrumpet_sus_D#3_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_D#3_v3_rr1.wav' },
-      'A#3': { p: 'Sum_SHTrumpet_sus_A#3_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_A#3_v3_rr1.wav' },
-      D4: { p: 'Sum_SHTrumpet_sus_D4_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_D4_v3_rr1.wav' },
-      F4: { p: 'Sum_SHTrumpet_sus_F4_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_F4_v3_rr1.wav' },
-      G3: { p: 'Sum_SHTrumpet_sus_G3_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_G3_v3_rr1.wav' },
-      A4: { p: 'Sum_SHTrumpet_sus_A4_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_A4_v3_rr1.wav' },
-      C5: { p: 'Sum_SHTrumpet_sus_C5_v1_rr1.wav', f: 'Sum_SHTrumpet_sus_C5_v3_rr1.wav' },
+      F2: ['Sum_SHTrumpet_sus_F2_v1_rr1.wav', 'Sum_SHTrumpet_sus_F2_v3_rr1.wav'],
+      A2: ['Sum_SHTrumpet_sus_A2_v1_rr1.wav', 'Sum_SHTrumpet_sus_A2_v3_rr1.wav'],
+      C3: ['Sum_SHTrumpet_sus_C3_v1_rr1.wav', 'Sum_SHTrumpet_sus_C3_v3_rr1.wav'],
+      'D#3': ['Sum_SHTrumpet_sus_D#3_v1_rr1.wav', 'Sum_SHTrumpet_sus_D#3_v3_rr1.wav'],
+      'A#3': ['Sum_SHTrumpet_sus_A#3_v1_rr1.wav', 'Sum_SHTrumpet_sus_A#3_v3_rr1.wav'],
+      D4: ['Sum_SHTrumpet_sus_D4_v1_rr1.wav', 'Sum_SHTrumpet_sus_D4_v3_rr1.wav'],
+      F4: ['Sum_SHTrumpet_sus_F4_v1_rr1.wav', 'Sum_SHTrumpet_sus_F4_v3_rr1.wav'],
+      G3: ['Sum_SHTrumpet_sus_G3_v1_rr1.wav', 'Sum_SHTrumpet_sus_G3_v3_rr1.wav'],
+      A4: ['Sum_SHTrumpet_sus_A4_v1_rr1.wav', 'Sum_SHTrumpet_sus_A4_v3_rr1.wav'],
+      C5: ['Sum_SHTrumpet_sus_C5_v1_rr1.wav', 'Sum_SHTrumpet_sus_C5_v3_rr1.wav'],
     },
   },
 };
@@ -178,14 +192,15 @@ function main() {
     const dir = join(OUT_DIR, name);
     mkdirSync(dir, { recursive: true });
     const entries = {};
-    const peaksByLayer = { p: [], f: [] };
+    const peaksByLayer = { p: [], m: [], f: [] };
     const converted = new Map();     // 檔名 -> { pcm, layer }（還沒套該層的基準音量）
 
     for (const [noteName, layers] of Object.entries(inst.layers)) {
       const midi = midiOf(noteName);
       const out = [];
       // 弱層在前、強層在後：播放時挑「不超過這個力度的最大 vel」
-      const ordered = layers.f ? [['p', 0, layers.p], ['f', 0.5, layers.f]] : [['p', 0, layers.p]];
+      // 由弱到強，vel 的門檻平均切開（2 層 → 0/0.5；3 層 → 0/0.33/0.67）
+      const ordered = layers.map((file, i) => [i === 0 ? 'p' : i === layers.length - 1 ? 'f' : 'm', i / layers.length, file]);
       for (const [layerName, vel, file] of ordered) {
         const dest = join(dir, `${midi}-${layerName}.mp3`);
         const source = decode(fetchSource(`${inst.dir}/${file}`), inst.seconds);
@@ -221,10 +236,10 @@ function main() {
       synth: inst.synth,
       base: `samples/velocity/${name}/`,
       gap: Math.max(0, ...gaps.slice(1).map((m, i) => m - gaps[i])),
-      layers: 2,
+      layers: Math.max(...Object.values(inst.layers).map((l) => l.length)),
       notes: Object.fromEntries(Object.keys(entries).map(Number).sort((a, b) => a - b).map((k) => [k, entries[k]])),
     };
-    const gains = Object.entries(gainByLayer).map(([l, g]) => `${l} ×${g.toFixed(2)}`).join('、');
+    const gains = Object.entries(gainByLayer).filter(([, g]) => g).map(([l, g]) => `${l} ×${g.toFixed(2)}`).join('、');
     console.log(`  ${name.padEnd(8)} ${Object.keys(entries).length} 個音　基準音量 ${gains}`);
   }
 
@@ -235,6 +250,7 @@ function main() {
 // 與 samples/velocity/README.md。
 //
 // 每一層：vel 是這一層的起點（0..1，由弱到強）、file 相對於 base。
+// 檔名裡的 p/m/f 是「最弱／中間／最強」，層數不一定一樣（小提琴 2 層、單簧管 3 層）。
 // 每一層的音量都正規化到 ${REFERENCE}：層只負責音色（弱層真的比較暗），音量由播放時的
 // 力度增益決定。播放時挑「不超過這個力度的最大 vel」，再乘上力度。
 //

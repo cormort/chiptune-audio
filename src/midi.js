@@ -360,11 +360,14 @@ export function renderMidi(midi, opts = {}) {
         // 取樣：挑最近的錄音，用播放速率補半音；音長到 note-off 之後淡出，
         // 錄音本身放完就結束（樣本沒有循環，長音不會無限延長）。
         const pick = sampleVoice(voice.notes, note, vel);
-        if (pick && pick.pcm) {
+        if (pick && pick.mix.length) {
           const ratio = (voice.rate / sampleRate) * pick.rate;
-          mixSampleInto(out, at, pick.pcm, ratio, SAMPLE_VOICE_GAIN * vel, {
-            hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate,
-          });
+          // 落在力度交界附近時會有兩層（等功率交叉淡化），兩層一起混進去
+          for (const part of pick.mix) {
+            mixSampleInto(out, at, part.pcm, ratio, SAMPLE_VOICE_GAIN * vel * part.gain, {
+              hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate,
+            });
+          }
         }
         continue;
       }

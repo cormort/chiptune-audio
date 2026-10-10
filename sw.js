@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v24';
+const VERSION = 'v25';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -156,6 +156,36 @@ const VELOCITY = [
   'samples/velocity/cello/62-p.mp3',
   'samples/velocity/cello/65-f.mp3',
   'samples/velocity/cello/65-p.mp3',
+  'samples/velocity/clarinet/41-f.mp3',
+  'samples/velocity/clarinet/41-m.mp3',
+  'samples/velocity/clarinet/41-p.mp3',
+  'samples/velocity/clarinet/46-f.mp3',
+  'samples/velocity/clarinet/46-m.mp3',
+  'samples/velocity/clarinet/46-p.mp3',
+  'samples/velocity/clarinet/50-f.mp3',
+  'samples/velocity/clarinet/50-m.mp3',
+  'samples/velocity/clarinet/50-p.mp3',
+  'samples/velocity/clarinet/53-f.mp3',
+  'samples/velocity/clarinet/53-m.mp3',
+  'samples/velocity/clarinet/53-p.mp3',
+  'samples/velocity/clarinet/58-f.mp3',
+  'samples/velocity/clarinet/58-m.mp3',
+  'samples/velocity/clarinet/58-p.mp3',
+  'samples/velocity/clarinet/62-f.mp3',
+  'samples/velocity/clarinet/62-m.mp3',
+  'samples/velocity/clarinet/62-p.mp3',
+  'samples/velocity/clarinet/65-f.mp3',
+  'samples/velocity/clarinet/65-m.mp3',
+  'samples/velocity/clarinet/65-p.mp3',
+  'samples/velocity/clarinet/70-f.mp3',
+  'samples/velocity/clarinet/70-m.mp3',
+  'samples/velocity/clarinet/70-p.mp3',
+  'samples/velocity/clarinet/74-f.mp3',
+  'samples/velocity/clarinet/74-m.mp3',
+  'samples/velocity/clarinet/74-p.mp3',
+  'samples/velocity/clarinet/78-f.mp3',
+  'samples/velocity/clarinet/78-m.mp3',
+  'samples/velocity/clarinet/78-p.mp3',
   'samples/velocity/trumpet/41-f.mp3',
   'samples/velocity/trumpet/41-p.mp3',
   'samples/velocity/trumpet/45-f.mp3',

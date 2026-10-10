@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import {
-  prepareSample, normalizeInstrument, pickLayer,
+  prepareSample, normalizeInstrument, pickLayer, layerMix,
   DYNAMIC_INSTRUMENTS,
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
@@ -318,9 +318,13 @@ test('velocity picks the layer, and the layer carries its own audio', () => {
   ] }];
   const near = (got, want, what) => assert.ok(Math.abs(got - want) < 1e-6, `${what}: ${got} !== ${want}`);
   near(sampleVoice(notes, 60, 0.1).pcm[0], 0.1, 'a soft note uses the soft layer');
-  near(sampleVoice(notes, 60, 0.5).pcm[0], 0.9, 'the boundary belongs to the louder layer');
+  // pickLayer 是「不超過這個力度的最大層」：交界上挑上面那層
+  near(pickLayer(notes[0], 0.5).pcm[0], 0.9, 'the boundary belongs to the louder layer');
+  // sampleVoice 多了 mix（交界附近兩層），單一 pcm 欄位取 mix 的第一項
+  near(sampleVoice(notes, 60, 0.5).mix[0].pcm[0], 0.1, 'at the boundary the mix starts with the soft layer');
   near(sampleVoice(notes, 60, 1).pcm[0], 0.9);
   near(sampleVoice(notes, 60).pcm[0], 0.9, 'no velocity means full velocity');
+  assert.equal(sampleVoice(notes, 60, 0.2).mix.length, 1, 'away from a boundary only one layer plays');
   // 單層（沒有 layers）還是它自己
   const single = [{ midi: 60, pcm: Float32Array.from([0.4]) }];
   near(sampleVoice(single, 60, 0.2).pcm[0], 0.4);
@@ -333,6 +337,52 @@ test('velocity picks the layer, and the layer carries its own audio', () => {
   near(sampleVoice(two, 63, 0.9).pcm[0], 4, 'nearest pitch first, then the layer');
   near(sampleVoice(two, 63, 0.1).pcm[0], 3);
   assert.equal(sampleVoice([], 60, 1), null);
+});
+
+test('the layer boundary crossfades instead of stepping', () => {
+  const mk = (v) => Float32Array.from([v]);
+  const two = { midi: 60, layers: [{ vel: 0, pcm: mk(1) }, { vel: 0.5, pcm: mk(2) }] };
+  // 遠離交界：只有一層
+  assert.deepEqual(layerMix(two, 0.2).length, 1);
+  assert.equal(layerMix(two, 0.2)[0].pcm[0], 1);
+  assert.equal(layerMix(two, 0.9)[0].pcm[0], 2);
+  // 交界上：兩層，等功率（平方和 = 1）——不是線性相加，那會在交界出現凹陷
+  const mid = layerMix(two, 0.5);
+  assert.equal(mid.length, 2);
+  const power = mid.reduce((s, p) => s + p.gain * p.gain, 0);
+  assert.ok(Math.abs(power - 1) < 1e-9, `equal power expected, got ${power}`);
+  assert.ok(Math.abs(mid[0].gain - mid[1].gain) < 1e-9, 'half way means both at 0.707');
+  // 跨過去之後又變成一層，而且是新的一層
+  assert.equal(layerMix(two, 0.6).length, 1);
+  assert.equal(layerMix(two, 0.6)[0].pcm[0], 2);
+  // 三層的樂器（單簧管）：0.33 附近混 p+m、0.67 附近混 m+f
+  const three = { midi: 60, layers: [{ vel: 0, pcm: mk(1) }, { vel: 0.333, pcm: mk(2) }, { vel: 0.667, pcm: mk(3) }] };
+  assert.deepEqual(layerMix(three, 0.34).map((x) => x.pcm[0]), [1, 2], 'p + m near the first boundary');
+  assert.deepEqual(layerMix(three, 0.68).map((x) => x.pcm[0]), [2, 3], 'm + f near the second boundary');
+  assert.deepEqual(layerMix(three, 0.2).map((x) => x.pcm[0]), [1]);
+  assert.deepEqual(layerMix(three, 0.9).map((x) => x.pcm[0]), [3]);
+  // 單層樂器與壞輸入
+  assert.deepEqual(layerMix({ pcm: mk(3) }, 0.4), [{ pcm: mk(3), gain: 1 }]);
+  assert.deepEqual(layerMix(null, 0.4), []);
+});
+
+test('a remix near the boundary contains both layers', () => {
+  const midi = parseMidi(smf(1, 480, [
+    track([[0, ...tempo(500000)]]),
+    track([[0, 0x90, 60, 64], [480, 0x80, 60, 0]]),
+  ]));
+  // 兩層的內容完全不同：只有真的混到，輸出才會有第二層的成分
+  const soft = new Float32Array(SAMPLE_RATE).fill(0);
+  const loud = new Float32Array(SAMPLE_RATE).fill(0);
+  soft[0] = 1;
+  loud[441] = 1;          // 10 ms 後
+  const samples = { 'sampled:x': { rate: SAMPLE_RATE, notes: [{ midi: 60, layers: [{ vel: 0, pcm: soft }, { vel: 0.5, pcm: loud }] }] } };
+  const hard = renderMidi(midi, { tracks: [{ instrument: 'sampled:x' }], samples: { 'sampled:x': { rate: SAMPLE_RATE, notes: [{ midi: 60, layers: [{ vel: 0, pcm: loud }] }] } } });
+  const mixed = renderMidi(midi, { tracks: [{ instrument: 'sampled:x' }], samples });
+  assert.ok(peak(hard) > 0.05);
+  // 力度 64/127 = 0.504，剛好在交界上：兩層都要出現（第 0 與第 441 個樣本都有能量）
+  assert.ok(Math.abs(mixed[0]) > 1e-4, 'the soft layer is missing at the boundary');
+  assert.ok(Math.abs(mixed[441]) > 1e-4, 'the loud layer is missing at the boundary');
 });
 
 test('the levelling looks at the strongest layer, not at every layer', () => {

@@ -150,16 +150,50 @@ export function nearestSample(notes, midi) {
   return best;
 }
 
+/** 一個音在指定力度下要播哪幾層：通常一層，落在交界附近時是兩層交叉淡化。
+ *
+ *  兩層是**不同的錄音**（不相關），所以用等功率淡化（cos／sin）而不是線性相加——
+ *  線性相加在交界處會出現一個凹陷。寬度 0.18 表示「交界前後各 9% 的力度」在混合，
+ *  等於用 2 層做出 4 層的平滑感（層數的跳躍被攤平）。
+ *
+ *  @returns {{ pcm: Float32Array, gain: number }[]} 一到兩個要一起播的層
+ */
+export function layerMix(entry, vel = 1, width = 0.18) {
+  const layers = entry && entry.layers;
+  if (!Array.isArray(layers) || !layers.length) return entry && entry.pcm ? [{ pcm: entry.pcm, gain: 1 }] : [];
+  const v = Number.isFinite(vel) ? Math.min(1, Math.max(0, vel)) : 1;
+  // 交界就是每一層（第 1 層以後）的起點。看 v 有沒有落在某個交界的前後半個窗口內，
+  // 兩側對稱處理：剛好在交界上時兩層各 0.707（等功率），跨過窗口就是單層。
+  let boundary = -1;
+  for (let k = 1; k < layers.length; k++) {
+    if (Math.abs(v - layers[k].vel) <= width / 2) { boundary = k; break; }
+  }
+  if (boundary < 0) {
+    let i = 0;
+    for (let k = 0; k < layers.length; k++) if (v >= layers[k].vel) i = k;
+    return [{ pcm: layers[i].pcm, gain: 1 }];
+  }
+  const below = layers[boundary - 1];
+  const above = layers[boundary];
+  const t = Math.min(1, Math.max(0, (v - (above.vel - width / 2)) / width));
+  const out = [];
+  if (below.pcm) out.push({ pcm: below.pcm, gain: Math.cos((t * Math.PI) / 2) });
+  if (above.pcm) out.push({ pcm: above.pcm, gain: Math.sin((t * Math.PI) / 2) });
+  return out;
+}
+
 /** 一個音要怎麼用樣本播：挑最近的樣本、挑力度層，以及要套的播放速率
  *  （半音差 → 2^(d/12)）。有力度層時 `layer` 就是選中的那一層。 */
 export function sampleVoice(notes, midi, vel = 1) {
   const hit = nearestSample(notes, midi);
   if (!hit) return null;
   const layer = pickLayer(hit, vel);
+  const mix = layerMix(hit, vel);
   return {
     sample: hit,
     layer,
-    pcm: layer && layer.pcm ? layer.pcm : hit.pcm,
+    mix,
+    pcm: mix.length ? mix[0].pcm : (layer && layer.pcm ? layer.pcm : hit.pcm),
     semitones: midi - hit.midi,
     rate: 2 ** ((midi - hit.midi) / 12),
   };

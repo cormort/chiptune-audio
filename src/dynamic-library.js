@@ -5,6 +5,7 @@
 // 與 samples/velocity/README.md。
 //
 // 每一層：vel 是這一層的起點（0..1，由弱到強）、file 相對於 base。
+// 檔名裡的 p/m/f 是「最弱／中間／最強」，層數不一定一樣（小提琴 2 層、單簧管 3 層）。
 // 每一層的音量都正規化到 0.7：層只負責音色（弱層真的比較暗），音量由播放時的
 // 力度增益決定。播放時挑「不超過這個力度的最大 vel」，再乘上力度。
 //
@@ -58,6 +59,26 @@ export const DYNAMIC_INSTRUMENTS = {
       59: [{ vel: 0, file: '59-p.mp3' }, { vel: 0.5, file: '59-f.mp3' }],
       62: [{ vel: 0, file: '62-p.mp3' }, { vel: 0.5, file: '62-f.mp3' }],
       65: [{ vel: 0, file: '65-p.mp3' }, { vel: 0.5, file: '65-f.mp3' }],
+    },
+  },
+  clarinet: {
+    label: '單簧管',
+    credit: 'VSCO 2 Community Edition — Clarinet, susLong（CC0 1.0）',
+    synth: 'real:clarinet',
+    base: 'samples/velocity/clarinet/',
+    gap: 5,
+    layers: 3,
+    notes: {
+      41: [{ vel: 0, file: '41-p.mp3' }, { vel: 0.3333333333333333, file: '41-m.mp3' }, { vel: 0.6666666666666666, file: '41-f.mp3' }],
+      46: [{ vel: 0, file: '46-p.mp3' }, { vel: 0.3333333333333333, file: '46-m.mp3' }, { vel: 0.6666666666666666, file: '46-f.mp3' }],
+      50: [{ vel: 0, file: '50-p.mp3' }, { vel: 0.3333333333333333, file: '50-m.mp3' }, { vel: 0.6666666666666666, file: '50-f.mp3' }],
+      53: [{ vel: 0, file: '53-p.mp3' }, { vel: 0.3333333333333333, file: '53-m.mp3' }, { vel: 0.6666666666666666, file: '53-f.mp3' }],
+      58: [{ vel: 0, file: '58-p.mp3' }, { vel: 0.3333333333333333, file: '58-m.mp3' }, { vel: 0.6666666666666666, file: '58-f.mp3' }],
+      62: [{ vel: 0, file: '62-p.mp3' }, { vel: 0.3333333333333333, file: '62-m.mp3' }, { vel: 0.6666666666666666, file: '62-f.mp3' }],
+      65: [{ vel: 0, file: '65-p.mp3' }, { vel: 0.3333333333333333, file: '65-m.mp3' }, { vel: 0.6666666666666666, file: '65-f.mp3' }],
+      70: [{ vel: 0, file: '70-p.mp3' }, { vel: 0.3333333333333333, file: '70-m.mp3' }, { vel: 0.6666666666666666, file: '70-f.mp3' }],
+      74: [{ vel: 0, file: '74-p.mp3' }, { vel: 0.3333333333333333, file: '74-m.mp3' }, { vel: 0.6666666666666666, file: '74-f.mp3' }],
+      78: [{ vel: 0, file: '78-p.mp3' }, { vel: 0.3333333333333333, file: '78-m.mp3' }, { vel: 0.6666666666666666, file: '78-f.mp3' }],
     },
   },
   trumpet: {

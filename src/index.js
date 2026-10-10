@@ -22,5 +22,5 @@ export { SAMPLE_KIT, SampledKit, pickHit, kitNotes, kitHas } from './drums.js';
 export {
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, DYNAMIC_INSTRUMENTS, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
-  nearestSample, sampleVoice, mixSampleInto, prepareSample, normalizeInstrument, pickLayer,
+  nearestSample, sampleVoice, mixSampleInto, prepareSample, normalizeInstrument, pickLayer, layerMix,
 } from './samples.js';

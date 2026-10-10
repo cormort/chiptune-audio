@@ -155,13 +155,18 @@ The source is **Virtuosity Drums** (Versilian Studios × Karoryfer Samples, **CC
 
 ### Velocity layers
 
-Three of those instruments — violin, cello and trumpet — are **bundled** (like the drums) and
-carry **two recorded dynamics** each, so a soft note is darker, not just quieter: VSCO 2 CE's
-`_p`/`_f` and `_v1`/`_v3` pairs (brightness ratios measured at 1.36×, 1.51× and 3.18×).
-They live in `samples/velocity/` (76 files, ~3.6 MB) with the generated table in
+Four of those instruments — violin, cello, trumpet (two dynamics each) and clarinet (three) —
+are **bundled** (like the drums) and carry **recorded dynamics**, so a soft note is darker, not
+just quieter: VSCO 2 CE's `_p`/`_f`, `_v1`/`_v3` and `_v1`/`_v2`/`_v3` sets (brightness ratios
+measured at 1.36×, 1.51×, 3.18× and 1.3-1.6× per step). A layer boundary is **crossfaded with
+equal power** over ±9% of velocity, so two layers do not sound like a step at 0.5 — measured,
+a violin note at velocity 0.43/0.47/0.55 brightens 0.0522 → 0.0645 → 0.0958 instead of
+jumping 0.0504 → 0.0958.
+They live in `samples/velocity/` (106 files, ~5 MB) with the generated table in
 `src/dynamic-library.js`, and they override the single-layer remote entries of the same name
-in `src/samples.js`. `pickLayer()` picks the loudest layer that fits the velocity, so the
-layer carries timbre and velocity still carries level — which is why the levels of the two
+in `src/samples.js`. `layerMix()` returns the one or two layers to play (the boundary
+crossfade), `pickLayer()` the single loudest that fits, so the layer carries timbre and
+velocity still carries level — which is why the levels of the two
 layers are normalised to match (a 15 dB jump at the velocity boundary would be worse than no
 layers at all). The flute was going to be one of the three; VSCO's flute turns out to have
 takes rather than dynamics (4 dB, same timbre), so it is a trumpet instead and the flute keeps
