@@ -149,6 +149,18 @@ export function mixSampleInto(out, at, pcm, ratio, gain, { hold = Infinity, rele
   return i;
 }
 
+/** Start `src` at `when` (default now) and, given `dur`, fade it out after that
+ *  many seconds, so a whole score can be scheduled up front. */
+export function startAt(ctx, gainNode, src, opts) {
+  const when = opts.when !== undefined ? opts.when : ctx.currentTime;
+  src.start(when);
+  if (opts.dur > 0) {
+    const fade = 0.22;
+    gainNode.gain.setTargetAtTime(0, when + opts.dur, fade / 4);
+    src.stop(when + opts.dur + fade);
+  }
+}
+
 /** 取樣樂器播放器：載入樣本、挑最近的音、用播放速率補中間的音。
  *  一個實例可以載入多個樂器，各自獨立；載過的樂器不會重抓。
  *  建構子的兩個參數跟其他引擎一樣可以傳值或 getter（AudioContext 要等使用者手勢才會有）。 */
@@ -282,7 +294,7 @@ export class SampledInstruments {
     gainNode.gain.value = Math.max(0, Math.min(1, (opts.vel === undefined ? 0.85 : opts.vel) * (opts.gain === undefined ? 0.9 : opts.gain)));
     src.connect(gainNode);
     gainNode.connect(this.targetNode);
-    src.start();
+    startAt(ctx, gainNode, src, opts);
 
     let released = false;
     return {

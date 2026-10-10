@@ -7,7 +7,7 @@
  */
 
 import { noteFreq } from './instruments.js';
-import { SampledInstruments } from './samples.js';
+import { SampledInstruments, startAt } from './samples.js';
 import { SAMPLE_LIBRARY } from './sample-library.js';
 
 // 平台鋼琴的樣本清單（Salamander Grand Piano）。檔名與音高的對照在 sample-library.js，
@@ -147,7 +147,7 @@ export class AcousticPiano {
 
     src.connect(gainNode);
     gainNode.connect(this.targetNode);
-    src.start();
+    startAt(ctx, gainNode, src, opts);
 
     let released = false;
     return {

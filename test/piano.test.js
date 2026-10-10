@@ -38,3 +38,24 @@ test('SampledPiano: maps standard MIDI notes and falls back gracefully', () => {
   const sp = new SampledPiano(null);
   assert.equal(sp.findBestSample(60), null, 'unloaded sampler has no best sample');
 });
+
+test('AcousticPiano.playNote: when/dur schedule the start and the fade-out', () => {
+  const calls = [];
+  const param = () => ({ value: 1, setTargetAtTime: (...a) => calls.push(['fade', ...a]), cancelScheduledValues() {} });
+  const ctx = {
+    currentTime: 5, sampleRate: 8000, state: 'running', destination: {},
+    createBuffer: (_, len) => ({ getChannelData: () => new Float32Array(len) }),
+    createGain: () => ({ gain: param(), connect() {} }),
+    createBufferSource: () => ({ connect() {}, start: (t) => calls.push(['start', t]), stop: (t) => calls.push(['stop', t]) }),
+  };
+  const p = new AcousticPiano(ctx);
+  p.playNote(60, { when: 7, dur: 1 });
+  assert.deepEqual(calls[0], ['start', 7]);
+  assert.equal(calls[1][1], 0);
+  assert.equal(calls[1][2], 8);            // fade begins when the note ends
+  assert.ok(Math.abs(calls[2][1] - 8.22) < 1e-9);
+
+  calls.length = 0;
+  p.playNote(60);                          // unchanged: start now, no scheduled end
+  assert.deepEqual(calls, [['start', 5]]);
+});
