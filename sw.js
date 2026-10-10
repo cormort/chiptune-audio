@@ -7,13 +7,14 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = `chiptune-${VERSION}`;
 const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
   'src/instruments.js', 'src/midi.js', 'src/wav.js', 'src/piano.js', 'src/pianoroll.js',
+  'src/samples.js', 'src/sample-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
   'page/console.js', 'page/keyboard.js',
 ];

@@ -51,7 +51,7 @@
       <button id="bankChip" class="on" aria-pressed="true" data-bank="chip">晶片音色</button>
       <button id="bankReal" aria-pressed="false" data-bank="real">寫實合成</button>
       <button id="bankAcoustic" aria-pressed="false" data-bank="acoustic">物理擬真鋼琴</button>
-      <button id="bankSample" aria-pressed="false" data-bank="sample">真實平台鋼琴 (取樣)</button>
+      <button id="bankSample" aria-pressed="false" data-bank="sample">真實錄音取樣</button>
       <span class="muted" id="bankHint"></span>
     </div>
     <div class="instruments" id="instruments"></div>
@@ -69,7 +69,9 @@
       • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
       • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
       • <b>物理擬真鋼琴</b>：基於弦剛度非諧波性與頻率動態衰減物理模型，溫潤自然且 100% 離線。<br>
-      • <b>真實平台鋼琴</b>：Yamaha C5 史坦威等級真實立體聲錄音取樣，支援永久離線快取。<br>
+      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
+      木吉他、豎琴、木琴…共 20 種）。第一次選到那個樂器才開始抓樣本，抓過存進瀏覽器快取，之後離線也能彈；
+      樣本還沒到（第一次按、或離線）會先用對應的合成音色代替，按鍵不會沒聲音。<br>
       電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
       上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。
       音量、八度、標示與選用的音色會存在瀏覽器裡，下次開啟直接接上。</p>

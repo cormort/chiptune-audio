@@ -1,9 +1,10 @@
 // 電子琴頁面：樂器 → 設定 → 琴鍵。按住發聲、放開停止，可多指和弦。
-// 四套音色（晶片／寫實合成／物理擬真鋼琴／真實平台鋼琴取樣）都是即時合成或即時取樣，
-// 沒有預先算好的音檔；選到取樣那套時才向網路抓取樣本（抓過就進 CacheStorage，離線可用）。
+// 四套音色（晶片／寫實合成／物理擬真鋼琴／真實錄音取樣）都是即時合成或即時取樣，
+// 沒有預先算好的音檔；取樣那套是唯一會連網的：選到的樂器才抓樣本，抓過進 CacheStorage，
+// 樣本還沒到時先用對應的合成音色代替。
 import {
   ChiptuneAudio, INSTRUMENT_BANKS, INSTRUMENT_LABELS, instrumentNote, instrumentRelease, noteFreq,
-  AcousticPiano, SampledPiano,
+  AcousticPiano, SampledInstruments, SAMPLE_LIBRARY, SAMPLE_CREDIT, sampleNames, sampleLabel, sampleSynth,
 } from '../src/index.js';
 import { $, prefs, registerServiceWorker } from './ui.js';
 
@@ -11,28 +12,53 @@ registerServiceWorker();
 
 const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 const acousticPiano = new AcousticPiano(() => audio._ensure(), () => audio.master);
-const sampledPiano = new SampledPiano(() => audio._ensure(), () => audio.master);
+const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);
 
-// 取樣鋼琴的名稱掛在另一套 API 上，所以各有一套可選音色清單。
+// 取樣樂器的名稱與中文名來自 src/sample-library.js（20 種真實錄音）。
+const SAMPLE_NAMES = sampleNames();
+const SAMPLE_LABELS = Object.fromEntries(SAMPLE_NAMES.map((n) => [n, sampleLabel(n)]));
+// 物理擬真鋼琴自己一套 API（preset），所以這兩個庫各有自己的可選音色清單。
 const ACOUSTIC_INSTRUMENTS = { standard: '標準鋼琴', mellow: '柔和琴音', bright: '明亮鋼琴' };
-const SAMPLE_INSTRUMENTS = { grand: 'Yamaha C5 平台鋼琴' };
 const BANKS = {
   chip: { label: '單一振盪器，8-bit 遊戲音色' },
   real: { label: '疊泛音、微走音與起音雜訊，接近真實樂器（小提琴、二胡、薩克斯風、大鍵琴…）' },
   acoustic: { label: '多泛音物理頻散與琴槌動態衰減，100% 離線純演算法溫潤琴音' },
-  sample: { label: '準備載入真實平台鋼琴取樣（支援 CacheStorage 永久離線快取）...' },
+  sample: { label: `真實樂器錄音，共 ${SAMPLE_NAMES.length} 種；選到才抓樣本，抓過就離線可用` },
 };
 
 /** 這一套音色庫有哪些位置（key）與顯示名稱。 */
-const bankKeys = (b) => (b === 'acoustic' || b === 'sample' ? Object.keys(bankNames(b)) : Object.keys(INSTRUMENT_BANKS[b]));
-const bankNames = (b) => (b === 'acoustic' ? ACOUSTIC_INSTRUMENTS : b === 'sample' ? SAMPLE_INSTRUMENTS : INSTRUMENT_LABELS[b]);
+const bankKeys = (b) => (b === 'sample' ? SAMPLE_NAMES
+  : b === 'acoustic' ? Object.keys(ACOUSTIC_INSTRUMENTS)
+    : Object.keys(INSTRUMENT_BANKS[b]));
+const bankNames = (b) => (b === 'sample' ? SAMPLE_LABELS
+  : b === 'acoustic' ? ACOUSTIC_INSTRUMENTS
+    : INSTRUMENT_LABELS[b]);
 
 let bank = null;
 let instrument = 'square';
 
-function preloadSamples() {
-  sampledPiano.preload((loaded, total) => {
-    if (bank === 'sample') $('bankHint').textContent = `真實平台鋼琴取樣已就緒 (${loaded}/${total})，隨按即響`;
+/** 選到取樣音色就開始抓它的樣本；抓過的從瀏覽器快取來，一個樂器只抓一次。 */
+function loadSample(name = instrument) {
+  if (bank !== 'sample' || !SAMPLE_LIBRARY[name]) return;
+  const label = sampleLabel(name);
+  const total = sampled.wanted(name);
+  if (total > 0 && sampled.loaded(name) >= total) {
+    $('bankHint').textContent = `${label}：${total} 個樣本就緒，離線也能彈`;
+    return;
+  }
+  $('bankHint').textContent = `${label}：抓取樣本 0/${total}…`;
+  sampled.load(name, {
+    onProgress: (done, all) => {
+      if (bank === 'sample' && instrument === name) $('bankHint').textContent = `${label}：抓取樣本 ${done}/${all}…`;
+    },
+  }).then((hit) => {
+    if (bank !== 'sample' || instrument !== name) return;
+    if (!hit || !hit.notes.length) {
+      $('bankHint').textContent = `${label}：樣本抓不到（離線？），先用合成音色代替`;
+      return;
+    }
+    const missed = hit.failed ? `，${hit.failed} 個抓不到` : '';
+    $('bankHint').textContent = `${label}：${hit.notes.length} 個樣本就緒${missed}，離線也能彈 · ${SAMPLE_CREDIT}`;
   });
 }
 
@@ -44,7 +70,13 @@ function buildInstruments() {
     const b = document.createElement('button');
     b.textContent = names[name] || name;
     b.dataset.name = name;
-    b.onclick = () => { instrument = name; paintInstruments(); saveVoice(); };
+    if (bank === 'sample' && SAMPLE_LIBRARY[name]) b.title = `樣本：${SAMPLE_LIBRARY[name].credit}`;
+    b.onclick = () => {
+      instrument = name;
+      paintInstruments();
+      saveVoice();
+      if (bank === 'sample') loadSample(name);   // 選到才抓，抓過不重抓
+    };
     wrap.append(b);
   }
   paintInstruments();
@@ -62,12 +94,11 @@ function saveVoice() {
   prefs.patch({ bank, instrument });
 }
 
-/** 換一套音色庫：挑第一個可用音色（同名就沿用），取樣那套順便開始抓樣本。 */
+/** 換一套音色庫：挑第一個可用音色（同名就沿用），取樣那套開始抓目前這個樂器。 */
 function setBank(next) {
   if (bank === next || !BANKS[next]) return;
   bank = next;
   if (!bankKeys(bank).includes(instrument)) instrument = bankKeys(bank)[0];
-  if (bank === 'sample') preloadSamples();
   $('bankHint').textContent = BANKS[bank].label;
   for (const el of document.querySelectorAll('[data-bank]')) {
     const on = el.dataset.bank === bank;
@@ -76,19 +107,21 @@ function setBank(next) {
   }
   buildInstruments();
   saveVoice();
+  if (bank === 'sample') loadSample();   // 只抓目前選到的那個樂器
 }
 
 for (const el of document.querySelectorAll('[data-bank]')) {
   el.onclick = () => setBank(el.dataset.bank);
 }
 
-// 開場：套用上次的選擇（音色、音量、八度、標示）。取樣那套會重新抓一次樣本，
+// 開場：套用上次的選擇（音色、音量、八度、標示）。取樣那套會抓上次用的那個樂器，
 // 抓過就進 CacheStorage，離線開啟也一樣快。
 setBank(BANKS[prefs.get('bank')] ? prefs.get('bank') : 'chip');
 if (bankKeys(bank).includes(prefs.get('instrument'))) {
   instrument = prefs.get('instrument');
   paintInstruments();
   saveVoice();
+  if (bank === 'sample') loadSample();   // setBank 先抓的是第一個，改回上次用的那一個
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -135,25 +168,42 @@ function labelKeys() {
   });
 }
 
-// A held note: which key, the engine handle, and the instrument and bank it
-// started with (so switching either mid-chord still releases every note with the
-// right fade).
+// A held note: which key, the engine handle, the instrument and bank it started
+// with, and the fade to use when it is let go (so switching bank or instrument
+// mid-chord still releases every note the right way).
 const held = new Set();
 function noteOn(i) {
   const n = baseMidi() + i;
-  let voice;
-  if (bank === 'sample') voice = sampledPiano.playNote(n, { vel: 0.85 });
-  else if (bank === 'acoustic') voice = acousticPiano.playNote(n, { preset: instrument, vel: 0.85 });
-  else voice = audio.playNote(instrumentNote(instrument, n, { bank }));
-  const note = { i, n, voice, instrument, bank };
+  let voice = null;
+  let release = null;      // null＝讓它自己響完（鋼琴、撥弦、鐘聲）
+  if (bank === 'sample') {
+    voice = sampled.playNote(instrument, n, { vel: 0.85 });
+    if (voice) {
+      release = 0.2;       // 取樣：放開就是悶掉（鋼琴的制音器）
+    } else {
+      // 樣本還沒到（第一次按，或離線）：先播對應的合成音色，按鍵不會沒聲音。
+      const synth = sampleSynth(instrument);
+      if (synth) {
+        voice = audio.playNote(instrumentNote(synth, n, { vel: 0.85 }));
+        release = instrumentRelease(synth);
+      }
+      loadSample();        // 順便開始抓，下一次按就是真的錄音
+    }
+  } else if (bank === 'acoustic') {
+    voice = acousticPiano.playNote(n, { preset: instrument, vel: 0.85 });
+    release = 0.22;
+  } else {
+    voice = audio.playNote(instrumentNote(instrument, n, { bank }));
+    release = instrumentRelease(instrument, bank);
+  }
+  const note = { i, n, voice, instrument, bank, release };
   held.add(note);
   paintHeld();
   return note;
 }
 function noteOff(note) {
   if (!note || !held.delete(note)) return;
-  const fade = (note.bank === 'sample' || note.bank === 'acoustic') ? 0.22 : instrumentRelease(note.instrument, note.bank);
-  if (note.voice && fade !== null) note.voice.release(fade);
+  if (note.voice && note.release !== null) note.voice.release(note.release);
   paintHeld();
 }
 function paintHeld() {

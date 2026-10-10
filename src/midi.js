@@ -1,5 +1,6 @@
 import { renderSfxInto, SAMPLE_RATE, WAVE } from './sfx.js';
 import { INSTRUMENTS, instrumentNote, resolveInstrument } from './instruments.js';
+import { mixSampleInto, sampleVoice } from './samples.js';
 
 /** Longest MIDI render, in seconds. Later notes are dropped: a 5-minute mono
  *  buffer at 48 kHz is already ~58 MB. */
@@ -7,6 +8,12 @@ export const MAX_MIDI_SECONDS = 300;
 
 /** Ring-out added after the last note so decays are not cut off. */
 const TAIL_SECONDS = 1.5;
+
+/** Level a sampled note is mixed at before the final normalisation. Recordings
+ *  are already normalised, so this is headroom for chords rather than volume. */
+const SAMPLE_VOICE_GAIN = 0.7;
+/** Fade applied from note-off to the end of a sampled note (a sampler's release). */
+const SAMPLE_RELEASE_SECONDS = 0.14;
 
 const DRUM_CHANNEL = 9; // GM channel 10
 
@@ -291,6 +298,9 @@ function drumParams(note, vel, seed) {
 /** Render a parseMidi() result with chip voices, to a mono Float32Array.
  *  opts.tracks[i] overrides track i: { instrument, volume (0..1), mute,
  *  transpose (semitones) }. opts.speed scales tempo (0.25..4, default 1).
+ *  opts.samples maps an instrument name to decoded samples
+ *  ({ 'sampled:violin': { rate, notes: [{ midi, pcm }] } }, see SampledInstruments.voices):
+ *  a track using one is mixed from the recording instead of synthesised.
  *  The result is scaled down to a 0.9 peak instead of clipping. */
 export function renderMidi(midi, opts = {}) {
   if (!midi || !Array.isArray(midi.tracks)) throw new TypeError('renderMidi expects the result of parseMidi()');
@@ -298,6 +308,7 @@ export function renderMidi(midi, opts = {}) {
   const speedIn = Number(opts.speed);
   const speed = Number.isFinite(speedIn) ? Math.min(4, Math.max(0.25, speedIn)) : 1;
   const settings = Array.isArray(opts.tracks) ? opts.tracks : [];
+  const samples = opts.samples || null;
 
   const end = Math.min(MAX_MIDI_SECONDS, (Number(midi.duration) || 0) / speed + TAIL_SECONDS);
   const out = new Float32Array(Math.ceil(end * sampleRate));
@@ -309,7 +320,8 @@ export function renderMidi(midi, opts = {}) {
     const volume = Number.isFinite(s.volume) ? Math.min(1, Math.max(0, s.volume)) : 1;
     if (volume === 0) return;
     const instrument = s.instrument || track.instrument;
-    if (instrument !== 'drums' && !resolveInstrument(instrument)) throw new Error(`Unknown instrument: ${instrument}`);
+    const voice = samples ? samples[instrument] : null;
+    if (instrument !== 'drums' && !voice && !resolveInstrument(instrument)) throw new Error(`Unknown instrument: ${instrument}`);
     const transpose = Number.isFinite(s.transpose) ? Math.round(s.transpose) : 0;
 
     let hit = 0;
@@ -318,9 +330,22 @@ export function renderMidi(midi, opts = {}) {
       if (time >= limit) break;
       const at = Math.round(time * sampleRate);
       const vel = (Number.isFinite(n.vel) ? n.vel : 1) * volume;
+      const note = Math.min(127, Math.max(0, n.note + transpose));
+      if (voice) {
+        // 取樣：挑最近的錄音，用播放速率補半音；音長到 note-off 之後淡出，
+        // 錄音本身放完就結束（樣本沒有循環，長音不會無限延長）。
+        const pick = sampleVoice(voice.notes, note);
+        if (pick) {
+          const ratio = (voice.rate / sampleRate) * pick.rate;
+          mixSampleInto(out, at, pick.sample.pcm, ratio, SAMPLE_VOICE_GAIN * vel, {
+            hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate,
+          });
+        }
+        continue;
+      }
       const p = instrument === 'drums'
         ? drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0)
-        : instrumentNote(instrument, Math.min(127, Math.max(0, n.note + transpose)), { seconds: n.dur / speed, vel });
+        : instrumentNote(instrument, note, { seconds: n.dur / speed, vel });
       renderSfxInto(out, at, p, sampleRate);
     }
   });

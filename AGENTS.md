@@ -136,6 +136,38 @@ rendered, so a long piece can take minutes (measured: 15 s of MIDI with
 `real:piano`/`real:bass`/`real:strings`/`drums` took 13.5 s against 0.85 s for the same file
 with chip voices). Use it for short pieces or accept the wait.
 
+## Sampled instruments (real recordings)
+
+The third family is neither bank: 20 real instruments played from recordings, addressed as
+`sampled:<name>` — `grand` (Salamander piano) plus `violin cello contrabass harp
+guitar-acoustic guitar-nylon guitar-electric bass-electric flute clarinet saxophone trumpet
+trombone french-horn tuba bassoon organ harmonium xylophone`. The file lists live in
+`src/sample-library.js` (generated; samples CC-BY 3.0 from `nbrosowsky/tonejs-instruments`,
+i.e. VSCO 2 CE / University of Iowa MIS / Karoryfer / Freesound — keep `credit` per
+instrument accurate). `src/samples.js` is the engine:
+
+```js
+const samples = new SampledInstruments(() => audio._ensure(), () => audio.master);
+await samples.load('violin', { onProgress: (done, total) => {} });   // cached in CacheStorage
+samples.playNote('violin', 60, { vel: 0.85 });                       // realtime, per note
+renderMidi(midi, { tracks: [{ instrument: 'sampled:violin' }], samples: samples.voices(['violin']) });
+```
+
+Rules that keep it honest and cheap:
+
+- Only the selected instrument is fetched; each instrument carries at most 12 recordings
+  spread across its range, and the notes between them use playback rate (±2 semitones is
+  inaudible). A partial load (offline, a 404) keeps what arrived and retries only the
+  missing files on the next `load()`.
+- `renderMidi` mixes recordings through `opts.samples`; a `sampled:` track with no entry
+  there throws `Unknown instrument` rather than playing something else. Seek, loop and the
+  WAV export keep working because the output is still one PCM buffer.
+- Before a recording is loaded, play `SAMPLE_LIBRARY[name].synth` (a chip/real voice) so a
+  key or a track is never silent. `sampleSynth(name)` returns it; the console also rewrites
+  unloadable tracks to it for that render.
+- Samples are a third-party host: nothing is bundled, so the first visit to an instrument
+  needs the network. That is the one place these pages are not offline-first.
+
 Output is capped at 5 minutes. A malformed file that retriggers a pitch without ever
 sending its note-off cannot stack voices: at most 8 pending note-ons are kept per
 channel/pitch (the oldest is stolen), so render time and memory stay bounded by the file's

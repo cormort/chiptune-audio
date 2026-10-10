@@ -10,6 +10,7 @@
 import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
   INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, flattenMidi,
+  SampledInstruments, SAMPLE_LIBRARY, SAMPLE_PREFIX, sampleNames, sampleLabel, sampleSynth,
 } from '../src/index.js';
 import { $, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
 import { createMixer } from './mixer.js';
@@ -18,6 +19,9 @@ import { createPianoView } from './pianoview.js';
 registerServiceWorker();
 
 const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
+// 取樣音色：抓到的樣本可以在離線算 MIDI 時混進去（見 src/midi.js 的 opts.samples）。
+const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);
+const SAMPLE_KEYS = sampleNames();
 
 // Which kind of music owns audio.music, so the song controls never replace a MIDI.
 let nowPlaying = null;   // 'song' | 'midi' | null
@@ -494,10 +498,10 @@ function buildTracks() {
     small.textContent = `聲道 ${t.channel + 1} · ${t.notes.length} 音符`;
     nameEl.append(small);
     const sel = row.querySelector('select');
-    // 兩組音色：晶片很快，寫實是疊泛音＋微走音＋起音雜訊的合成，每個音都要完整
-    // 算完尾巴，約慢 10-15 倍，所以標上「慢」——長曲子用寫實要等，這是誠實的提示，
-    // 不是限制。renderMidi 兩邊都認得（`real:<name>` 就是寫實那一組）。
-    for (const [label, bank] of [['晶片（快）', 'chip'], ['寫實（慢）', 'real']]) {
+    // 三組音色：晶片很快，寫實是疊泛音＋微走音＋起音雜訊的合成（每個音都要完整算完
+    // 尾巴，約慢 10-15 倍），取樣是**真實樂器的錄音**（第一次用到要先下載樣本，抓過
+    // 就進瀏覽器快取）。標籤寫清楚，選下去會付出什麼代價是看得見的。
+    for (const [label, bank] of [['晶片（快）', 'chip'], ['寫實合成（慢）', 'real']]) {
       const group = document.createElement('optgroup');
       group.label = label;
       for (const k of Object.keys(INSTRUMENT_BANKS[bank])) {
@@ -505,6 +509,10 @@ function buildTracks() {
       }
       sel.append(group);
     }
+    const sampleGroup = document.createElement('optgroup');
+    sampleGroup.label = '真實錄音取樣（要下載）';
+    for (const k of SAMPLE_KEYS) sampleGroup.append(new Option(sampleLabel(k), `${SAMPLE_PREFIX}${k}`));
+    sel.append(sampleGroup);
     sel.add(new Option('鼓組', 'drums'));
     sel.value = s.instrument;
     sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
@@ -520,21 +528,60 @@ function buildTracks() {
 /** 這一首有沒有用到寫實音色？它們每個音都要完整合成尾巴，比晶片約慢 10-15 倍。 */
 const usesRealVoices = () => midiTracks.some((t) => !t.mute && String(t.instrument).startsWith('real:'));
 
+/** 目前這首用到哪些取樣樂器（未靜音的軌）。 */
+const sampledUsed = () => [...new Set(midiTracks
+  .filter((t) => !t.mute && String(t.instrument).startsWith(SAMPLE_PREFIX))
+  .map((t) => String(t.instrument).slice(SAMPLE_PREFIX.length))
+  .filter((n) => SAMPLE_LIBRARY[n]))];
+
+/** 播放／匯出前把用到的取樣樂器抓好（抓過就是快取，不會重抓）。
+ *  回傳 { samples, fallback }：要混進 renderMidi 的樣本，以及連抓都抓不到而必須
+ *  改用合成代理音的樂器（離線、或樣本庫掛掉）——不能讓整首變成沒聲音。 */
+async function ensureSamples() {
+  const want = sampledUsed();
+  if (!want.length) return { samples: null, fallback: [] };
+  const todo = want.filter((n) => sampled.loaded(n) < sampled.wanted(n));
+  if (todo.length) {
+    $('midiStatus').textContent = `下載取樣音色：${todo.map(sampleLabel).join('、')}…`;
+    await Promise.all(todo.map((n) => sampled.load(n)));
+  }
+  const fallback = want.filter((n) => sampled.loaded(n) === 0);
+  if (fallback.length) {
+    $('midiStatus').textContent = `取樣抓不到，${fallback.map(sampleLabel).join('、')} 先用合成音色代替`;
+  }
+  const voices = sampled.voices(want.filter((n) => sampled.loaded(n) > 0));
+  return { samples: Object.keys(voices).length ? voices : null, fallback };
+}
+
+/** 這一輪要算的軌道設定：取樣抓不到的軌換成它的合成代理音。 */
+function tracksForRender(fallback = []) {
+  if (!fallback.length) return midiTracks;
+  return midiTracks.map((t) => {
+    const name = String(t.instrument).startsWith(SAMPLE_PREFIX) ? String(t.instrument).slice(SAMPLE_PREFIX.length) : '';
+    if (!fallback.includes(name)) return t;
+    return { ...t, instrument: sampleSynth(name) || 'real:piano' };
+  });
+}
+
 async function playMidi(offset = 0) {
   midiStarted = false;   // 還沒真的開始播（這中間的 tick 不該當成「播完了」）
   midiDone = false;      // 新的一輪：下一次「播完」要重新判斷
+  const { samples, fallback } = await ensureSamples();
   $('midiStatus').textContent = usesRealVoices() ? '合成中…（寫實音色較慢，請稍等）' : '合成中…';
   await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
   if (!midi || !midi.tracks.length) return;
   const t0 = performance.now();
-  const src = audio.playMidi(midi, { tracks: midiTracks, speed: midiSpeed, loop: $('midiLoop').checked, offset });
+  const src = audio.playMidi(midi, {
+    tracks: tracksForRender(fallback), samples, speed: midiSpeed, loop: $('midiLoop').checked, offset,
+  });
   const ms = performance.now() - t0;
   // 全部軌道都被靜音之類的情況：沒有東西可播就不要假裝在播，也別讓連續播放接力下去。
   if (!src) { setOwner(null); $('midiStatus').textContent = '這首沒有可播的聲音'; return; }
   setOwner('midi');
   midiStarted = true;
   $('musicInfo').textContent = '';
-  $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
+  const voice = samples ? ` · ${usesRealVoices() ? '合成＋取樣' : '取樣'}` : '';
+  $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms${voice}`;
   view.setFreeze(offset);
 }
 
@@ -572,12 +619,13 @@ $('midiClear').onclick = () => {
   rebuildScore();
 };
 $('wavMidi').onclick = async () => {
+  const { samples, fallback } = await ensureSamples();
   // 寫實音色的 WAV 要算一段時間；先讓狀態畫出來，不然畫面會像當掉。
   if (usesRealVoices()) {
     $('midiStatus').textContent = '匯出中…（寫實音色較慢，請稍等）';
     await new Promise((r) => setTimeout(r));
   }
-  downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
+  downloadWav(renderMidi(midi, { tracks: tracksForRender(fallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
   if (!midiPlaying()) $('midiStatus').textContent = `已下載 ${midiName}-remix.wav`;
 };
 

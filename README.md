@@ -92,6 +92,38 @@ renders one note. A realistic voice costs roughly 10-15x a chip voice per sample
 down every note's full tail, so the keyboard can afford it per note while a long MIDI remix
 cannot.
 
+### Sampled instruments (real recordings)
+
+Nothing above is a recording. The third family is: 20 real instruments played from
+recordings — the Salamander grand piano plus `violin cello contrabass harp guitar-acoustic
+guitar-nylon guitar-electric bass-electric flute clarinet saxophone trumpet trombone
+french-horn tuba bassoon organ harmonium xylophone`, all from the CC-BY
+`nbrosowsky/tonejs-instruments` library (VSCO 2 CE, University of Iowa MIS, Karoryfer,
+Freesound). They are fetched on demand, never bundled:
+
+```js
+import { SampledInstruments } from './src/index.js';
+
+const samples = new SampledInstruments(() => audio._ensure(), () => audio.master);
+await samples.load('violin', { onProgress: (done, total) => console.log(done, total) });
+samples.playNote('violin', 60, { vel: 0.85 });            // C4, from the recording
+
+// In a MIDI remix the recordings go through the normal renderer, so seek, loop and
+// the WAV export keep working — the track is mixed from PCM instead of synthesised:
+renderMidi(midi, { tracks: [{ instrument: 'sampled:violin' }], samples: samples.voices(['violin']) });
+```
+
+Three things keep this cheap: only the instrument you select is fetched; each instrument
+carries at most 12 recordings spread over its range and the notes between them are reached
+with playback rate (within ±2 semitones that is inaudible); and the decoded samples are
+kept in `CacheStorage` (`chiptune-samples-v1`) so the second visit is offline-capable.
+Before a recording arrives — first press, or offline — `SAMPLE_LIBRARY[name].synth` is the
+synthesised voice to play instead, so a key is never silent. A `sampled:` track with no
+entry in `renderMidi`'s `samples` is an error, not a quiet fallback.
+
+Sample licensing: samples CC-BY 3.0 (credits in `SAMPLE_LIBRARY`, i.e.
+`src/sample-library.js`); the Salamander piano is Alexander Holm's V3.
+
 ### MIDI remix
 
 ```js
@@ -110,11 +142,12 @@ RIFF/RMID containers, tag-prefixed files and stray padding all load; anything wi
 in it throws an error that names what the file actually is. Channel 10 is rendered as chip
 drums, and renders are capped at 5 minutes.
 
-A track can use either bank: `{ instrument: 'real:piano' }` (or the CLI's
-`--track 1=real:piano`). Realistic voices cost ~10-15x a chip voice per sample and the
+A track can use any of the three families: `{ instrument: 'real:piano' }` for the realistic
+synth bank, `{ instrument: 'sampled:violin' }` for a recording (see above), or the CLI's
+`--track 1=real:piano`. Realistic voices cost ~10-15x a chip voice per sample and the
 renderer lays down every note's full tail, so a long piece can take minutes — chip voices
-stay the default for that reason, and the console's track menu groups them under
-「晶片（快）」 and 「寫實（慢）」 so the choice is an informed one.
+stay the default for that reason, and the console's track menu groups all three under
+「晶片（快）」, 「寫實合成（慢）」 and 「真實錄音取樣（要下載）」 so the choice is an informed one.
 
 ### Showing the performance (piano display)
 
@@ -174,7 +207,7 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 | **主控** | 總音量、靜音、停止全部音效；兩條**匯流排**推桿（音效、音樂）——所有聲音都經過這裡 |
 | **音效** | ① 挑預設 → ② 拉滑桿調參數（放開就聽得到）、看波形 → ③ 播放、複製 JSON（貼進 `audio.playSfx({...})`）、下載 WAV |
 | **音樂** | ① 情緒＋種子＋小節 → ② 播放（可「預先算好」避免第一拍卡頓）→ ③ 三條**聲部**推桿（主旋律／貝斯／鼓組，含靜音與獨奏） |
-| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② 逐軌換晶片樂器、調音量 → ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
+| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② 逐軌挑音色（晶片／寫實合成／**真實錄音取樣**）、調音量 → ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
 
 匯流排與聲部推桿分開放，是因為兩者作用的地方不同：匯流排立即生效，聲部是烘進音樂迴圈裡的
 （放開推桿才重新合成，並從原位置接著播），而 MIDI 是即時算出來的，所以**播放 MIDI 時聲部推桿會被
@@ -193,7 +226,8 @@ MIDI 區下方是**鋼琴演奏顯示**：音符由上往下掉，落到鍵盤�
 點琴鍵試聽，點鍵盤線以上或拖進度條，都可以從那個位置開始播。
 音量、混音、情緒、種子、小節、顯示與連續播放設定會存在瀏覽器裡，下次開啟直接接上。
 
-`keyboard.html` 是電子琴：四套音色庫（晶片音色／寫實合成／物理擬真鋼琴／真實平台鋼琴取樣），
+`keyboard.html` 是電子琴：四套音色庫（晶片音色／寫實合成／物理擬真鋼琴／**真實錄音取樣**——平台鋼琴、
+小提琴、大提琴、長笛、單簧管、薩克斯風、小號、木吉他、豎琴、木琴等 20 種，選到才下載、抓過可離線），
 按住發聲、放開停止，可彈和弦；可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），
 琴鍵標示可切換電腦按鍵、音名或簡譜；音量、八度、標示與選用的音色同樣會記住。
 

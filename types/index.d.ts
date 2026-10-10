@@ -172,7 +172,8 @@ export type RealisticInstrumentName =
  *  `chip:<name>`) to pick the bank explicitly. */
 export type AnyInstrumentName =
   | InstrumentName | RealisticInstrumentName
-  | `real:${RealisticInstrumentName}` | `chip:${InstrumentName}`;
+  | `real:${RealisticInstrumentName}` | `chip:${InstrumentName}`
+  | SampledInstrumentName;
 
 export type InstrumentBank = 'chip' | 'real';
 
@@ -202,6 +203,80 @@ export declare const INSTRUMENT_LABELS: {
   chip: Record<InstrumentName, string>;
   real: Record<RealisticInstrumentName, string>;
 };
+
+/** A sampled (real recording) instrument: `sampled:<name>`. These are not
+ *  synthesised — the samples live on a public sample library and are fetched on
+ *  demand, cached in CacheStorage, and mixed into a MIDI render through
+ *  `renderMidi`'s `samples` option. */
+export type SampledInstrumentName = `sampled:${string}`;
+
+/** Every sampled instrument: { label, credit, synth, base, notes }.
+ *  `synth` is the bank voice to fall back on before the samples arrive. */
+export interface SampleInstrument {
+  label: string;
+  credit: string;
+  synth: AnyInstrumentName;
+  base: string;
+  notes: Record<number, string>;
+}
+export declare const SAMPLE_LIBRARY: Record<string, SampleInstrument>;
+export declare const SAMPLE_CREDIT: string;
+export declare const SAMPLE_PREFIX = 'sampled:';
+export declare function sampleName(name: string): SampledInstrumentName;
+export declare function sampleNames(): string[];
+export declare function sampleLabel(name: string): string;
+export declare function sampleSynth(name: string): AnyInstrumentName | null;
+export declare function sampleUrls(name: string): { midi: number; url: string }[];
+export declare function nearestSample<T extends { midi: number }>(notes: T[], midi: number): T | null;
+export declare function sampleVoice<T extends { midi: number }>(
+  notes: T[],
+  midi: number,
+): { sample: T; semitones: number; rate: number } | null;
+/** Mix a recording into an offline render (linear interpolation, note-off fade). */
+export declare function mixSampleInto(
+  out: Float32Array,
+  at: number,
+  pcm: Float32Array,
+  ratio: number,
+  gain: number,
+  opts?: { hold?: number; release?: number; rate?: number },
+): number;
+
+/** One decoded recording: `pcm` is mono at `rate` (an AudioContext rate). */
+export interface SamplePcm {
+  rate: number;
+  notes: { midi: number; pcm: Float32Array }[];
+}
+
+/** Fetches, decodes and plays recordings; one instance can hold many instruments. */
+export declare class SampledInstruments {
+  constructor(audioContextOrGetter: unknown, outputNodeOrGetter?: unknown);
+  readonly ctx: AudioContext | null;
+  readonly targetNode: AudioNode | null;
+  instruments: Map<string, { notes: { midi: number; buffer: AudioBuffer }[]; failed: number }>;
+  loadedCount: number;
+  total: number;
+  cacheName: string;
+  loaded(name: string): number;
+  wanted(name: string): number;
+  loading(name: string): boolean;
+  load(
+    name: string,
+    opts?: {
+      onProgress?: (done: number, total: number, name: string) => void;
+      fetchImpl?: (url: string) => Promise<Response>;
+      decode?: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
+    },
+  ): Promise<{ notes: { midi: number; buffer: AudioBuffer }[]; failed: number } | null>;
+  findBest(name: string, midi: number): { midi: number; buffer: AudioBuffer } | null;
+  playNote(
+    name: string,
+    note: number,
+    opts?: { vel?: number; gain?: number },
+  ): { source: AudioBufferSourceNode; release: (fade?: number) => void } | null;
+  pcm(name: string): SamplePcm | null;
+  voices(names?: string[]): Record<string, SamplePcm>;
+}
 /** Sustain rendered for a keyboard note whose length is not known yet. */
 export declare const HOLD_SECONDS: number;
 /** MIDI note number to Hz (A4 = 69 = 440 Hz). */
@@ -263,12 +338,17 @@ export interface MidiRenderOpts extends RenderOpts {
   tracks?: MidiTrackSettings[];
   /** Tempo multiplier, 0.25..4. Default 1. */
   speed?: number;
+  /** Decoded recordings for `sampled:<name>` tracks (see
+   *  `SampledInstruments.voices()`). A `sampled:` track without its samples here
+   *  is an error rather than a silent fallback. */
+  samples?: Record<string, SamplePcm> | null;
 }
 
 export declare const MAX_MIDI_SECONDS: number;
 /** Parse a Standard MIDI File; throws on malformed input. */
 export declare function parseMidi(data: ArrayBuffer | ArrayBufferView): Midi;
-/** Render a parsed MIDI file with chip voices to mono PCM. */
+/** Render a parsed MIDI file to mono PCM: chip/real voices are synthesised,
+ *  `sampled:` tracks are mixed from the recordings in `opts.samples`. */
 export declare function renderMidi(midi: Midi, opts?: MidiRenderOpts): Float32Array;
 
 /** A0: the lowest key of an 88-key piano. */

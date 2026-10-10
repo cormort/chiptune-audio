@@ -7,34 +7,14 @@
  */
 
 import { noteFreq } from './instruments.js';
+import { SampledInstruments } from './samples.js';
+import { SAMPLE_LIBRARY } from './sample-library.js';
 
-// 鋼琴音域標準 MIDI 對照表 (對應 Salamander Grand Piano 採樣檔名)
-export const PIANO_SAMPLES = [
-  { midi: 36, name: 'C2' },
-  { midi: 39, name: 'Ds2' },
-  { midi: 42, name: 'Fs2' },
-  { midi: 45, name: 'A2' },
-  { midi: 48, name: 'C3' },
-  { midi: 51, name: 'Ds3' },
-  { midi: 54, name: 'Fs3' },
-  { midi: 57, name: 'A3' },
-  { midi: 60, name: 'C4' },
-  { midi: 63, name: 'Ds4' },
-  { midi: 66, name: 'Fs4' },
-  { midi: 69, name: 'A4' },
-  { midi: 72, name: 'C5' },
-  { midi: 75, name: 'Ds5' },
-  { midi: 78, name: 'Fs5' },
-  { midi: 81, name: 'A5' },
-  { midi: 84, name: 'C6' },
-  { midi: 87, name: 'Ds6' },
-  { midi: 90, name: 'Fs6' },
-  { midi: 93, name: 'A6' },
-  { midi: 96, name: 'C7' },
-];
-
-const SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
-const CACHE_NAME = 'chiptune-piano-samples-v1';
+// 平台鋼琴的樣本清單（Salamander Grand Piano）。檔名與音高的對照在 sample-library.js，
+// 這裡只是把它整理成舊介面的樣子。
+export const PIANO_SAMPLES = Object.entries(SAMPLE_LIBRARY.grand.notes)
+  .map(([midi, file]) => ({ midi: +midi, name: file.replace(/\.mp3$/, '') }))
+  .sort((a, b) => a.midi - b.midi);
 
 /**
  * 純演算法高品質物理擬真鋼琴合成 (Acoustic Physical Modeling Synthesis)
@@ -187,89 +167,52 @@ export class AcousticPiano {
 
 /**
  * 真實平台鋼琴採樣播放器 (Sampled Grand Piano)
+ *
+ * 這是 `SampledInstruments`（src/samples.js）的一層薄包裝，只綁定平台鋼琴那組樣本，
+ * 並保留原本的行為：樣本還沒到（第一次播、離線、抓失敗）就退回 `AcousticPiano`
+ * 的高品質物理擬真合成，所以按鍵永遠有聲音。
  */
 export class SampledPiano {
   constructor(audioContextOrGetter, outputNodeOrGetter = null) {
-    this._ctx = audioContextOrGetter;
-    this._output = outputNodeOrGetter;
-    this.buffers = new Map(); // midi -> AudioBuffer
+    this.bank = new SampledInstruments(audioContextOrGetter, outputNodeOrGetter);
     this.acousticFallback = new AcousticPiano(audioContextOrGetter, outputNodeOrGetter);
-    this.isLoading = false;
-    this.loadedCount = 0;
+    this.name = 'grand';
   }
 
   get ctx() {
-    return typeof this._ctx === 'function' ? this._ctx() : this._ctx;
+    return this.bank.ctx;
   }
 
   get targetNode() {
-    const out = typeof this._output === 'function' ? this._output() : this._output;
-    return out || (this.ctx ? this.ctx.destination : null);
+    return this.bank.targetNode;
   }
 
-  /**
-   * 尋找最接近且已載入的採樣
-   */
+  /** 已載入的樣本，midi -> AudioBuffer（相容舊介面）。 */
+  get buffers() {
+    const out = new Map();
+    for (const n of this.bank.instruments.get(this.name)?.notes || []) out.set(n.midi, n.buffer);
+    return out;
+  }
+
+  get isLoading() {
+    return this.bank.loading(this.name);
+  }
+
+  get loadedCount() {
+    return this.bank.loaded(this.name);
+  }
+
+  /** 最接近又已載入的樣本（沒有的話 null）。 */
   findBestSample(targetMidi) {
-    if (this.buffers.size === 0) return null;
-    let closest = null;
-    let minDiff = Infinity;
-    for (const [midi, buf] of this.buffers.entries()) {
-      const diff = Math.abs(midi - targetMidi);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = { midi, buffer: buf };
-      }
-    }
-    return closest;
+    return this.bank.findBest(this.name, targetMidi);
   }
 
-  /**
-   * 背景預載常用音域採樣 (帶 Cache API 快取)
-   */
+  /** 預載平台鋼琴的樣本（帶 CacheStorage 快取）。已載完就不重抓。 */
   async preload(onProgress) {
-    if (this.isLoading || this.buffers.size >= PIANO_SAMPLES.length) return;
-    this.isLoading = true;
-
-    let cache = null;
-    try {
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        cache = await window.caches.open(CACHE_NAME);
-      }
-    } catch {
-      // ignore cache failure
-    }
-
-    const total = PIANO_SAMPLES.length;
-    for (const item of PIANO_SAMPLES) {
-      if (this.buffers.has(item.midi)) continue;
-      try {
-        const url = `${SAMPLE_BASE_URL}${item.name}.mp3`;
-        let res = null;
-        if (cache) {
-          res = await cache.match(url);
-        }
-        if (!res) {
-          res = await fetch(url);
-          if (res.ok && cache) {
-            try { cache.put(url, res.clone()); } catch {}
-          }
-        }
-        if (res && res.ok) {
-          const ab = await res.arrayBuffer();
-          const ctx = this.ctx;
-          if (ctx) {
-            const audioBuf = await ctx.decodeAudioData(ab);
-            this.buffers.set(item.midi, audioBuf);
-            this.loadedCount++;
-            if (onProgress) onProgress(this.loadedCount, total);
-          }
-        }
-      } catch (err) {
-        console.warn(`[SampledPiano] Failed loading sample ${item.name}:`, err);
-      }
-    }
-    this.isLoading = false;
+    if (this.loadedCount >= PIANO_SAMPLES.length) return;
+    await this.bank.load(this.name, {
+      onProgress: onProgress ? (done, total) => onProgress(done, total) : undefined,
+    });
   }
 
   /**
@@ -279,49 +222,8 @@ export class SampledPiano {
    * @returns {object} { source, release: (fade) => void }
    */
   playNote(note, opts = {}) {
-    const ctx = this.ctx;
-    if (!ctx) return null;
-    if (ctx.state === 'suspended') ctx.resume();
-
-    const sample = this.findBestSample(note);
-    let buf = null;
-    let playbackRate = 1.0;
-
-    if (sample && Math.abs(sample.midi - note) <= 12) {
-      buf = sample.buffer;
-      playbackRate = Math.pow(2, (note - sample.midi) / 12);
-    } else {
-      // 採樣尚未載入完成或無網路時，無縫平滑降級為高品質物理擬真合成！
-      return this.acousticFallback.playNote(note, opts);
-    }
-
-    if (!buf) return null;
-
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = playbackRate;
-
-    const gainNode = ctx.createGain();
-    const vel = opts.vel !== undefined ? opts.vel : 0.85;
-    gainNode.gain.value = Math.max(0, Math.min(1, vel * 0.9));
-
-    src.connect(gainNode);
-    gainNode.connect(this.targetNode);
-
-    src.start();
-
-    let released = false;
-    return {
-      source: src,
-      release: (fade = 0.22) => {
-        if (released) return;
-        released = true;
-        const now = ctx.currentTime;
-        const f = Math.max(0.02, fade);
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setTargetAtTime(0, now, f / 4);
-        try { src.stop(now + f); } catch {}
-      },
-    };
+    const voice = this.bank.playNote(this.name, note, opts);
+    // 樣本還沒到（或無網路）：無縫降級成物理擬真合成
+    return voice || this.acousticFallback.playNote(note, opts);
   }
 }
