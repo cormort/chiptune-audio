@@ -262,7 +262,10 @@ only markup and the page's own CSS — all script lives in `page/`:
 - `page/pianoview.js` — the canvas falling-notes display (`src/pianoroll.js` does the geometry)
 - `page/mixer.js` — bus strips and part strips, including marking the part faders inactive
   while a MIDI owns the music bus
-- `page/ui.js` — `$`, theme colours, time formatting, WAV download, `prefs` (localStorage)
+- `page/ui.js` — `$`, theme colours, time formatting, WAV download, `prefs` (localStorage),
+  and `collapsibleSections()`: any `<section data-collapse>` gets a heading that toggles it
+  (the console's three working sections start collapsed, the choice is remembered, an in-page
+  link to a collapsed section expands it, and importing a file expands the MIDI section)
 - `page/theme.css` — the shared design tokens both pages load
 
 If you rename a control, change the page markup and the module together:

@@ -90,3 +90,60 @@ export const prefs = {
     try { localStorage.removeItem(PREFS_KEY); } catch { /* 無痕模式 */ }
   },
 };
+
+/** 可收合的區塊：markup 只要在 <section> 上加 `data-collapse`，標題就會變成切換鈕。
+ *
+ *  為什麼預設收合：手機上四個區塊疊起來要好幾次捲動才看得到最後一區，而一次通常只
+ *  用得到其中一區。收起來之後整頁的標題一目了然，點哪個開哪個。
+ *  使用者點過就記住；導覽連結（#id）指到收合的區塊時會自動展開，不然點了像沒反應。
+ *  回傳 { open } 讓呼叫端可以在「使用者做了某件事」時主動展開（例如匯入 MIDI）。 */
+export function collapsibleSections({ defaultOpen = false } = {}) {
+  const sections = new Map();
+
+  for (const el of document.querySelectorAll('section[data-collapse]')) {
+    const h2 = el.querySelector('h2');
+    if (!h2) continue;
+    // 標題本身變成按鈕：字型與顏色沿用 h2，只在右邊多一個箭頭
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'twist';
+    while (h2.firstChild) btn.append(h2.firstChild);
+    const caret = document.createElement('span');
+    caret.className = 'caret';
+    caret.setAttribute('aria-hidden', 'true');
+    btn.append(caret);
+    h2.append(btn);
+
+    const key = `open:${el.id}`;
+    const set = (open, remember = true) => {
+      el.classList.toggle('collapsed', !open);
+      btn.setAttribute('aria-expanded', String(open));
+      btn.title = open ? '收起' : '展開';
+      if (remember) prefs.set(key, open);
+    };
+    set(prefs.get(key, defaultOpen), false);
+    btn.onclick = () => set(el.classList.contains('collapsed'));
+    sections.set(el.id, { el, set });
+  }
+
+  /** 展開某個區塊（給「使用者剛做了跟它有關係的事」用，例如匯入 MIDI）。 */
+  const open = (id) => {
+    const hit = sections.get(id);
+    if (hit) hit.set(true);
+    return !!hit;
+  };
+
+  // 導覽連結指到收合的區塊：先展開再讓瀏覽器捲過去
+  const reveal = () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (id && sections.has(id)) open(id);
+  };
+  addEventListener('hashchange', reveal);
+  addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (a) setTimeout(reveal, 0);   // hash 沒變時不會有 hashchange
+  });
+  reveal();
+
+  return { open, sections };
+}

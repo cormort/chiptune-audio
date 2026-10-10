@@ -14,11 +14,15 @@ import {
   autoInstruments, SampledKit, SAMPLE_KIT,
 } from '../src/index.js';
 import { DRUM_KIT } from './drum-library.js';
-import { $, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
+import { $, collapsibleSections, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
 import { createMixer } from './mixer.js';
 import { createPianoView } from './pianoview.js';
 
 registerServiceWorker();
+
+// 三個工作區塊預設收合（主控不收：它最短，也是所有聲音的出口）。
+// 匯入檔案時會自動展開 MIDI 區，不然拖進去的東西會「掉進收起來的抽屜」。
+const sections = collapsibleSections();
 
 const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 // 取樣音色：抓到的樣本可以在離線算 MIDI 時混進去（見 src/midi.js 的 opts.samples）。
@@ -400,6 +404,7 @@ function midiCandidates(files) {
 async function addFiles(files) {
   const picked = midiCandidates(files);
   if (!picked.length) return;
+  sections.open('midiSection');
   const first = queue.length;
   if (picked.length > 1) $('midiStatus').textContent = `讀取 ${picked.length} 個檔案…`;
   for (const file of picked) queue.push(await readMidiFile(file));

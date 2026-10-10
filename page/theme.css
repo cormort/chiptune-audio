@@ -33,6 +33,19 @@ h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
 header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
 a { color: var(--accent); }
 section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+/* 可收合的區塊（markup 加 data-collapse，行為在 page/ui.js）：標題本身就是切換鈕。
+   收合時只留標題，所以下緣的間距要自己收掉，不然會多出一段空白。 */
+section[data-collapse] > h2 { margin: 0; }
+section[data-collapse].collapsed { padding-bottom: 16px; }
+section[data-collapse].collapsed > :not(h2) { display: none; }
+h2 > .twist { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit;
+  cursor: pointer; text-align: start; }
+h2 > .twist:hover { color: var(--accent); }
+h2 > .twist .caret { flex: 0 0 auto; width: .5em; height: .5em; margin-inline-end: .25em;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform .15s ease; }
+section[data-collapse]:not(.collapsed) > h2 > .twist .caret { transform: rotate(45deg); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 button, select, input[type=number] {
   font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);

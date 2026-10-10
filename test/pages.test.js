@@ -65,6 +65,29 @@ test('the performance view starts zoomed, not with the whole range squeezed in',
   assert.ok(markup.includes(`<option value="${value}">`), `index.html has no option for the default ${value}`);
 });
 
+test('the console sections start collapsed, and the nav still opens them', () => {
+  // 手機上四個區塊疊起來要好幾次捲動；三個工作區塊預設收合，只留標題。
+  // 這種事在測試裡看不出來，所以釘住三件會壞掉的地方：哪幾區該收、主控不該收、
+  // 以及「導覽連結指到收合的區塊要自動展開」（不然點了看起來像沒反應）。
+  const markup = read('index.html');
+  const collapsed = [...markup.matchAll(/<section id="([^"]+)"[^>]*data-collapse/g)].map((m) => m[1]);
+  assert.deepEqual(collapsed, ['sfx', 'music', 'midiSection'], 'the three working sections should collapse');
+  assert.ok(!collapsed.includes('master'), '主控是最短的區塊，也是所有聲音的出口，不該收起來');
+  for (const id of collapsed) {
+    assert.ok(markup.includes(`href="#${id}"`), `no nav link to #${id}: nothing would expand it`);
+  }
+  const ui = read('page/ui.js');
+  assert.match(ui, /section\[data-collapse\]/, 'page/ui.js does not look for the collapsible sections');
+  assert.match(ui, /defaultOpen = false/, 'collapsible sections must start collapsed');
+  assert.match(ui, /hashchange/, 'in-page links would scroll to a collapsed section');
+  assert.match(ui, /prefs\.get\(key/, 'the open/closed choice is not remembered');
+  // 匯入 MIDI 時要展開那一區（拖進去的檔案不該掉進收起來的抽屜）
+  const consoleSrc = read('page/console.js');
+  assert.match(consoleSrc, /collapsibleSections\(/, 'page/console.js never wires the sections');
+  assert.match(consoleSrc, /sections\.open\('midiSection'\)/, 'importing a file does not reveal the MIDI section');
+  assert.ok(read('page/theme.css').includes('section[data-collapse]'), 'page/theme.css has no collapsed style');
+});
+
 test('both pages share the theme and pull in no page-local copy of it', () => {
   for (const page of PAGES) {
     const markup = read(page.html);
