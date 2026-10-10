@@ -13,58 +13,32 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
+<!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
+<link rel="stylesheet" href="page/theme.css">
 <style>
-  /* 單欄控制台：音量 → 音效（預設、滑桿、波形、參數）→ 音樂，手機上由上往下操作 */
-  :root {
-    --bg: #f3f4f7; --panel: #ffffff; --text: #1b1d24; --muted: #62677a;
-    --line: #d9dce5; --accent: #3558d6; --accent-text: #ffffff; --wave: #3558d6;
-    --key-white: #ffffff; --key-white-text: #62677a; --key-black: #22252f; --key-black-text: #c6cad8;
-    --font-display: "Silkscreen", ui-monospace, monospace;
-    --font-body: system-ui, -apple-system, "Noto Sans TC", sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
-      --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
-      --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
-    --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
-    --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
-    color-scheme: dark;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 var(--font-body); }
-  main { max-width: 56rem; margin: 0 auto; padding: 16px; }
-  h1, h2 { font-family: var(--font-display); font-weight: 400; letter-spacing: .02em; text-wrap: balance; }
-  h1 { font-size: 1.5rem; margin: .5rem 0 1rem; }
-  h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  button, select, input[type=number] {
-    font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
-    border-radius: 6px; padding: .4rem .75rem; min-height: 2.25rem;
-  }
-  button { cursor: pointer; }
-  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  button.on { outline: 2px solid var(--accent); }
+  /* 控制台版面。順序照使用流程：主控（輸出）→ 音效 → 音樂 → MIDI。
+     音效、音樂、MIDI 三區各自是「設定 → 產生 → 播放 → 匯出」。 */
+  p.flow { margin: -.35rem 0 .75rem; }
+  .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
+  .strip { flex: 1 1 5.5rem; max-width: 8rem; display: flex; flex-direction: column; align-items: center; gap: 6px;
+           padding: 10px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .strip.bus { border-color: var(--accent); }
+  .strip .name { font-size: 13px; }
+  .strip .val { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .strip input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 2rem; height: 9rem; }
+  .strip .row { gap: 4px; justify-content: center; }
+  .strip button { min-height: 1.9rem; padding: .2rem .55rem; font: 12px var(--font-mono); }
+  .strip button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
+  .strip.silent input[type=range] { opacity: .4; }
+  /* 推桿現在沒作用（例如 MIDI 擁有音樂匯流排時的聲部） */
+  .strip.inactive { opacity: .45; }
+
   .params { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 6px 20px; margin: 12px 0; }
   .param { display: grid; grid-template-columns: 6.5rem 1fr 3.5rem; gap: 8px; align-items: center; }
   .param span:last-child { text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
   canvas { width: 100%; height: 90px; display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
   pre { margin: 8px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
         overflow-x: auto; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
-  .muted { color: var(--muted); font-size: 13px; }
-  label.inline { display: inline-flex; gap: 6px; align-items: center; }
-
-  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
-  a { color: var(--accent); }
 
   /* MIDI 軌道：名稱｜樂器｜音量｜靜音，窄螢幕時名稱獨佔一行 */
   .track { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7rem 4.5rem; gap: 8px; align-items: center;
@@ -86,40 +60,48 @@
   #pianoRoll { height: 300px; cursor: pointer; touch-action: manipulation; }
   @media (max-width: 560px) { #pianoRoll { height: 216px; } }
   #rollBar { margin: 8px 0 0; }
-
-  /* 混音台：每個聲部一條直立推桿 */
-  .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
-  .strip { flex: 1 1 5.5rem; max-width: 8rem; display: flex; flex-direction: column; align-items: center; gap: 6px;
-           padding: 10px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-  .strip.bus { border-color: var(--accent); }
-  .strip .name { font-size: 13px; }
-  .strip .val { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  .strip input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 2rem; height: 9rem; }
-  .strip .row { gap: 4px; justify-content: center; }
-  .strip button { min-height: 1.9rem; padding: .2rem .55rem; font: 12px var(--font-mono); }
-  .strip button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
-  .strip.silent input[type=range] { opacity: .4; }
+  /* 進度條佔滿剩下的寬度，時間讀數固定在最右邊 */
+  #midiSeek { flex: 1 1 12rem; min-width: 8rem; }
+  #rollInfo { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 </style>
 
 <main>
   <header>
     <h1>chiptune-audio 控制台</h1>
-    <a href="keyboard.html">電子琴 →</a>
+    <nav class="nav" aria-label="區塊">
+      <a href="#master">主控</a>
+      <a href="#sfx">音效</a>
+      <a href="#music">音樂</a>
+      <a href="#midiSection">MIDI</a>
+      <a href="keyboard.html">電子琴 →</a>
+    </nav>
   </header>
 
-  <section>
+  <!-- 主控：所有聲音都會經過的輸出層 -->
+  <section id="master">
+    <h2>主控</h2>
+    <p class="muted flow">輸出音量與兩條匯流排；下面的音效、音樂、MIDI 都從這裡出去。</p>
     <div class="row">
       <label class="inline">總音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:10rem"></label>
       <label class="inline"><input id="mute" type="checkbox"> 靜音</label>
       <button id="stopAll">■ 停止全部音效</button>
     </div>
+    <div class="mixer" id="busMixer"></div>
+    <div class="row">
+      <button id="resetMix">重設混音</button>
+      <span class="muted">匯流排立即生效；「重設混音」會把音樂的三條聲部推桿一起還原</span>
+    </div>
   </section>
 
-  <section>
+  <!-- 音效：挑預設 → 調參數 → 看波形 → 試聽／匯出 -->
+  <section id="sfx">
     <h2>音效</h2>
+    <p class="muted flow">① 挑一個預設 → ② 拉滑桿調參數（放開就聽得到）→ ③ 播放、複製 JSON 或下載 WAV。</p>
     <div class="row" id="presets"></div>
-    <div class="params" id="params"></div>
-    <canvas id="wave" width="900" height="90"></canvas>
+    <div class="params" id="params">
+      <label class="param"><span>波形</span><select id="waveSel"></select><span></span></label>
+    </div>
+    <canvas id="wave" width="900" height="90" aria-label="音效波形"></canvas>
     <div class="row" style="margin-top:12px">
       <button class="primary" id="playSfx">▶ 播放</button>
       <button id="randomSfx">隨機</button>
@@ -132,8 +114,10 @@
       「雜訊種子」只在波形為 NOISE 時有作用，換個數字即得到不同質地的雜訊。</p>
   </section>
 
-  <section>
+  <!-- 音樂：產生參數 → 播放 → 三條聲部推桿（只有這一區產生的音樂吃得到） -->
+  <section id="music">
     <h2>音樂</h2>
+    <p class="muted flow">① 選情緒、種子、小節 → ② 播放（可先「預先算好」避免第一拍卡頓）→ ③ 用聲部推桿調主旋律／貝斯／鼓組。</p>
     <div class="row">
       <label class="inline">情緒 <select id="mood"></select></label>
       <label class="inline">種子 <input id="seed" type="number" value="1" min="1" style="width:6rem"></label>
@@ -144,26 +128,35 @@
       <button class="primary" id="playMusic">▶ 播放音樂</button>
       <button id="preloadMusic" title="先算好並快取，播放時就不會卡頓">⤓ 預先算好</button>
       <button id="stopMusic">■ 停止</button>
-      <button id="wavMusic" title="下載一個循環（套用混音台的聲部音量）">⤓ WAV</button>
+      <button id="wavMusic" title="下載一個循環（套用聲部推桿）">⤓ WAV</button>
       <span class="muted" id="musicInfo"></span>
     </div>
+    <div class="mixer" id="partMixer"></div>
+    <div class="row"><span class="muted" id="mixInfo"></span><span class="muted" id="partHint"></span></div>
+    <p class="muted">聲部推桿放開時才重新合成音樂，並從原位置接著播；M 靜音、S 獨奏（只作用於音樂聲部）。
+      聲部是烘進音樂裡的，所以播放 MIDI 時它們不影響 MIDI。</p>
   </section>
 
+  <!-- MIDI：匯入 → 軌道音色 → 鋼琴演奏顯示 → 播放 -->
   <section id="midiSection">
     <h2>MIDI 重新混音</h2>
+    <p class="muted flow">① 匯入檔（或拖進這一區）→ ② 逐軌挑樂器、調音量 → ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、匯出 WAV。</p>
     <div class="row">
       <input id="midiFile" type="file" accept=".mid,.midi,.smf,.kar,.rmi,audio/midi,audio/x-midi,application/x-midi">
       <label class="inline"><input id="midiAutoPlay" type="checkbox" checked> 載入後自動播放</label>
       <span class="muted" id="midiInfo">匯入 .mid / .smf 檔（.rmi、gzip 壓縮或前面帶標籤的檔案也可以），或拖進這一區</span>
     </div>
     <div id="midiTracks"></div>
+
     <canvas id="pianoRoll" width="900" height="300" aria-label="鋼琴演奏顯示（落下的音符與發聲的琴鍵）"></canvas>
     <div class="row" id="rollBar">
       <label class="inline"><input id="rollOn" type="checkbox" checked> 顯示鋼琴演奏</label>
       <label class="inline">視窗 <select id="rollWindow">
         <option value="2">2 秒</option><option value="4" selected>4 秒</option><option value="8">8 秒</option></select></label>
-      <span class="muted" id="rollInfo">匯入 MIDI 後，這裡會跟著音樂顯示落下的音符與發聲的琴鍵</span>
+      <input id="midiSeek" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="播放位置">
+      <span id="rollInfo" aria-live="off">匯入 MIDI 後，這裡會跟著音樂顯示落下的音符與發聲的琴鍵</span>
     </div>
+
     <div class="row">
       <label class="inline">速度 <select id="midiSpeed">
         <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
@@ -177,708 +170,11 @@
     <p class="muted">支援 .mid 與 .smf（Standard MIDI File，格式 0／1）——兩者格式相同，只是副檔名不同，
       檔名不符也能靠檔頭辨認。播放中換樂器、音量或速度，會重新合成並從原位置接著播。MIDI 走「音樂」匯流排，
       混音台的主旋律／貝斯／鼓組推桿只作用於上方產生的音樂。第 10 聲道（打擊樂）預設為鼓組。
-      下方的鋼琴演奏跟著播放位置移動：音符落到鍵盤線時發聲，琴鍵亮起代表正在響（顏色對應軌道，
-      第 10 聲道的鼓另有一條節奏帶）；點琴鍵可試聽，點鍵盤線以上可從該處開始播。</p>
-  </section>
-
-  <section>
-    <h2>混音</h2>
-    <div class="mixer" id="mixer"></div>
-    <div class="row">
-      <button id="resetMix">重設混音</button>
-      <span class="muted" id="mixInfo"></span>
-    </div>
-    <p class="muted">音效、音樂兩條匯流排即時生效；主旋律、貝斯、鼓組放開推桿時才重新合成音樂，並從原位置接著播。
-      M 靜音、S 獨奏（只作用於音樂聲部）。</p>
+      鋼琴演奏跟著播放位置移動：音符落到鍵盤線時發聲，琴鍵亮起代表正在響（顏色對應軌道，
+      第 10 聲道的鼓另有一條節奏帶）；點琴鍵可試聽，點鍵盤線以上、或拖進度條，都可以從該處開始播。
+      設定（音量、混音、情緒、種子、小節、MIDI 顯示）會存在瀏覽器裡，下次開啟不用重調。</p>
   </section>
 </main>
 
-<script type="module">
-// Offline / installable app (see sw.js). Service workers need http(s), not file://.
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-
-import {
-  ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
-  INSTRUMENTS, INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, encodeWav,
-  instrumentNote, instrumentRelease, BLACK_KEY_HEIGHT,
-  flattenMidi, pianoRange, pianoLayout, noteIndexAfter, notesSoundingAt, keyAt, pitchName,
-} from './src/index.js';
-
-const audio = new ChiptuneAudio({ volume: 0.6 });
-const $ = (id) => document.getElementById(id);
-
-// [key, label, min, max, step]
-const SLIDERS = [
-  ['freq', '頻率 Hz', 20, 3000, 1],
-  ['slide', '滑音 oct/s', -8, 8, 0.1],
-  ['duty', '脈寬', 0.05, 0.95, 0.01],
-  ['dutySweep', '脈寬掃動', -2, 2, 0.05],
-  ['vibDepth', '顫音深度', 0, 0.1, 0.001],
-  ['vibRate', '顫音速度', 0, 40, 0.5],
-  ['arpMult', '琶音倍率', 0.5, 2, 0.01],
-  ['arpTime', '琶音時間', 0, 0.5, 0.01],
-  ['bits', 'Bit-crush', 0, 8, 1],
-  ['attack', '起音', 0, 0.3, 0.005],
-  ['sustain', '持續', 0, 1, 0.01],
-  ['decay', '衰減', 0, 1.5, 0.01],
-  ['vol', '音量', 0, 1, 0.01],
-  ['seed', '雜訊種子', 1, 64, 1],
-];
-const WAVE_NAMES = Object.keys(WAVE);   // SQUARE, SAW, TRIANGLE, NOISE
-
-let params = { ...SFX_DEFAULTS };
-const inputs = {};
-
-// Wave selector + sliders
-{
-  const wrap = $('params');
-  const div = document.createElement('label');
-  div.className = 'param';
-  div.innerHTML = '<span>波形</span><select id="waveSel"></select><span></span>';
-  wrap.append(div);
-  for (const n of WAVE_NAMES) $('waveSel').add(new Option(n, WAVE[n]));
-  $('waveSel').onchange = (e) => { params.wave = +e.target.value; refresh(); };
-
-  for (const [key, label, min, max, step] of SLIDERS) {
-    const row = document.createElement('label');
-    row.className = 'param';
-    row.innerHTML = `<span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}"><span></span>`;
-    const input = row.querySelector('input');
-    input.oninput = () => { params[key] = +input.value; refresh(); };
-    input.onchange = () => audio.playSfx(params);   // release slider → hear it
-    inputs[key] = input;
-    wrap.append(row);
-  }
-}
-
-const SFX_LABELS = {
-  coin: '金幣', jump: '跳躍', laser: '雷射', hit: '擊中', explosion: '爆炸', powerup: '強化',
-  select: '選取', gameover: '遊戲結束', win: '勝利', shoot: '射擊', blip: '對話', click: '點擊',
-  hurt: '受傷', pickup: '拾取', heal: '補血', levelup: '升級', door: '開門', step: '腳步',
-  bounce: '彈跳', alarm: '警報', teleport: '傳送', charge: '蓄力', error: '錯誤', splash: '水花',
-};
-for (const name of Object.keys(SFX_PRESETS)) {
-  const b = document.createElement('button');
-  b.textContent = SFX_LABELS[name] ? `${SFX_LABELS[name]} ${name}` : name;
-  b.dataset.preset = name;
-  b.onclick = () => { load(SFX_PRESETS[name], name); audio.playSfx(params); };
-  $('presets').append(b);
-}
-
-function load(preset, name = null) {
-  params = { ...SFX_DEFAULTS, ...preset };
-  for (const b of $('presets').children) b.classList.toggle('on', b.dataset.preset === name);
-  refresh();
-}
-
-const round = (v) => Math.round(v * 1000) / 1000;
-
-// Only the params that differ from the defaults, i.e. what you'd paste into a preset.
-function diffParams() {
-  const out = {};
-  for (const k of Object.keys(SFX_DEFAULTS)) if (params[k] !== SFX_DEFAULTS[k]) out[k] = round(params[k]);
-  return out;
-}
-
-function refresh() {
-  $('waveSel').value = params.wave;
-  for (const [key] of SLIDERS) {
-    inputs[key].value = params[key];
-    inputs[key].nextElementSibling.textContent = round(params[key]);
-  }
-  const t0 = performance.now();
-  const samples = renderSfx(params);
-  const ms = performance.now() - t0;
-  drawWave(samples);
-  $('sfxInfo').textContent =
-    `${(samples.length / SAMPLE_RATE).toFixed(2)} 秒 · 合成 ${ms.toFixed(1)} ms`;
-  $('sfxJson').textContent = JSON.stringify(diffParams());
-}
-
-function drawWave(samples) {
-  const c = $('wave'), g = c.getContext('2d');
-  g.clearRect(0, 0, c.width, c.height);
-  g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wave');
-  g.beginPath();
-  const per = Math.max(1, Math.floor(samples.length / c.width));
-  for (let x = 0; x < c.width; x++) {
-    let lo = 0, hi = 0;
-    for (let i = x * per; i < Math.min(samples.length, (x + 1) * per); i++) {
-      lo = Math.min(lo, samples[i]); hi = Math.max(hi, samples[i]);
-    }
-    const mid = c.height / 2;
-    g.moveTo(x + 0.5, mid - hi * mid);
-    g.lineTo(x + 0.5, mid - lo * mid + 1);
-  }
-  g.stroke();
-}
-
-$('playSfx').onclick = () => audio.playSfx(params);
-$('stopAll').onclick = () => audio.stopAllSfx();
-$('randomSfx').onclick = () => {
-  const p = {};
-  for (const [key, , min, max, step] of SLIDERS) p[key] = Math.round((min + Math.random() * (max - min)) / step) * step;
-  p.wave = Math.floor(Math.random() * WAVE_NAMES.length);
-  p.attack = Math.min(p.attack, 0.05);
-  p.vol = 0.5;
-  load(p);
-  audio.playSfx(params);
-};
-function downloadWav(samples, filename) {
-  const url = URL.createObjectURL(new Blob([encodeWav(samples, SAMPLE_RATE)], { type: 'audio/wav' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-$('wavSfx').onclick = () => {
-  const on = $('presets').querySelector('.on');
-  downloadWav(renderSfx(params), `${on ? on.dataset.preset : 'sfx'}.wav`);
-};
-
-$('copySfx').onclick = async () => {
-  const text = JSON.stringify(diffParams());
-  try { await navigator.clipboard.writeText(text); $('copySfx').textContent = '已複製'; }
-  catch {
-    // 剪貼簿被擋時改成選取文字，讓使用者自己複製
-    getSelection().selectAllChildren($('sfxJson'));
-    $('copySfx').textContent = '已選取，請手動複製';
-  }
-  setTimeout(() => { $('copySfx').textContent = '複製參數'; }, 1500);
-};
-
-// Music
-const MOOD_LABELS = {
-  happy: '快樂', calm: '平靜', tense: '緊張', sad: '悲傷', heroic: '英勇', playful: '俏皮',
-  dreamy: '夢幻', mysterious: '神秘', spooky: '恐怖', boss: '魔王戰', groovy: '藍調律動',
-};
-for (const m of Object.keys(MOODS)) $('mood').add(new Option(MOOD_LABELS[m] ? `${MOOD_LABELS[m]} ${m}` : m, m));
-
-function musicOptions() {
-  return { seed: +$('seed').value || 1, mood: $('mood').value, bars: +$('bars').value };
-}
-
-// 合成整首循環會花十幾毫秒；先算好就能在播放時立即開始。
-function preloadMusic() {
-  const opts = musicOptions();
-  const t0 = performance.now();
-  audio.preloadMusic(opts);
-  const ms = performance.now() - t0;
-  const song = generateSong(opts);
-  $('musicInfo').textContent =
-    `已備妥：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒 · 合成 ${ms.toFixed(1)} ms`;
-}
-
-// Which kind of music owns audio.music, so the song controls never replace a MIDI.
-let nowPlaying = null;   // 'song' | 'midi' | null
-
-function playMusic() {
-  const opts = musicOptions();
-  audio.playMusic(opts);
-  nowPlaying = 'song';
-  $('midiStatus').textContent = '';
-  const song = generateSong(opts);
-  $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒`;
-}
-
-$('playMusic').onclick = playMusic;
-$('preloadMusic').onclick = preloadMusic;
-$('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); playMusic(); };
-$('stopMusic').onclick = () => { if (nowPlaying === 'song') stopAllMusic(); };
-const songPlaying = () => audio.music && nowPlaying === 'song';
-for (const id of ['mood', 'bars']) $(id).onchange = () => { if (songPlaying()) playMusic(); };
-$('seed').onchange = () => { if (songPlaying()) playMusic(); };
-
-function stopAllMusic() {
-  audio.stopMusic();
-  nowPlaying = null;
-  $('musicInfo').textContent = '';
-  $('midiStatus').textContent = '';
-  roll.freeze = 0;
-  scheduleRoll();
-}
-
-// MIDI remix: parse once, then re-render with each track's instrument.
-let midi = null;
-let midiTracks = [];      // per-track { instrument, volume, mute }, indexed like midi.tracks
-let midiSpeed = 1;
-let midiName = 'midi';
-
-// .mid and .smf are the same format; .kar (MIDI + lyrics) and .rmi (RIFF-wrapped)
-// too. parseMidi finds the MThd header itself, so a renamed file, a RIFF/RMID
-// container or one with an ID3 tag glued on the front all still load.
-const MIDI_FILE = /\.(mid|midi|smf|kar|rmi)$/i;
-
-/** Some archives ship `song.mid.gz`; browsers can inflate it natively. */
-async function midiBytes(file) {
-  const buf = await file.arrayBuffer();
-  const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
-  if (head[0] === 0x1f && head[1] === 0x8b && typeof DecompressionStream === 'function') {
-    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return new Response(stream).arrayBuffer();
-  }
-  return buf;
-}
-
-async function loadMidiFile(file) {
-  let parsed;
-  try {
-    parsed = parseMidi(await midiBytes(file));
-  } catch (err) {
-    // Drop whatever was playing: it no longer matches what the panel shows.
-    if (nowPlaying === 'midi') stopAllMusic();
-    midi = null;
-    midiTracks = [];
-    $('midiInfo').textContent = `${file.name} 無法讀取：${err.message}`;
-    buildTracks();
-    buildRoll();
-    return;
-  }
-  midi = parsed;
-  midiName = file.name.replace(MIDI_FILE, '') || 'midi';
-  midiTracks = midi.tracks.map((t) => ({ instrument: t.instrument, volume: 1, mute: false }));
-  const notes = midi.tracks.reduce((n, t) => n + t.notes.length, 0);
-  $('midiInfo').textContent = midi.tracks.length
-    ? `${file.name}：${fmtTime(midi.duration)}，${midi.tracks.length} 軌，${notes} 個音符`
-    : `${file.name} 裡沒有音符`;
-  buildTracks();
-  if (nowPlaying === 'midi') stopAllMusic();   // the old piece is not this file
-  roll.freeze = 0;
-  buildRoll();
-  if (midi.tracks.length && $('midiAutoPlay').checked) playMidi();
-}
-
-$('midiFile').onchange = (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';   // picking the same file twice must fire change again
-  if (file) loadMidiFile(file);
-};
-
-// Dropping a file anywhere else would navigate away from the console.
-const dropsFiles = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes('Files');
-addEventListener('dragover', (e) => { if (dropsFiles(e)) e.preventDefault(); });
-addEventListener('drop', (e) => { if (dropsFiles(e)) e.preventDefault(); });
-
-const midiSection = $('midiSection');
-midiSection.addEventListener('dragover', (e) => {
-  if (!dropsFiles(e)) return;
-  e.preventDefault();
-  midiSection.classList.add('dropping');
-});
-midiSection.addEventListener('dragleave', (e) => {
-  if (!midiSection.contains(e.relatedTarget)) midiSection.classList.remove('dropping');
-});
-midiSection.addEventListener('drop', (e) => {
-  if (!dropsFiles(e)) return;
-  e.preventDefault();
-  midiSection.classList.remove('dropping');
-  const files = [...e.dataTransfer.files];
-  const file = files.find((f) => MIDI_FILE.test(f.name)) || files[0];
-  if (file) loadMidiFile(file);
-});
-
-const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-function buildTracks() {
-  const wrap = $('midiTracks');
-  wrap.textContent = '';
-  const has = !!(midi && midi.tracks.length);
-  $('playMidi').disabled = !has;
-  $('stopMidi').disabled = !has;
-  $('wavMidi').disabled = !has;
-  if (!has) return;
-  midi.tracks.forEach((t, i) => {
-    const s = midiTracks[i];
-    const row = document.createElement('div');
-    row.className = 'track';
-    row.innerHTML = `<div class="tname"></div><select aria-label="樂器"></select>
-      <input type="range" min="0" max="1" step="0.01" aria-label="音量">
-      <label class="inline"><input type="checkbox"> 靜音</label>`;
-    const nameEl = row.querySelector('.tname');
-    nameEl.textContent = t.name;
-    const small = document.createElement('small');
-    small.textContent = `聲道 ${t.channel + 1} · ${t.notes.length} 音符`;
-    nameEl.append(small);
-    const sel = row.querySelector('select');
-    // Chip voices only: a realistic voice costs ~15x per sample and the midi
-    // renderer lays down every note's full tail, which would freeze the tab.
-    // `real:<name>` is still available through the library and the CLI.
-    for (const k of Object.keys(INSTRUMENT_BANKS.chip)) sel.add(new Option(INSTRUMENT_LABELS.chip[k] || k, k));
-    sel.add(new Option('鼓組', 'drums'));
-    sel.value = s.instrument;
-    sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
-    const vol = row.querySelector('input[type=range]');
-    vol.value = s.volume;
-    vol.onchange = () => { s.volume = +vol.value; remixIfPlaying(); };
-    const mute = row.querySelector('input[type=checkbox]');
-    mute.onchange = () => { s.mute = mute.checked; row.classList.toggle('muted-track', s.mute); remixIfPlaying(); };
-    wrap.append(row);
-  });
-}
-
-async function playMidi(offset = 0) {
-  $('midiStatus').textContent = '合成中…';
-  await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
-  const t0 = performance.now();
-  audio.playMidi(midi, { tracks: midiTracks, speed: midiSpeed, loop: $('midiLoop').checked, offset });
-  const ms = performance.now() - t0;
-  nowPlaying = 'midi';
-  $('musicInfo').textContent = '';
-  $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
-  roll.freeze = offset;
-  scheduleRoll();
-}
-
-function remixIfPlaying(speedRatio = 1) {
-  buildRoll();   // 樂器／音量／靜音／速度都會改變要畫的音符
-  if (audio.music && nowPlaying === 'midi') playMidi(audio.musicTime * speedRatio);
-  else scheduleRoll();
-}
-
-$('playMidi').onclick = () => playMidi();
-$('stopMidi').onclick = () => { if (nowPlaying === 'midi') stopAllMusic(); };
-$('midiSpeed').onchange = (e) => {
-  const old = midiSpeed;
-  midiSpeed = +e.target.value;
-  remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
-};
-$('midiLoop').onchange = () => remixIfPlaying();
-
-// ---- 鋼琴演奏顯示 -----------------------------------------------------------
-// 落下的音符與發聲的琴鍵。位置全部來自 src/pianoroll.js，這裡只負責畫；播放頭讀
-// audio.musicTime（AudioContext 的時鐘），所以重新合成、換樂器或改變速度後
-// 續播，畫面都對得上聲音。
-const TRACK_HUES = [214, 330, 152, 32, 268, 190, 4, 96];
-const trackColor = (i) => `hsl(${TRACK_HUES[i % TRACK_HUES.length]} 70% 52%)`;
-const midiPlaying = () => !!audio.music && nowPlaying === 'midi';
-
-const roll = {
-  flat: { notes: [], maxDur: 0, duration: 0 },
-  low: 48, high: 72,
-  layout: null, width: 0,
-  count: 0,        // 沒被靜音的音符數，只有狀態改變時才算
-  hasDrums: false,
-  freeze: 0,       // 停止時停在這個位置
-  raf: 0,
-  info: '',
-};
-
-/** 重新整理要畫的音符。樂器、音量、靜音、速度改變時都要重算。 */
-function buildRoll() {
-  roll.flat = midi
-    ? flattenMidi(midi, { tracks: midiTracks, speed: midiSpeed })
-    : { notes: [], maxDur: 0, duration: 0 };
-  const range = pianoRange(roll.flat.notes);
-  roll.low = range.low;
-  roll.high = range.high;
-  roll.count = roll.flat.notes.reduce((n, note) => n + (note.mute ? 0 : 1), 0);
-  roll.hasDrums = roll.flat.notes.some((n) => n.drum && !n.mute);
-  roll.layout = null;
-  roll.freeze = Math.min(roll.freeze, roll.flat.duration);
-  scheduleRoll();
-}
-
-function scheduleRoll() {
-  if (!roll.raf) roll.raf = requestAnimationFrame(tickRoll);
-}
-
-function tickRoll() {
-  roll.raf = 0;
-  drawRoll();
-  if (midiPlaying()) { scheduleRoll(); return; }   // 播放中就持續更新
-  // 一首播完（沒有循環）之後停在最後一個音符上，畫面會是空的：倒回開頭，
-  // 讓人看到接下來要彈的東西。
-  if (nowPlaying === 'midi' && roll.freeze > 0 && roll.freeze >= roll.flat.duration - 0.05) {
-    roll.freeze = 0;
-    drawRoll();
-  }
-}
-
-/** 這張 canvas 的分割：旋律區、節奏帶、鍵盤，以及每秒幾像素。 */
-function rollMetrics(W, H) {
-  const keysH = H < 240 ? 46 : 64;
-  const drumH = roll.hasDrums ? (H < 240 ? 11 : 15) : 0;
-  const rollBottom = H - keysH - drumH;
-  const seconds = +$('rollWindow').value || 4;
-  return { keysH, drumH, rollBottom, seconds, pxPerSec: rollBottom / seconds };
-}
-
-// 鼓沒有音高，把 GM 鼓號分成幾欄，讓同一種鼓固定落在同一個位置。
-const DRUM_COLUMNS = [[36, 0.06], [40, 0.28], [47, 0.48], [53, 0.66], [59, 0.82], [127, 0.94]];
-function drumColumn(note) {
-  for (const [max, frac] of DRUM_COLUMNS) if (note <= max) return frac;
-  return 0.94;
-}
-
-function setRollInfo(text) {
-  if (roll.info === text) return;
-  roll.info = text;
-  $('rollInfo').textContent = text;
-}
-
-function drawRoll() {
-  const c = $('pianoRoll');
-  const on = $('rollOn').checked;
-  c.style.display = on ? 'block' : 'none';
-  if (!on) { setRollInfo('鋼琴演奏顯示已關閉'); return; }
-
-  const W = Math.max(1, c.clientWidth);
-  const H = Math.max(1, c.clientHeight);
-  const scale = Math.min(2, window.devicePixelRatio || 1);
-  if (c.width !== Math.round(W * scale) || c.height !== Math.round(H * scale)) {
-    c.width = Math.round(W * scale);      // 背後的點陣圖跟著 DPR 放大，字才不會糊
-    c.height = Math.round(H * scale);
-  }
-  const g = c.getContext('2d');
-  g.setTransform(scale, 0, 0, scale, 0, 0);
-  g.clearRect(0, 0, W, H);
-
-  const theme = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  const muted = theme('--muted', '#666');
-  const line = theme('--line', '#ccc');
-  const accent = theme('--accent', '#3558d6');
-  const keyWhite = theme('--key-white', '#fff');
-  const keyBlack = theme('--key-black', '#22252f');
-  const keyInk = theme('--key-white-text', '#62677a');
-
-  if (!roll.flat.notes.length) {
-    g.fillStyle = muted;
-    g.font = '13px ui-monospace, monospace';
-    g.textAlign = 'center';
-    g.fillText('匯入 .mid / .smf 後，這裡會跟著音樂顯示鋼琴演奏', W / 2, H / 2);
-    g.textAlign = 'start';
-    setRollInfo('尚未載入 MIDI');
-    return;
-  }
-
-  const { keysH, drumH, rollBottom, seconds, pxPerSec } = rollMetrics(W, H);
-  if (!roll.layout || roll.width !== W) {
-    roll.layout = pianoLayout(roll.low, roll.high, W);
-    roll.width = W;
-  }
-  const keys = roll.layout.keys;
-  const now = midiPlaying() ? audio.musicTime : roll.freeze;
-  if (midiPlaying()) roll.freeze = now;
-
-  // ---- 旋律區：往下掉的音符 ----
-  g.save();
-  g.beginPath();
-  g.rect(0, 0, W, rollBottom);
-  g.clip();
-  g.font = '10px ui-monospace, monospace';
-  for (const [note, k] of keys) {         // 每個 C 一條線，當作位置的依據
-    if (note % 12 !== 0) continue;
-    const x = Math.round(k.x) + 0.5;
-    g.strokeStyle = line;
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(x, 0);
-    g.lineTo(x, rollBottom);
-    g.stroke();
-    g.fillStyle = muted;
-    g.fillText(pitchName(note), x + 3, 11);
-  }
-  const from = noteIndexAfter(roll.flat.notes, now - Math.max(seconds, roll.flat.maxDur));
-  for (let i = from; i < roll.flat.notes.length; i++) {
-    const n = roll.flat.notes[i];
-    if (n.mute || n.drum) continue;
-    const k = keys.get(n.note);
-    if (!k) continue;
-    const h = Math.max(3, n.dur * pxPerSec);
-    const bottom = rollBottom - (n.time - now) * pxPerSec;
-    if (bottom < -1) break;                          // 更後面的都還在畫面之上
-    if (bottom - h > rollBottom) continue;           // 已經滑過鍵盤線
-    const w = Math.max(1.5, k.w - 1);
-    g.globalAlpha = 0.4 + 0.6 * Math.min(1, n.vel);
-    g.fillStyle = trackColor(n.track);
-    g.beginPath();
-    if (g.roundRect) g.roundRect(k.x + 0.5, bottom - h, w, h, Math.min(3, w / 2));
-    else g.rect(k.x + 0.5, bottom - h, w, h);
-    g.fill();
-  }
-  g.globalAlpha = 1;
-  // 播放頭：音符掉到這條線就發聲
-  g.strokeStyle = accent;
-  g.lineWidth = 2;
-  g.beginPath();
-  g.moveTo(0, rollBottom - 1);
-  g.lineTo(W, rollBottom - 1);
-  g.stroke();
-  g.restore();
-
-  // ---- 節奏帶：打擊樂沒有音高，用壓縮的時間軸提示即將到來的鼓點 ----
-  if (drumH) {
-    const laneSecs = 1.5;
-    g.fillStyle = line;
-    g.fillRect(0, rollBottom, W, drumH);
-    g.save();
-    g.beginPath();
-    g.rect(0, rollBottom, W, drumH);
-    g.clip();
-    for (let i = from; i < roll.flat.notes.length; i++) {
-      const n = roll.flat.notes[i];
-      if (n.time > now + laneSecs) break;
-      if (!n.drum || n.mute || n.time < now - 0.3) continue;
-      const y = rollBottom + drumH * (1 - (n.time - now) / laneSecs);
-      g.globalAlpha = Math.abs(n.time - now) < 0.12 ? 1 : 0.55;
-      g.fillStyle = trackColor(n.track);
-      g.beginPath();
-      g.roundRect ? g.roundRect(drumColumn(n.note) * W - 5, y - 2, 10, 4, 2) : g.rect(drumColumn(n.note) * W - 5, y - 2, 10, 4);
-      g.fill();
-    }
-    g.globalAlpha = 1;
-    g.restore();
-  }
-
-  // ---- 鍵盤：正在響的琴鍵用軌道顏色點亮 ----
-  const keysTop = H - keysH;
-  const active = new Map();
-  for (const n of notesSoundingAt(roll.flat.notes, now, roll.flat.maxDur)) {
-    if (n.drum || n.mute) continue;
-    if (!active.has(n.note)) active.set(n.note, n);
-  }
-  for (const k of keys.values()) {          // 白鍵先鋪滿整個寬度
-    if (k.black) continue;
-    const hit = active.get(k.note);
-    g.fillStyle = hit ? trackColor(hit.track) : keyWhite;
-    g.fillRect(k.x, keysTop, k.w - 1, keysH);
-    g.strokeStyle = line;
-    g.lineWidth = 1;
-    g.strokeRect(k.x + 0.5, keysTop + 0.5, k.w - 2, keysH - 1);
-  }
-  for (const k of keys.values()) {          // 黑鍵疊在上面
-    if (!k.black) continue;
-    const hit = active.get(k.note);
-    g.fillStyle = hit ? trackColor(hit.track) : keyBlack;
-    g.fillRect(k.x, keysTop, k.w, keysH * BLACK_KEY_HEIGHT);
-  }
-  if (roll.layout.whiteWidth > 22) {        // 夠寬才標音名，否則會擠成一團
-    g.font = '10px ui-monospace, monospace';
-    g.textAlign = 'center';
-    for (const [note, k] of keys) {
-      if (note % 12 !== 0 || k.black) continue;   // only the C keys are labelled
-      g.fillStyle = active.has(note) ? '#fff' : keyInk;
-      g.fillText('C', k.x + k.w / 2, H - 5);
-    }
-    g.textAlign = 'start';
-  }
-
-  const count = roll.count;
-  setRollInfo(`${fmtTime(now)} / ${fmtTime(roll.flat.duration)} · ${midiPlaying() ? '播放中' : '停止'} · ${count} 個音符`);
-}
-
-// 點琴鍵試聽，點鍵盤線以上從該處開始播，點節奏帶不做事。
-$('pianoRoll').onpointerdown = (e) => {
-  if (!midi || !roll.flat.notes.length) return;
-  const c = $('pianoRoll');
-  const W = Math.max(1, c.clientWidth);
-  const H = Math.max(1, c.clientHeight);
-  const { keysH, drumH, rollBottom, pxPerSec } = rollMetrics(W, H);
-  const box = c.getBoundingClientRect();
-  const x = e.clientX - box.left;
-  const y = e.clientY - box.top;
-
-  if (!roll.layout) { roll.layout = pianoLayout(roll.low, roll.high, W); roll.width = W; }
-  if (y >= H - keysH) {                     // 鍵盤：試聽
-    const note = keyAt(roll.layout, x, y - (H - keysH), keysH);
-    if (note === null) return;
-    const voice = audio.playNote(instrumentNote('piano', note, { seconds: 1.2, vel: 0.9 }));
-    if (voice) setTimeout(() => voice.release(instrumentRelease('piano') || 0.08), 420);
-    setRollInfo(`試聽 ${pitchName(note)}`);
-    return;
-  }
-  if (drumH && y >= rollBottom) return;     // 節奏帶有自己的時間軸，不用來跳播
-  const at = Math.max(0, Math.min(roll.flat.duration, roll.freeze + (rollBottom - y) / pxPerSec));
-  if (midiPlaying()) playMidi(at);
-  else { roll.freeze = at; scheduleRoll(); }
-};
-
-$('rollOn').onchange = () => { roll.width = 0; scheduleRoll(); };
-$('rollWindow').onchange = () => { roll.layout = null; scheduleRoll(); };
-// 視窗大小改變時，鍵盤的像素寬度也變了；重新排版再畫一張。
-addEventListener('resize', () => { roll.width = 0; scheduleRoll(); });
-
-$('wavMidi').onclick = () => {
-  downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`);
-};
-$('wavMusic').onclick = () => {
-  const opts = musicOptions();
-  const { lead, bass, drums } = audio.mix;
-  downloadWav(renderSong(generateSong(opts), { mix: { lead, bass, drums } }), `music-${opts.mood}-${opts.seed}.wav`);
-};
-
-// Mixer. Fader level, mute and solo are UI state; the engine only sees the result.
-const STRIPS = [
-  ['sfx', '音效', true], ['music', '音樂', true],
-  ['lead', '主旋律', false], ['bass', '貝斯', false], ['drums', '鼓組', false],
-];
-const strips = {};
-for (const [key, label, bus] of STRIPS) {
-  const el = document.createElement('div');
-  el.className = `strip${bus ? ' bus' : ''}`;
-  el.innerHTML = `<span class="name">${label}</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" aria-label="${label}音量">
-    <div class="row"><button data-act="mute" title="靜音">M</button>${bus ? '' : '<button data-act="solo" title="獨奏">S</button>'}</div>`;
-  const s = { el, level: 1, mute: false, solo: false, fader: el.querySelector('input') };
-  s.fader.oninput = () => { s.level = +s.fader.value; paintMix(); if (bus) applyMix(); };
-  s.fader.onchange = () => { if (!bus) applyMix(); };
-  el.querySelector('.row').onclick = (e) => {
-    const act = e.target.dataset.act;
-    if (!act) return;
-    s[act] = !s[act];
-    paintMix();
-    applyMix();
-  };
-  strips[key] = s;
-  $('mixer').append(el);
-}
-function effectiveMix() {
-  const anySolo = STRIPS.some(([k]) => strips[k].solo);
-  const out = {};
-  for (const [k, , bus] of STRIPS) {
-    const s = strips[k];
-    out[k] = s.mute || (!bus && anySolo && !s.solo) ? 0 : s.level;
-  }
-  return out;
-}
-function paintMix() {
-  const eff = effectiveMix();
-  for (const [k] of STRIPS) {
-    const s = strips[k];
-    s.fader.value = s.level;
-    s.el.querySelector('.val').textContent = `${Math.round(s.level * 100)}%`;
-    for (const b of s.el.querySelectorAll('button')) b.classList.toggle('on', s[b.dataset.act]);
-    s.el.classList.toggle('silent', eff[k] === 0);
-  }
-}
-// Bus levels apply instantly, but lead/bass/drums are baked into the rendered
-// loop: committing them costs a full re-render (tens of ms on a long loop), and
-// mute/solo/reset each used to pay it separately. Apply the buses at once and
-// coalesce a burst of part changes into one render.
-let mixTimer = 0;
-function applyMix() {
-  const eff = effectiveMix();
-  clearTimeout(mixTimer);
-  audio.setMix({ sfx: eff.sfx, music: eff.music });
-  mixTimer = setTimeout(() => {
-    const t0 = performance.now();
-    audio.setMix(effectiveMix());
-    const ms = performance.now() - t0;
-    $('mixInfo').textContent = ms > 2 ? `重新合成音樂 ${ms.toFixed(1)} ms` : '';
-  }, 120);
-}
-$('resetMix').onclick = () => {
-  for (const [k] of STRIPS) Object.assign(strips[k], { level: 1, mute: false, solo: false });
-  paintMix();
-  applyMix();
-};
-paintMix();
-
-$('volume').oninput = (e) => audio.setVolume(+e.target.value);
-$('mute').onchange = (e) => audio.setMuted(e.target.checked);
-
-load(SFX_PRESETS.coin, 'coin');
-scheduleRoll();   // 先畫一張空白提示，載入 MIDI 前也有東西看
-</script>
+<script type="module" src="page/console.js"></script>
 </html>

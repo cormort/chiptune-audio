@@ -164,6 +164,27 @@ audio.setMix({ music: 0.5, sfx: 1 });
 Types are in `types/index.d.ts`. Pages using ES modules must be served over
 HTTP (`npx serve .`), not opened as `file://`.
 
+## The demo pages (`index.html`, `keyboard.html`)
+
+The two pages demo this library; they are not part of the npm package. Their HTML holds
+only markup and the page's own CSS — all script lives in `page/`:
+
+- `page/console.js` — the control panel, wired top-to-bottom in the order the page is
+  laid out: 主控 (bus levels) → 音效 → 音樂 (part faders) → MIDI (import → tracks →
+  piano view → transport + seek bar)
+- `page/keyboard.js` — the on-screen keyboard and its four voice banks
+- `page/pianoview.js` — the canvas falling-notes display (`src/pianoroll.js` does the geometry)
+- `page/mixer.js` — bus strips and part strips, including marking the part faders inactive
+  while a MIDI owns the music bus
+- `page/ui.js` — `$`, theme colours, time formatting, WAV download, `prefs` (localStorage)
+- `page/theme.css` — the shared design tokens both pages load
+
+If you rename a control, change the page markup and the module together:
+`test/pages.test.js` checks that every `$('id')` a page module looks up exists in that
+page's HTML, and that the in-page nav links resolve. `test/sw.test.js` requires every
+`src/` and `page/` module plus `page/theme.css` to be in the `sw.js` precache list, so
+bump `VERSION` there when you add a file.
+
 ## Rules of thumb
 
 - Keep one-shot SFX under 1 s; lower `vol` for sounds that repeat often (`step`, `blip`).
