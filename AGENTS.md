@@ -128,6 +128,24 @@ sending its note-off cannot stack voices: at most 8 pending note-ons are kept pe
 channel/pitch (the oldest is stolen), so render time and memory stay bounded by the file's
 structure instead of by the number of unmatched on-notes.
 
+## Drawing a performance (piano display)
+
+`flattenMidi`, `pianoRange`, `pianoLayout`, `notesSoundingAt` and `keyAt` (all in
+`src/pianoroll.js`) turn a parsed file into the geometry of a falling-notes keyboard, with no
+DOM and no audio:
+
+```js
+const score = flattenMidi(midi, { tracks, speed });           // same options as renderMidi
+const { low, high } = pianoRange(score.notes);                // range to draw
+const layout = pianoLayout(low, high, width);                 // x/w per key
+notesSoundingAt(score.notes, audio.musicTime, score.maxDur);  // keys to light up now
+```
+
+`score.notes` is time-sorted and carries `{ time, dur, note, vel, track, drum, mute }` with
+the track settings and speed already applied, so a picture drawn from it matches the sound.
+`index.html` uses them for the canvas piano display under the MIDI panel; the drawing code
+is 100% of the browser-specific part.
+
 ## Use it in a browser game (library)
 
 ```js

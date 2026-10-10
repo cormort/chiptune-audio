@@ -107,6 +107,23 @@ A track can use either bank: `{ instrument: 'real:piano' }` (or the CLI's
 renderer lays down every note's full tail, so a long piece can take minutes — chip voices
 stay the default for that reason.
 
+### Showing the performance (piano display)
+
+```js
+import { flattenMidi, pianoRange, pianoLayout, notesSoundingAt, keyAt } from './src/index.js';
+
+const score = flattenMidi(midi, { tracks, speed });            // the notes as they will sound
+const { low, high } = pianoRange(score.notes);                 // the range worth drawing
+const layout = pianoLayout(low, high, canvasWidth);            // x/w for every key
+notesSoundingAt(score.notes, audio.musicTime, score.maxDur);   // the keys to light up now
+keyAt(layout, x, y - keysTop, keysHeight);                     // which key was clicked
+```
+
+`flattenMidi` takes the same per-track settings and `speed` as `renderMidi`, so a picture
+built from it matches what is heard. The helpers are pure geometry — no DOM, no audio —
+so they work in Node (they are covered by `test/pianoroll.test.js`) and suit any renderer;
+`index.html` uses them to draw the falling notes and the keyboard on a canvas.
+
 ### Lifecycle
 
 ```js
@@ -140,6 +157,9 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 .rmi、gzip 壓縮、或前面帶 ID3 標籤的檔案也會自動找到 MIDI 標頭），
 或直接把檔案拖進該區塊，載入後預設自動播放；每個軌道換成晶片樂器、調音量與速度；
 「混音」區有音效、音樂匯流排與主旋律／貝斯／鼓組推桿，含靜音與獨奏。
+MIDI 區下方是**鋼琴演奏顯示**：音符由上往下掉，落到鍵盤線時發聲，琴鍵亮起代表正在響
+（顏色對應軌道，第 10 聲道的鼓走另一條節奏帶）；可以選 2／4／8 秒的視窗、關掉整個顯示，
+點琴鍵試聽，點鍵盤線以上就從那個位置開始播。
 音效、音樂、MIDI 都有「⤓ WAV」按鈕可下載音檔。
 
 `keyboard.html` 是電子琴：12 個樂器格，按住發聲、放開停止，可彈和弦；

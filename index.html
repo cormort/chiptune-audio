@@ -18,6 +18,7 @@
   :root {
     --bg: #f3f4f7; --panel: #ffffff; --text: #1b1d24; --muted: #62677a;
     --line: #d9dce5; --accent: #3558d6; --accent-text: #ffffff; --wave: #3558d6;
+    --key-white: #ffffff; --key-white-text: #62677a; --key-black: #22252f; --key-black-text: #c6cad8;
     --font-display: "Silkscreen", ui-monospace, monospace;
     --font-body: system-ui, -apple-system, "Noto Sans TC", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -26,12 +27,14 @@
     :root:not([data-theme="light"]) {
       --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
       --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
+      --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
     --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --wave: #7d9bff;
+    --key-white: #d9dce7; --key-white-text: #4a4f63; --key-black: #0b0c14; --key-black-text: #8a90a8;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -78,6 +81,11 @@
   /* 匯入：整個 MIDI 區塊都是拖放目標，檔案拖進來時整塊亮起來 */
   #midiSection.dropping { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
   #midiSection.dropping #midiInfo { color: var(--accent); }
+
+  /* 鋼琴演奏：落下的音符與發聲的琴鍵畫在同一張 canvas 上 */
+  #pianoRoll { height: 300px; cursor: pointer; touch-action: manipulation; }
+  @media (max-width: 560px) { #pianoRoll { height: 216px; } }
+  #rollBar { margin: 8px 0 0; }
 
   /* 混音台：每個聲部一條直立推桿 */
   .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
@@ -149,6 +157,13 @@
       <span class="muted" id="midiInfo">匯入 .mid / .smf 檔（.rmi、gzip 壓縮或前面帶標籤的檔案也可以），或拖進這一區</span>
     </div>
     <div id="midiTracks"></div>
+    <canvas id="pianoRoll" width="900" height="300" aria-label="鋼琴演奏顯示（落下的音符與發聲的琴鍵）"></canvas>
+    <div class="row" id="rollBar">
+      <label class="inline"><input id="rollOn" type="checkbox" checked> 顯示鋼琴演奏</label>
+      <label class="inline">視窗 <select id="rollWindow">
+        <option value="2">2 秒</option><option value="4" selected>4 秒</option><option value="8">8 秒</option></select></label>
+      <span class="muted" id="rollInfo">匯入 MIDI 後，這裡會跟著音樂顯示落下的音符與發聲的琴鍵</span>
+    </div>
     <div class="row">
       <label class="inline">速度 <select id="midiSpeed">
         <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
@@ -161,7 +176,9 @@
     </div>
     <p class="muted">支援 .mid 與 .smf（Standard MIDI File，格式 0／1）——兩者格式相同，只是副檔名不同，
       檔名不符也能靠檔頭辨認。播放中換樂器、音量或速度，會重新合成並從原位置接著播。MIDI 走「音樂」匯流排，
-      混音台的主旋律／貝斯／鼓組推桿只作用於上方產生的音樂。第 10 聲道（打擊樂）預設為鼓組。</p>
+      混音台的主旋律／貝斯／鼓組推桿只作用於上方產生的音樂。第 10 聲道（打擊樂）預設為鼓組。
+      下方的鋼琴演奏跟著播放位置移動：音符落到鍵盤線時發聲，琴鍵亮起代表正在響（顏色對應軌道，
+      第 10 聲道的鼓另有一條節奏帶）；點琴鍵可試聽，點鍵盤線以上可從該處開始播。</p>
   </section>
 
   <section>
@@ -183,6 +200,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
   INSTRUMENTS, INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, encodeWav,
+  instrumentNote, instrumentRelease, BLACK_KEY_HEIGHT,
+  flattenMidi, pianoRange, pianoLayout, noteIndexAfter, notesSoundingAt, keyAt, pitchName,
 } from './src/index.js';
 
 const audio = new ChiptuneAudio({ volume: 0.6 });
@@ -376,6 +395,8 @@ function stopAllMusic() {
   nowPlaying = null;
   $('musicInfo').textContent = '';
   $('midiStatus').textContent = '';
+  roll.freeze = 0;
+  scheduleRoll();
 }
 
 // MIDI remix: parse once, then re-render with each track's instrument.
@@ -411,6 +432,7 @@ async function loadMidiFile(file) {
     midiTracks = [];
     $('midiInfo').textContent = `${file.name} 無法讀取：${err.message}`;
     buildTracks();
+    buildRoll();
     return;
   }
   midi = parsed;
@@ -422,6 +444,8 @@ async function loadMidiFile(file) {
     : `${file.name} 裡沒有音符`;
   buildTracks();
   if (nowPlaying === 'midi') stopAllMusic();   // the old piece is not this file
+  roll.freeze = 0;
+  buildRoll();
   if (midi.tracks.length && $('midiAutoPlay').checked) playMidi();
 }
 
@@ -502,10 +526,14 @@ async function playMidi(offset = 0) {
   nowPlaying = 'midi';
   $('musicInfo').textContent = '';
   $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
+  roll.freeze = offset;
+  scheduleRoll();
 }
 
 function remixIfPlaying(speedRatio = 1) {
+  buildRoll();   // 樂器／音量／靜音／速度都會改變要畫的音符
   if (audio.music && nowPlaying === 'midi') playMidi(audio.musicTime * speedRatio);
+  else scheduleRoll();
 }
 
 $('playMidi').onclick = () => playMidi();
@@ -516,6 +544,261 @@ $('midiSpeed').onchange = (e) => {
   remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
 };
 $('midiLoop').onchange = () => remixIfPlaying();
+
+// ---- 鋼琴演奏顯示 -----------------------------------------------------------
+// 落下的音符與發聲的琴鍵。位置全部來自 src/pianoroll.js，這裡只負責畫；播放頭讀
+// audio.musicTime（AudioContext 的時鐘），所以重新合成、換樂器或改變速度後
+// 續播，畫面都對得上聲音。
+const TRACK_HUES = [214, 330, 152, 32, 268, 190, 4, 96];
+const trackColor = (i) => `hsl(${TRACK_HUES[i % TRACK_HUES.length]} 70% 52%)`;
+const midiPlaying = () => !!audio.music && nowPlaying === 'midi';
+
+const roll = {
+  flat: { notes: [], maxDur: 0, duration: 0 },
+  low: 48, high: 72,
+  layout: null, width: 0,
+  count: 0,        // 沒被靜音的音符數，只有狀態改變時才算
+  hasDrums: false,
+  freeze: 0,       // 停止時停在這個位置
+  raf: 0,
+  info: '',
+};
+
+/** 重新整理要畫的音符。樂器、音量、靜音、速度改變時都要重算。 */
+function buildRoll() {
+  roll.flat = midi
+    ? flattenMidi(midi, { tracks: midiTracks, speed: midiSpeed })
+    : { notes: [], maxDur: 0, duration: 0 };
+  const range = pianoRange(roll.flat.notes);
+  roll.low = range.low;
+  roll.high = range.high;
+  roll.count = roll.flat.notes.reduce((n, note) => n + (note.mute ? 0 : 1), 0);
+  roll.hasDrums = roll.flat.notes.some((n) => n.drum && !n.mute);
+  roll.layout = null;
+  roll.freeze = Math.min(roll.freeze, roll.flat.duration);
+  scheduleRoll();
+}
+
+function scheduleRoll() {
+  if (!roll.raf) roll.raf = requestAnimationFrame(tickRoll);
+}
+
+function tickRoll() {
+  roll.raf = 0;
+  drawRoll();
+  if (midiPlaying()) { scheduleRoll(); return; }   // 播放中就持續更新
+  // 一首播完（沒有循環）之後停在最後一個音符上，畫面會是空的：倒回開頭，
+  // 讓人看到接下來要彈的東西。
+  if (nowPlaying === 'midi' && roll.freeze > 0 && roll.freeze >= roll.flat.duration - 0.05) {
+    roll.freeze = 0;
+    drawRoll();
+  }
+}
+
+/** 這張 canvas 的分割：旋律區、節奏帶、鍵盤，以及每秒幾像素。 */
+function rollMetrics(W, H) {
+  const keysH = H < 240 ? 46 : 64;
+  const drumH = roll.hasDrums ? (H < 240 ? 11 : 15) : 0;
+  const rollBottom = H - keysH - drumH;
+  const seconds = +$('rollWindow').value || 4;
+  return { keysH, drumH, rollBottom, seconds, pxPerSec: rollBottom / seconds };
+}
+
+// 鼓沒有音高，把 GM 鼓號分成幾欄，讓同一種鼓固定落在同一個位置。
+const DRUM_COLUMNS = [[36, 0.06], [40, 0.28], [47, 0.48], [53, 0.66], [59, 0.82], [127, 0.94]];
+function drumColumn(note) {
+  for (const [max, frac] of DRUM_COLUMNS) if (note <= max) return frac;
+  return 0.94;
+}
+
+function setRollInfo(text) {
+  if (roll.info === text) return;
+  roll.info = text;
+  $('rollInfo').textContent = text;
+}
+
+function drawRoll() {
+  const c = $('pianoRoll');
+  const on = $('rollOn').checked;
+  c.style.display = on ? 'block' : 'none';
+  if (!on) { setRollInfo('鋼琴演奏顯示已關閉'); return; }
+
+  const W = Math.max(1, c.clientWidth);
+  const H = Math.max(1, c.clientHeight);
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  if (c.width !== Math.round(W * scale) || c.height !== Math.round(H * scale)) {
+    c.width = Math.round(W * scale);      // 背後的點陣圖跟著 DPR 放大，字才不會糊
+    c.height = Math.round(H * scale);
+  }
+  const g = c.getContext('2d');
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  const theme = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  const muted = theme('--muted', '#666');
+  const line = theme('--line', '#ccc');
+  const accent = theme('--accent', '#3558d6');
+  const keyWhite = theme('--key-white', '#fff');
+  const keyBlack = theme('--key-black', '#22252f');
+  const keyInk = theme('--key-white-text', '#62677a');
+
+  if (!roll.flat.notes.length) {
+    g.fillStyle = muted;
+    g.font = '13px ui-monospace, monospace';
+    g.textAlign = 'center';
+    g.fillText('匯入 .mid / .smf 後，這裡會跟著音樂顯示鋼琴演奏', W / 2, H / 2);
+    g.textAlign = 'start';
+    setRollInfo('尚未載入 MIDI');
+    return;
+  }
+
+  const { keysH, drumH, rollBottom, seconds, pxPerSec } = rollMetrics(W, H);
+  if (!roll.layout || roll.width !== W) {
+    roll.layout = pianoLayout(roll.low, roll.high, W);
+    roll.width = W;
+  }
+  const keys = roll.layout.keys;
+  const now = midiPlaying() ? audio.musicTime : roll.freeze;
+  if (midiPlaying()) roll.freeze = now;
+
+  // ---- 旋律區：往下掉的音符 ----
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, W, rollBottom);
+  g.clip();
+  g.font = '10px ui-monospace, monospace';
+  for (const [note, k] of keys) {         // 每個 C 一條線，當作位置的依據
+    if (note % 12 !== 0) continue;
+    const x = Math.round(k.x) + 0.5;
+    g.strokeStyle = line;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, rollBottom);
+    g.stroke();
+    g.fillStyle = muted;
+    g.fillText(pitchName(note), x + 3, 11);
+  }
+  const from = noteIndexAfter(roll.flat.notes, now - Math.max(seconds, roll.flat.maxDur));
+  for (let i = from; i < roll.flat.notes.length; i++) {
+    const n = roll.flat.notes[i];
+    if (n.mute || n.drum) continue;
+    const k = keys.get(n.note);
+    if (!k) continue;
+    const h = Math.max(3, n.dur * pxPerSec);
+    const bottom = rollBottom - (n.time - now) * pxPerSec;
+    if (bottom < -1) break;                          // 更後面的都還在畫面之上
+    if (bottom - h > rollBottom) continue;           // 已經滑過鍵盤線
+    const w = Math.max(1.5, k.w - 1);
+    g.globalAlpha = 0.4 + 0.6 * Math.min(1, n.vel);
+    g.fillStyle = trackColor(n.track);
+    g.beginPath();
+    if (g.roundRect) g.roundRect(k.x + 0.5, bottom - h, w, h, Math.min(3, w / 2));
+    else g.rect(k.x + 0.5, bottom - h, w, h);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  // 播放頭：音符掉到這條線就發聲
+  g.strokeStyle = accent;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(0, rollBottom - 1);
+  g.lineTo(W, rollBottom - 1);
+  g.stroke();
+  g.restore();
+
+  // ---- 節奏帶：打擊樂沒有音高，用壓縮的時間軸提示即將到來的鼓點 ----
+  if (drumH) {
+    const laneSecs = 1.5;
+    g.fillStyle = line;
+    g.fillRect(0, rollBottom, W, drumH);
+    g.save();
+    g.beginPath();
+    g.rect(0, rollBottom, W, drumH);
+    g.clip();
+    for (let i = from; i < roll.flat.notes.length; i++) {
+      const n = roll.flat.notes[i];
+      if (n.time > now + laneSecs) break;
+      if (!n.drum || n.mute || n.time < now - 0.3) continue;
+      const y = rollBottom + drumH * (1 - (n.time - now) / laneSecs);
+      g.globalAlpha = Math.abs(n.time - now) < 0.12 ? 1 : 0.55;
+      g.fillStyle = trackColor(n.track);
+      g.beginPath();
+      g.roundRect ? g.roundRect(drumColumn(n.note) * W - 5, y - 2, 10, 4, 2) : g.rect(drumColumn(n.note) * W - 5, y - 2, 10, 4);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    g.restore();
+  }
+
+  // ---- 鍵盤：正在響的琴鍵用軌道顏色點亮 ----
+  const keysTop = H - keysH;
+  const active = new Map();
+  for (const n of notesSoundingAt(roll.flat.notes, now, roll.flat.maxDur)) {
+    if (n.drum || n.mute) continue;
+    if (!active.has(n.note)) active.set(n.note, n);
+  }
+  for (const k of keys.values()) {          // 白鍵先鋪滿整個寬度
+    if (k.black) continue;
+    const hit = active.get(k.note);
+    g.fillStyle = hit ? trackColor(hit.track) : keyWhite;
+    g.fillRect(k.x, keysTop, k.w - 1, keysH);
+    g.strokeStyle = line;
+    g.lineWidth = 1;
+    g.strokeRect(k.x + 0.5, keysTop + 0.5, k.w - 2, keysH - 1);
+  }
+  for (const k of keys.values()) {          // 黑鍵疊在上面
+    if (!k.black) continue;
+    const hit = active.get(k.note);
+    g.fillStyle = hit ? trackColor(hit.track) : keyBlack;
+    g.fillRect(k.x, keysTop, k.w, keysH * BLACK_KEY_HEIGHT);
+  }
+  if (roll.layout.whiteWidth > 22) {        // 夠寬才標音名，否則會擠成一團
+    g.font = '10px ui-monospace, monospace';
+    g.textAlign = 'center';
+    for (const [note, k] of keys) {
+      if (note % 12 !== 0 || k.black) continue;   // only the C keys are labelled
+      g.fillStyle = active.has(note) ? '#fff' : keyInk;
+      g.fillText('C', k.x + k.w / 2, H - 5);
+    }
+    g.textAlign = 'start';
+  }
+
+  const count = roll.count;
+  setRollInfo(`${fmtTime(now)} / ${fmtTime(roll.flat.duration)} · ${midiPlaying() ? '播放中' : '停止'} · ${count} 個音符`);
+}
+
+// 點琴鍵試聽，點鍵盤線以上從該處開始播，點節奏帶不做事。
+$('pianoRoll').onpointerdown = (e) => {
+  if (!midi || !roll.flat.notes.length) return;
+  const c = $('pianoRoll');
+  const W = Math.max(1, c.clientWidth);
+  const H = Math.max(1, c.clientHeight);
+  const { keysH, drumH, rollBottom, pxPerSec } = rollMetrics(W, H);
+  const box = c.getBoundingClientRect();
+  const x = e.clientX - box.left;
+  const y = e.clientY - box.top;
+
+  if (!roll.layout) { roll.layout = pianoLayout(roll.low, roll.high, W); roll.width = W; }
+  if (y >= H - keysH) {                     // 鍵盤：試聽
+    const note = keyAt(roll.layout, x, y - (H - keysH), keysH);
+    if (note === null) return;
+    const voice = audio.playNote(instrumentNote('piano', note, { seconds: 1.2, vel: 0.9 }));
+    if (voice) setTimeout(() => voice.release(instrumentRelease('piano') || 0.08), 420);
+    setRollInfo(`試聽 ${pitchName(note)}`);
+    return;
+  }
+  if (drumH && y >= rollBottom) return;     // 節奏帶有自己的時間軸，不用來跳播
+  const at = Math.max(0, Math.min(roll.flat.duration, roll.freeze + (rollBottom - y) / pxPerSec));
+  if (midiPlaying()) playMidi(at);
+  else { roll.freeze = at; scheduleRoll(); }
+};
+
+$('rollOn').onchange = () => { roll.width = 0; scheduleRoll(); };
+$('rollWindow').onchange = () => { roll.layout = null; scheduleRoll(); };
+// 視窗大小改變時，鍵盤的像素寬度也變了；重新排版再畫一張。
+addEventListener('resize', () => { roll.width = 0; scheduleRoll(); });
+
 $('wavMidi').onclick = () => {
   downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`);
 };
@@ -596,5 +879,6 @@ $('volume').oninput = (e) => audio.setVolume(+e.target.value);
 $('mute').onchange = (e) => audio.setMuted(e.target.checked);
 
 load(SFX_PRESETS.coin, 'coin');
+scheduleRoll();   // 先畫一張空白提示，載入 MIDI 前也有東西看
 </script>
 </html>

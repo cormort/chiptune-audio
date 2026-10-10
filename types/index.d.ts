@@ -267,6 +267,97 @@ export declare function parseMidi(data: ArrayBuffer | ArrayBufferView): Midi;
 /** Render a parsed MIDI file with chip voices to mono PCM. */
 export declare function renderMidi(midi: Midi, opts?: MidiRenderOpts): Float32Array;
 
+/** A0: the lowest key of an 88-key piano. */
+export declare const PIANO_LOW: number;
+/** C8: the highest key of an 88-key piano. */
+export declare const PIANO_HIGH: number;
+export declare const PITCH_NAMES: readonly string[];
+/** Height of a black key as a fraction of the keyboard, matching `keyAt`. */
+export declare const BLACK_KEY_HEIGHT: number;
+export declare function isBlackKey(note: number): boolean;
+/** Scientific pitch name, e.g. 60 -> "C4". */
+export declare function pitchName(note: number): string;
+
+/** One note of a flattened performance: the pitch actually sounded, ready to be
+ *  drawn on a keyboard. */
+export interface PianoNote {
+  /** Seconds from the start, with `speed` already applied. */
+  time: number;
+  dur: number;
+  /** Sounding pitch (0..127). Drums keep their GM key. */
+  note: number;
+  /** Velocity x track volume, 0..1. */
+  vel: number;
+  /** Index into `midi.tracks`. */
+  track: number;
+  /** True for a percussion part: no keyboard pitch, draw it as a hit instead. */
+  drum: boolean;
+  mute: boolean;
+  instrument: AnyInstrumentName | 'drums';
+}
+
+export interface PianoScore {
+  /** Time-sorted. */
+  notes: PianoNote[];
+  /** Longest note, in seconds: the bound `notesSoundingAt` needs. */
+  maxDur: number;
+  duration: number;
+}
+
+export interface FlattenMidiOpts {
+  /** Per-track overrides, indexed like `midi.tracks` (same as the renderer). */
+  tracks?: MidiTrackSettings[];
+  /** Tempo multiplier, 0.25..4. Default 1. */
+  speed?: number;
+}
+
+/** Flatten a parsed MIDI file into the notes a keyboard display should show,
+ *  with the same track settings and speed the renderer would use. */
+export declare function flattenMidi(midi: Midi, opts?: FlattenMidiOpts): PianoScore;
+
+export interface PianoRangeOpts {
+  low?: number;
+  high?: number;
+  /** Minimum number of semitones to show. Default 24. */
+  span?: number;
+}
+/** Pitch range a piece uses, widened to `span` and clamped to the 88 keys. */
+export declare function pianoRange(notes: PianoNote[], opts?: PianoRangeOpts): { low: number; high: number };
+
+export interface PianoKey {
+  note: number;
+  black: boolean;
+  /** Left edge, in the same units as `width`. */
+  x: number;
+  /** Key width. */
+  w: number;
+}
+
+export interface PianoLayout {
+  /** note -> key, for every note in the range. */
+  keys: Map<number, PianoKey>;
+  whiteCount: number;
+  whiteWidth: number;
+  blackWidth: number;
+}
+
+/** Horizontal position of each key: white keys tile `width`, black keys straddle
+ *  the boundary between their two neighbours. */
+export declare function pianoLayout(
+  low: number,
+  high: number,
+  width: number,
+  opts?: { blackRatio?: number },
+): PianoLayout;
+
+/** Index of the first note starting after `time` (notes must be time-sorted). */
+export declare function noteIndexAfter(notes: PianoNote[], time: number): number;
+/** Every note sounding at `time`, newest first. `maxDur` bounds the scan. */
+export declare function notesSoundingAt(notes: PianoNote[], time: number, maxDur?: number): PianoNote[];
+/** Note under `x` at `y` inside a keyboard of `height`, or null. Black keys win
+ *  where they overlap a white key. */
+export declare function keyAt(layout: PianoLayout, x: number, y: number, height: number): number | null;
+
 export interface NoteHandle {
   source: AudioBufferSourceNode;
   /** Fade out over `fade` seconds (default 0.08) and stop. Idempotent. */

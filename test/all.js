@@ -1,9 +1,10 @@
-﻿import './audio.test.js';
+import './audio.test.js';
 import './regressions.test.js';
 import './parity.test.js';
 import './engine.test.js';
 import './api.test.js';
 import './midi.test.js';
+import './pianoroll.test.js';
 import './voices.test.js';
 import './wav.test.js';
 import './cli.test.js';
