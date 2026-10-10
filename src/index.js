@@ -18,6 +18,7 @@ export {
 } from './pianoroll.js';
 export { encodeWav } from './wav.js';
 export { renderAcousticPiano, AcousticPiano, SampledPiano, PIANO_SAMPLES } from './piano.js';
+export { SAMPLE_KIT, SampledKit, pickHit, kitNotes, kitHas } from './drums.js';
 export {
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,

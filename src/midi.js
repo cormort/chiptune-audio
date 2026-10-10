@@ -1,6 +1,7 @@
 import { renderSfxInto, SAMPLE_RATE, WAVE } from './sfx.js';
 import { INSTRUMENTS, instrumentNote, resolveInstrument } from './instruments.js';
 import { mixSampleInto, sampleVoice } from './samples.js';
+import { pickHit, SAMPLE_KIT } from './drums.js';
 
 /** Longest MIDI render, in seconds. Later notes are dropped: a 5-minute mono
  *  buffer at 48 kHz is already ~58 MB. */
@@ -14,6 +15,10 @@ const TAIL_SECONDS = 1.5;
 const SAMPLE_VOICE_GAIN = 0.7;
 /** Fade applied from note-off to the end of a sampled note (a sampler's release). */
 const SAMPLE_RELEASE_SECONDS = 0.14;
+/** Level a drum hit is mixed at before the final normalisation: the recordings are
+ *  normalised per hit, so this is headroom, not volume (each hit carries its own
+ *  `gain` from the kit data, which is what balances kick against hi-hat). */
+const KIT_VOICE_GAIN = 0.9;
 
 const DRUM_CHANNEL = 9; // GM channel 10
 
@@ -321,16 +326,36 @@ export function renderMidi(midi, opts = {}) {
     if (volume === 0) return;
     const instrument = s.instrument || track.instrument;
     const voice = samples ? samples[instrument] : null;
-    if (instrument !== 'drums' && !voice && !resolveInstrument(instrument)) throw new Error(`Unknown instrument: ${instrument}`);
+    // 真實鼓組：`sampled:kit` 走的是 opts.samples[instrument].kit（見 src/drums.js）
+    const kit = instrument === SAMPLE_KIT && voice && voice.kit ? voice.kit : null;
+    const drums = instrument === 'drums' || instrument === SAMPLE_KIT;
+    if (!drums && !voice && !resolveInstrument(instrument)) throw new Error(`Unknown instrument: ${instrument}`);
+    // 指定了真實鼓組卻沒給鼓的樣本：是錯的，不是靜靜地播合成鼓（呼叫端要自己決定
+    // 要不要退回 'drums'——頁面就是這樣做的）。
+    if (instrument === SAMPLE_KIT && !kit) throw new Error(`Unknown instrument: ${instrument} (no drum samples were passed)`);
     const transpose = Number.isFinite(s.transpose) ? Math.round(s.transpose) : 0;
 
     let hit = 0;
+    const rounds = new Map();     // 同一個鼓音連續打時輪流用不同的錄音（round robin）
     for (const n of track.notes) {
       const time = n.time / speed;
       if (time >= limit) break;
       const at = Math.round(time * sampleRate);
       const vel = (Number.isFinite(n.vel) ? n.vel : 1) * volume;
       const note = Math.min(127, Math.max(0, n.note + transpose));
+      if (drums) {
+        // 鼓是 one-shot：note-off 不切掉它（真實的鼓打下去就是讓它響完）。
+        // 有取樣的音用錄音；這一套鼓沒錄到的音（例如定音鼓）退回合成鼓，不會靜音。
+        const played = kit ? pickHit(kit[note], vel, rounds.get(note) || 0) : null;
+        if (played) {
+          rounds.set(note, (rounds.get(note) || 0) + 1);
+          const ratio = (voice.rate / sampleRate);
+          mixSampleInto(out, at, played.pcm, ratio, KIT_VOICE_GAIN * played.gain * vel);
+        } else {
+          renderSfxInto(out, at, drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0), sampleRate);
+        }
+        continue;
+      }
       if (voice) {
         // 取樣：挑最近的錄音，用播放速率補半音；音長到 note-off 之後淡出，
         // 錄音本身放完就結束（樣本沒有循環，長音不會無限延長）。

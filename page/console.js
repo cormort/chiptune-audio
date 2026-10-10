@@ -11,8 +11,9 @@ import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
   INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, flattenMidi,
   SampledInstruments, SAMPLE_LIBRARY, SAMPLE_PREFIX, sampleNames, sampleLabel, sampleSynth,
-  autoInstruments,
+  autoInstruments, SampledKit, SAMPLE_KIT,
 } from '../src/index.js';
+import { DRUM_KIT } from './drum-library.js';
 import { $, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
 import { createMixer } from './mixer.js';
 import { createPianoView } from './pianoview.js';
@@ -23,6 +24,8 @@ const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 // 取樣音色：抓到的樣本可以在離線算 MIDI 時混進去（見 src/midi.js 的 opts.samples）。
 const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);
 const SAMPLE_KEYS = sampleNames();
+// 真實鼓組（page/drum-library.js）：擊點是 repo 裡的小 mp3，隨按即響、離線也能打。
+const kit = new SampledKit(() => audio._ensure(), () => audio.master);
 
 // Which kind of music owns audio.music, so the song controls never replace a MIDI.
 let nowPlaying = null;   // 'song' | 'midi' | null
@@ -356,7 +359,8 @@ async function readMidiFile(file) {
 
 /** 音色在狀態列裡怎麼稱呼：來源（取樣／寫實合成／晶片）比名字本身更重要。 */
 function instrumentShort(name) {
-  if (name === 'drums') return '鼓';
+  if (name === 'drums') return '鼓（晶片）';
+  if (name === SAMPLE_KIT) return `${DRUM_KIT.label}（取樣）`;
   if (name.startsWith(SAMPLE_PREFIX)) return `${sampleLabel(name.slice(SAMPLE_PREFIX.length))}（取樣）`;
   if (name.startsWith('real:')) return `${INSTRUMENT_LABELS.real[name.slice(5)] || name.slice(5)}（寫實合成）`;
   return `${INSTRUMENT_LABELS.chip[name] || name}（晶片）`;
@@ -543,7 +547,11 @@ function buildTracks() {
     sampleGroup.label = '真實錄音取樣（要下載）';
     for (const k of SAMPLE_KEYS) sampleGroup.append(new Option(sampleLabel(k), `${SAMPLE_PREFIX}${k}`));
     sel.append(sampleGroup);
-    sel.add(new Option('鼓組', 'drums'));
+    const drumGroup = document.createElement('optgroup');
+    drumGroup.label = '鼓';
+    drumGroup.append(new Option(`${DRUM_KIT.label}（取樣）`, SAMPLE_KIT));
+    drumGroup.append(new Option('鼓組（晶片，快）', 'drums'));
+    sel.append(drumGroup);
     sel.value = s.instrument;
     sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
     const vol = row.querySelector('input[type=range]');
@@ -564,29 +572,44 @@ const sampledUsed = () => [...new Set(midiTracks
   .map((t) => String(t.instrument).slice(SAMPLE_PREFIX.length))
   .filter((n) => SAMPLE_LIBRARY[n]))];
 
-/** 播放／匯出前把用到的取樣樂器抓好（抓過就是快取，不會重抓）。
- *  回傳 { samples, fallback }：要混進 renderMidi 的樣本，以及連抓都抓不到而必須
- *  改用合成代理音的樂器（離線、或樣本庫掛掉）——不能讓整首變成沒聲音。 */
+/** 目前這首有沒有用到真實鼓組。 */
+const usesKit = () => midiTracks.some((t) => !t.mute && t.instrument === SAMPLE_KIT);
+
+/** 播放／匯出前把用到的取樣音色抓好（抓過就是快取，不會重抓）。
+ *  回傳 { samples, fallback, kitFallback }：要混進 renderMidi 的樣本，以及連抓都抓不到
+ *  而必須改用合成代理音的樂器（離線、或樣本庫掛掉）——不能讓整首變成沒聲音。 */
 async function ensureSamples() {
   const want = sampledUsed();
-  if (!want.length) return { samples: null, fallback: [] };
+  const wantKit = usesKit();
+  if (!want.length && !wantKit) return { samples: null, fallback: [], kitFallback: false };
   const todo = want.filter((n) => sampled.loaded(n) < sampled.wanted(n));
-  if (todo.length) {
-    $('midiStatus').textContent = `下載取樣音色：${todo.map(sampleLabel).join('、')}…`;
-    await Promise.all(todo.map((n) => sampled.load(n)));
+  const needKit = wantKit && kit.loaded() < kit.wanted(DRUM_KIT);
+  if (todo.length || needKit) {
+    const names = [...todo.map(sampleLabel), ...(needKit ? [DRUM_KIT.label] : [])];
+    $('midiStatus').textContent = `準備取樣音色：${names.join('、')}…`;
+    await Promise.all([
+      ...todo.map((n) => sampled.load(n)),
+      ...(needKit ? [kit.load(DRUM_KIT, {
+        onProgress: (done, total) => { $('midiStatus').textContent = `準備${DRUM_KIT.label}：${done}/${total}…`; },
+      })] : []),
+    ]);
   }
   const fallback = want.filter((n) => sampled.loaded(n) === 0);
-  if (fallback.length) {
-    $('midiStatus').textContent = `取樣抓不到，${fallback.map(sampleLabel).join('、')} 先用合成音色代替`;
+  const kitFallback = wantKit && kit.loaded() === 0;
+  if (fallback.length || kitFallback) {
+    const names = [...fallback.map(sampleLabel), ...(kitFallback ? [DRUM_KIT.label] : [])];
+    $('midiStatus').textContent = `取樣抓不到，${names.join('、')} 先用合成音色代替`;
   }
-  const voices = sampled.voices(want.filter((n) => sampled.loaded(n) > 0));
-  return { samples: Object.keys(voices).length ? voices : null, fallback };
+  const samples = { ...sampled.voices(want.filter((n) => sampled.loaded(n) > 0)) };
+  if (wantKit && !kitFallback) Object.assign(samples, kit.voices(SAMPLE_KIT));
+  return { samples: Object.keys(samples).length ? samples : null, fallback, kitFallback };
 }
 
-/** 這一輪要算的軌道設定：取樣抓不到的軌換成它的合成代理音。 */
-function tracksForRender(fallback = []) {
-  if (!fallback.length) return midiTracks;
+/** 這一輪要算的軌道設定：取樣抓不到的軌換成它的合成代理音（鼓組退回晶片鼓）。 */
+function tracksForRender(fallback = [], kitFallback = false) {
+  if (!fallback.length && !kitFallback) return midiTracks;
   return midiTracks.map((t) => {
+    if (kitFallback && t.instrument === SAMPLE_KIT) return { ...t, instrument: 'drums' };
     const name = String(t.instrument).startsWith(SAMPLE_PREFIX) ? String(t.instrument).slice(SAMPLE_PREFIX.length) : '';
     if (!fallback.includes(name)) return t;
     return { ...t, instrument: sampleSynth(name) || 'real:piano' };
@@ -596,13 +619,13 @@ function tracksForRender(fallback = []) {
 async function playMidi(offset = 0) {
   midiStarted = false;   // 還沒真的開始播（這中間的 tick 不該當成「播完了」）
   midiDone = false;      // 新的一輪：下一次「播完」要重新判斷
-  const { samples, fallback } = await ensureSamples();
+  const { samples, fallback, kitFallback } = await ensureSamples();
   $('midiStatus').textContent = usesRealVoices() ? '合成中…（寫實音色較慢，請稍等）' : '合成中…';
   await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
   if (!midi || !midi.tracks.length) return;
   const t0 = performance.now();
   const src = audio.playMidi(midi, {
-    tracks: tracksForRender(fallback), samples, speed: midiSpeed, loop: $('midiLoop').checked, offset,
+    tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed, loop: $('midiLoop').checked, offset,
   });
   const ms = performance.now() - t0;
   // 全部軌道都被靜音之類的情況：沒有東西可播就不要假裝在播，也別讓連續播放接力下去。
@@ -656,13 +679,13 @@ $('midiClear').onclick = () => {
   rebuildScore();
 };
 $('wavMidi').onclick = async () => {
-  const { samples, fallback } = await ensureSamples();
+  const { samples, fallback, kitFallback } = await ensureSamples();
   // 寫實音色的 WAV 要算一段時間；先讓狀態畫出來，不然畫面會像當掉。
   if (usesRealVoices()) {
     $('midiStatus').textContent = '匯出中…（寫實音色較慢，請稍等）';
     await new Promise((r) => setTimeout(r));
   }
-  downloadWav(renderMidi(midi, { tracks: tracksForRender(fallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
+  downloadWav(renderMidi(midi, { tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
   if (!midiPlaying()) $('midiStatus').textContent = `已下載 ${midiName}-remix.wav`;
 };
 

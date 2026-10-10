@@ -124,8 +124,37 @@ Before a recording arrives — first press, or offline — `SAMPLE_LIBRARY[name]
 synthesised voice to play instead, so a key is never silent. A `sampled:` track with no
 entry in `renderMidi`'s `samples` is an error, not a quiet fallback.
 
-Sample licensing: samples CC-BY 3.0 (credits in `SAMPLE_LIBRARY`, i.e.
-`src/sample-library.js`); the Salamander piano is Alexander Holm's V3.
+### Sampled drums
+
+Percussion is sampled too, and unlike the instruments above it ships **inside the repo**:
+`page/drum-library.js` maps the GM percussion notes (35–84) to 101 one-shots in
+`samples/drums/` (about 1.5 MB of mono 44.1 kHz mp3). Drums are one-shots, so they need no
+pitch interpolation and compress hard — and because they are same-origin files they are
+precached by the service worker, so a kit hit is instant and works offline. That is the
+trade the instruments above make in the opposite direction: they stay out of the repo and
+pay a first-load download.
+
+```js
+import { SampledKit } from './src/index.js';
+import { DRUM_KIT } from './page/drum-library.js';
+
+const kit = new SampledKit(() => audio._ensure(), () => audio.master);
+await kit.load(DRUM_KIT, { onProgress: (done, total) => {} });
+renderMidi(midi, { tracks: [{ instrument: 'sampled:kit' }], samples: kit.voices('sampled:kit') });
+```
+
+Voice selection happens at mix time: velocity picks the layer (a layer is timbre, not level —
+every hit is normalised), a rotating counter picks the round robin, and the per-hit `gain`
+in the data is what balances kick against hi-hat. Percussion notes the kit has no recording
+for (timpani, woodblock, cuica…) fall back to the chip drum rather than going silent, and a
+`sampled:kit` track with no samples passed is an error.
+
+The source is **Virtuosity Drums** (Versilian Studios × Karoryfer Samples, **CC0 1.0**);
+`samples/drums/README.md` credits it and `tools/build-drums.mjs` regenerates the files
+(ffmpeg, it follows the kit's own SFZ velocity/round-robin mapping rather than guessing).
+
+Sample licensing: instruments CC-BY 3.0 (credits in `SAMPLE_LIBRARY`, i.e.
+`src/sample-library.js`; the Salamander piano is Alexander Holm's V3), drums CC0.
 
 ### MIDI remix
 
@@ -229,7 +258,7 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 | **主控** | 總音量、靜音、停止全部音效；兩條**匯流排**推桿（音效、音樂）——所有聲音都經過這裡 |
 | **音效** | ① 挑預設 → ② 拉滑桿調參數（放開就聽得到）、看波形 → ③ 播放、複製 JSON（貼進 `audio.playSfx({...})`）、下載 WAV |
 | **音樂** | ① 情緒＋種子＋小節 → ② 播放（可「預先算好」避免第一拍卡頓）→ ③ 三條**聲部**推桿（主旋律／貝斯／鼓組，含靜音與獨奏） |
-| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② **依 GM 樂器編號與音域自動配真實樂器**，再逐軌微調（晶片／寫實合成／真實錄音取樣）→ ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
+| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② **依 GM 樂器編號與音域自動配真實樂器**（含**真實鼓組**），再逐軌微調（晶片／寫實合成／真實錄音取樣）→ ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
 
 匯流排與聲部推桿分開放，是因為兩者作用的地方不同：匯流排立即生效，聲部是烘進音樂迴圈裡的
 （放開推桿才重新合成，並從原位置接著播），而 MIDI 是即時算出來的，所以**播放 MIDI 時聲部推桿會被

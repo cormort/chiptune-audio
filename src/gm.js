@@ -10,6 +10,7 @@
 // resort. Nothing here is a guess about taste — the families are GM's, and the
 // range thresholds are the instruments' own ranges.
 import { SAMPLE_LIBRARY } from './sample-library.js';
+import { SAMPLE_KIT } from './drums.js';
 
 /** Ranges are inclusive GM program numbers; the first match wins.
  *  `sampled` names an entry in SAMPLE_LIBRARY, `synth` a bank voice, `drums`
@@ -133,9 +134,12 @@ export function gmInstrument(program, opts = {}) {
 export function autoInstruments(midi, opts = {}) {
   if (!midi || !Array.isArray(midi.tracks)) return [];
   return midi.tracks.map((t, i) => {
-    // 第 10 聲道是打擊樂：GM 的 program 在那裡沒有意義，一律走鼓。
+    // 第 10 聲道是打擊樂：GM 的 program 在那裡沒有意義，一律走鼓。有取樣鼓組時
+    // 用真實鼓組（35-84 幾乎都有錄音），不然退回晶片鼓。
     const hit = t.channel === 9
-      ? { instrument: 'drums', family: '打擊樂（第 10 聲道）', sampled: false }
+      ? (opts.samples === false
+        ? { instrument: 'drums', family: '打擊樂（第 10 聲道）', sampled: false }
+        : { instrument: SAMPLE_KIT, family: '打擊樂（第 10 聲道）', sampled: true })
       : gmInstrument(t.program, { notes: t.notes, samples: opts.samples });
     return { ...hit, track: i + 1 };
   });

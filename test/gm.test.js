@@ -126,12 +126,14 @@ test('autoInstruments answers per track, in order, with channel 10 as drums', ()
   ]));
   const plan = autoInstruments(midi);
   assert.equal(plan.length, midi.tracks.length, 'one suggestion per track');
-  assert.deepEqual(plan.map((p) => p.instrument), ['sampled:violin', 'sampled:contrabass', 'drums']);
+  // 第 10 聲道有取樣鼓組時走真實鼓組（sampled:kit），CLI 那條路才是晶片鼓
+  assert.deepEqual(plan.map((p) => p.instrument), ['sampled:violin', 'sampled:contrabass', 'sampled:kit']);
   assert.deepEqual(plan.map((p) => p.track), [1, 2, 3]);
   assert.equal(plan[2].family.includes('第 10 聲道'), true, 'the drum track says why it is drums');
 
   const dry = autoInstruments(midi, { samples: false }).map((p) => p.instrument);
   assert.deepEqual(dry, ['real:violin', 'real:bass', 'drums'], 'the CLI path keeps the instrument, not the recording');
+  assert.equal(plan[2].sampled, true, 'the real kit is a recording: it has to be loaded before it plays');
   assert.deepEqual(autoInstruments(null), [], 'no file, no suggestions');
 });
 

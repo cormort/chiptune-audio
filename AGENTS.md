@@ -181,6 +181,28 @@ Rules that keep it honest and cheap:
 - Samples are a third-party host: nothing is bundled, so the first visit to an instrument
   needs the network. That is the one place these pages are not offline-first.
 
+### Sampled drums (`sampled:kit`)
+
+Percussion is the exception to that rule: the kit **is** bundled. `samples/drums/*.mp3`
+(101 one-shots, ~1.5 MB) plus the generated `page/drum-library.js` (GM note → velocity
+layers → files), loaded by `SampledKit` in `src/drums.js`. Drums are one-shots: no pitch
+interpolation, no release envelope, and note-off must not cut them (`mixSampleInto` is
+called with the default `hold: Infinity`).
+
+Regenerate with `node tools/build-drums.mjs` (needs ffmpeg + network; passes `--force` to
+redo everything). It follows the source kit's own SFZ mapping for velocity layers and round
+robins, converts to mono 44.1 kHz, trims the lead-in, fades the tail and normalises every
+hit to 0.9 — so a layer is timbre, not level, and the `gain` in the data is what balances
+kick against hi-hat. Source: Virtuosity Drums (Versilian Studios × Karoryfer, CC0 1.0);
+credit it in `samples/drums/README.md` and in the generated table.
+
+Rules: every file in `samples/drums/` must be referenced by the data table and precached in
+`sw.js` (both directions are tested — a missing file is a silently dead drum). Percussion
+notes with no recording fall back to the chip drum in `renderMidi`, and `sampled:kit` with
+no `opts.samples` entry throws. `page/drum-library.js` and `samples/` are page assets: they
+are not in the npm package (`package.json` files), so a library user brings their own kit
+description to the same engine.
+
 Output is capped at 5 minutes. A malformed file that retriggers a pitch without ever
 sending its note-off cannot stack voices: at most 8 pending note-ons are kept per
 channel/pitch (the oldest is stolen), so render time and memory stay bounded by the file's
