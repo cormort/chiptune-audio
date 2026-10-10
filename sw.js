@@ -2,7 +2,12 @@
 // that each request is answered from the cache at once and refreshed from the
 // network in the background (stale-while-revalidate), so the app works offline
 // and picks up changes on the next load. Bump VERSION to drop old caches.
-const VERSION = 'v9';
+//
+// Every fetch here passes `cache: 'reload'`: static hosts serve files with
+// `cache-control: max-age=600`, and without it a freshly deployed worker would
+// precache whatever the browser still had lying around — the app would then
+// serve a mix of two versions for up to ten minutes.
+const VERSION = 'v10';
 const CACHE = `chiptune-${VERSION}`;
 const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
@@ -13,8 +18,19 @@ const APP = [
   'page/console.js', 'page/keyboard.js',
 ];
 
+const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
+  ? { cache: 'reload' }
+  : undefined);
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(APP)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(async (cache) => {
+    // addAll() would go through the HTTP cache; fetch each file explicitly instead.
+    await Promise.all(APP.map(async (path) => {
+      const res = await fetch(path, bypassHttpCache(path));
+      if (res.ok || res.type === 'opaque') await cache.put(path, res);
+    }));
+    await self.skipWaiting();
+  }));
 });
 
 self.addEventListener('activate', (e) => {
@@ -34,10 +50,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || !cacheable(new URL(req.url))) return;
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     const hit = await cache.match(req, { ignoreSearch: true });
-    // 背景更新時跳過瀏覽器的 HTTP 快取（靜態主機的 max-age 可能還是舊檔），
-    // 否則剛部署完的那一次，新版的版本化快取會把舊檔一起存進去。
-    const fresh = url.origin === location.origin ? { cache: 'reload' } : undefined;
-    const refresh = fetch(req, fresh).then((res) => {
+    const refresh = fetch(req, bypassHttpCache(req.url)).then((res) => {
       // Opaque (cross-origin no-cors) font responses report status 0 but are fine to keep.
       if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
       return res;
