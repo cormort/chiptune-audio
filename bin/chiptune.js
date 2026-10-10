@@ -9,7 +9,8 @@ import { parseArgs } from 'node:util';
 import {
   renderSfx, normalizeSfx, SFX_PRESETS, SFX_DEFAULTS, WAVE,
   generateSong, renderSong, MOODS, STEPS_PER_BAR,
-  parseMidi, renderMidi, INSTRUMENTS, REALISTIC_INSTRUMENTS, instrumentNames, resolveInstrument, encodeWav,
+  parseMidi, renderMidi, INSTRUMENTS, REALISTIC_INSTRUMENTS, instrumentNames, resolveInstrument,
+  autoInstruments, encodeWav,
 } from '../src/index.js';
 
 const HELP = `chiptune: 8-bit sound effects, music and MIDI remixes as WAV files.
@@ -20,8 +21,12 @@ Usage:
   chiptune music [--mood happy] [--seed 1] [--bars 8] [--loops 1]
                  [--mix lead=1 --mix bass=1 --mix drums=1] [-o out.wav]
   chiptune midi <file.mid|file.smf> --info
-  chiptune midi <file.mid|file.smf> [--track N=instrument|mute] [--volume N=0..1]
+  chiptune midi <file.mid|file.smf> [--auto] [--track N=instrument|mute] [--volume N=0..1]
                  [--transpose N=semitones] [--speed 1] [-o out.wav]
+
+  --auto picks a voice for every track from its GM program number and register
+  (the page's「重新配音色」). Samples need a browser to fetch and decode, so the
+  CLI lands on the realistic synth voice of the same instrument.
 
 Common options:
   -o, --out FILE   output path (default: derived from the command)
@@ -54,6 +59,7 @@ function main(argv) {
       volume: { type: 'string', multiple: true },
       transpose: { type: 'string', multiple: true },
       speed: { type: 'string' },
+      auto: { type: 'boolean' },
     },
   });
   const [cmd, ...args] = positionals;
@@ -156,7 +162,9 @@ function midi(file, o, rate) {
     return { file, duration: m.duration, instruments: [...instrumentNames(), 'drums'], tracks: m.tracks.map((t, i) => describe(t, i)) };
   }
 
-  const settings = m.tracks.map(() => ({}));
+  // --auto 先替每一軌挑一個音色，後面的 --track 再覆蓋掉它（明示的旗標優先）。
+  const auto = o.auto ? autoInstruments(m, { samples: false }) : null;
+  const settings = m.tracks.map((t, i) => (auto ? { instrument: auto[i].instrument } : {}));
   const at = (k, flag) => {
     const i = Number(k) - 1;
     if (!Number.isInteger(i) || !settings[i]) throw new UsageError(`${flag}: no track ${k} (this file has ${settings.length}; see --info)`);

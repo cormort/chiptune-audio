@@ -11,6 +11,7 @@ import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
   INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, flattenMidi,
   SampledInstruments, SAMPLE_LIBRARY, SAMPLE_PREFIX, sampleNames, sampleLabel, sampleSynth,
+  autoInstruments,
 } from '../src/index.js';
 import { $, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
 import { createMixer } from './mixer.js';
@@ -344,10 +345,37 @@ async function readMidiFile(file) {
     item.midi = parsed;
     item.notes = parsed.tracks.reduce((n, t) => n + t.notes.length, 0);
     item.tracks = parsed.tracks.map((t) => ({ instrument: t.instrument, volume: 1, mute: false }));
+    // 匯入就配好真實樂器。這裡只是選音色，不會下載：取樣要等真的按播放才抓。
+    if ($('midiAuto').checked) autoInstruments(parsed).forEach((p, i) => { item.tracks[i].instrument = p.instrument; });
   } catch (err) {
     item.error = err.message;
   }
   return item;
+}
+
+/** 音色在狀態列裡怎麼稱呼：來源（取樣／寫實合成／晶片）比名字本身更重要。 */
+function instrumentShort(name) {
+  if (name === 'drums') return '鼓';
+  if (name.startsWith(SAMPLE_PREFIX)) return `${sampleLabel(name.slice(SAMPLE_PREFIX.length))}（取樣）`;
+  if (name.startsWith('real:')) return `${INSTRUMENT_LABELS.real[name.slice(5)] || name.slice(5)}（寫實合成）`;
+  return `${INSTRUMENT_LABELS.chip[name] || name}（晶片）`;
+}
+
+/** 依 GM 樂器編號與音域，把目前這一首的每一軌換成最接近的真實樂器。
+ *  手動改過的軌也會被蓋掉——這顆按鈕的意思就是「整首重配」。 */
+function applyAutoInstruments() {
+  if (!midi || !midi.tracks.length) return [];
+  const plan = autoInstruments(midi);
+  plan.forEach((p, i) => { if (midiTracks[i]) midiTracks[i].instrument = p.instrument; });
+  buildTracks();          // 每一軌的選單要跟著顯示新挑的音色
+  rebuildScore();
+  const shown = plan.slice(0, 8).map((p) => `${p.family}→${instrumentShort(p.instrument)}`);
+  const more = plan.length > shown.length ? `…等 ${plan.length} 軌` : '';
+  const downloads = new Set(plan.filter((p) => p.sampled).map((p) => p.instrument)).size;
+  $('midiStatus').textContent = `已配好：${shown.join('、')}${more}`
+    + (downloads ? `（播放時會下載 ${downloads} 種取樣音色）` : '');
+  remixIfPlaying();
+  return plan;
 }
 
 /** 從 from 開始第一首真的播得出來的曲目（沒有就 -1）。 */
@@ -482,6 +510,7 @@ function buildTracks() {
   const has = !!(midi && midi.tracks.length);
   $('playMidi').disabled = !has;
   $('stopMidi').disabled = !has;
+  $('midiAutoNow').disabled = !has;
   $('wavMidi').disabled = !has;
   seek.disabled = !has;
   if (!has) return;
@@ -599,6 +628,13 @@ $('midiSpeed').onchange = (e) => {
   remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
 };
 $('midiLoop').onchange = () => remixIfPlaying();
+// 自動配真實樂器：匯入時就套用（匯入列的開關可以關掉），也可以隨時按「重新配音色」再配一次。
+$('midiAuto').checked = prefs.get('midiAuto', true) !== false;
+$('midiAuto').onchange = () => {
+  prefs.set('midiAuto', $('midiAuto').checked);
+  if ($('midiAuto').checked) applyAutoInstruments();
+};
+$('midiAutoNow').onclick = () => applyAutoInstruments();
 // 連續播放清單：一首播完自動接下一首（清單最後一首播完就停，不繞回開頭）。
 $('midiChain').checked = prefs.get('midiChain', true) !== false;
 $('midiChain').onchange = () => {

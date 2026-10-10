@@ -297,6 +297,29 @@ export declare function instrumentNote(
 /** Fade on key release, or null when the note rings out on its own. */
 export declare function instrumentRelease(name: AnyInstrumentName, bank?: InstrumentBank): number | null;
 
+/** A voice picked from a part's General MIDI program number and register. */
+export interface GmSuggestion {
+  /** What `renderMidi` accepts: `sampled:<name>`, `real:<name>`, a chip name or 'drums'. */
+  instrument: string;
+  /** The GM family it came from (shown in the UI). */
+  family: string;
+  /** True when the voice is a recording and therefore has to be downloaded first. */
+  sampled: boolean;
+}
+/** The voice for one GM program; `notes` picks between instruments of a family by
+ *  register, and `samples: false` keeps the answer download-free (the CLI). */
+export declare function gmInstrument(
+  program: number,
+  opts?: { notes?: { note: number }[] | null; samples?: boolean },
+): GmSuggestion;
+/** One suggestion per track of a parsed file, in track order (channel 10 is drums). */
+export declare function autoInstruments(
+  midi: Midi,
+  opts?: { samples?: boolean },
+): (GmSuggestion & { track: number })[];
+/** The pitch a part sits at: the median of its notes, or null when it has none. */
+export declare function medianNote(notes: { note: number }[] | null | undefined): number | null;
+
 export interface MidiNote {
   /** Start, in seconds. */
   time: number;

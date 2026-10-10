@@ -161,6 +161,7 @@
     <div class="row">
       <input id="midiFile" type="file" multiple accept=".mid,.midi,.smf,.kar,.rmi,audio/midi,audio/x-midi,application/x-midi">
       <label class="inline"><input id="midiAutoPlay" type="checkbox" checked> 載入後自動播放</label>
+      <label class="inline" title="依每個聲部的 GM 樂器編號與實際音域，自動挑最接近的真實樂器（錄音取樣優先）"><input id="midiAuto" type="checkbox" checked> 自動配真實樂器</label>
       <label class="inline"><input id="midiChain" type="checkbox" checked> 連續播放清單</label>
       <button id="midiClear" disabled title="把清單裡的曲目全部移除">清空清單</button>
       <span class="muted" id="midiInfo">匯入 .mid / .smf 檔，可以一次多選或整批拖進這一區（.rmi、gzip 壓縮或前面帶標籤的檔案也可以）</span>
@@ -193,6 +194,7 @@
       <label class="inline"><input id="midiLoop" type="checkbox"> 循環</label>
       <button class="primary" id="playMidi" disabled>▶ 播放 MIDI</button>
       <button id="stopMidi" disabled>■ 停止</button>
+      <button id="midiAutoNow" disabled title="依每個聲部的 GM 樂器編號與音域，換成最接近的真實樂器（錄音取樣優先）">🎻 重新配音色</button>
       <button id="wavMidi" disabled title="用目前的樂器、音量與速度下載">⤓ WAV</button>
       <span class="muted" id="midiStatus"></span>
     </div>

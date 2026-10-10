@@ -145,9 +145,28 @@ RIFF/RMID containers, tag-prefixed files and stray padding all load; anything wi
 in it throws an error that names what the file actually is. Channel 10 is rendered as chip
 drums, and renders are capped at 5 minutes.
 
-A track can use any of the three families: `{ instrument: 'real:piano' }` for the realistic
-synth bank, `{ instrument: 'sampled:violin' }` for a recording (see above), or the CLI's
-`--track 1=real:piano`. Realistic voices cost ~10-15x a chip voice per sample and the
+**Picking the voices for a whole file** is a solved problem, because a Standard MIDI File
+says what each part is: `autoInstruments(midi)` reads every track's General MIDI program
+number and its register, and answers with the closest voice — a recording when the library
+has one for that family, the realistic synth when it does not, and the chip voice for the
+synth programs that never were real instruments.
+
+```js
+import { autoInstruments } from './src/index.js';
+
+autoInstruments(midi);                    // [{ instrument: 'sampled:violin', family: '小提琴／中提琴', sampled: true }, ...]
+autoInstruments(midi, { samples: false });// same choices without the download (what the CLI does)
+```
+
+Register is what separates a cello from a violin: GM 48-51 (string ensembles) answers
+`sampled:contrabass` below C3, `sampled:cello` below C4 and `sampled:violin` above, using
+the median pitch of the part. The console applies this on import (「自動配真實樂器」, on by
+default) and re-applies it on demand (「🎻 重新配音色」); the CLI has `--auto`. Nothing is
+downloaded by choosing a voice — that happens on the first play.
+
+A track can also be set by hand, in any of the three families:
+`{ instrument: 'real:piano' }` for the realistic synth bank, `{ instrument: 'sampled:violin' }`
+for a recording (see above), or the CLI's `--track 1=real:piano`. Realistic voices cost ~10-15x a chip voice per sample and the
 renderer lays down every note's full tail, so a long piece can take minutes — chip voices
 stay the default for that reason, and the console's track menu groups all three under
 「晶片（快）」, 「寫實合成（慢）」 and 「真實錄音取樣（要下載）」 so the choice is an informed one.
@@ -210,7 +229,7 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 | **主控** | 總音量、靜音、停止全部音效；兩條**匯流排**推桿（音效、音樂）——所有聲音都經過這裡 |
 | **音效** | ① 挑預設 → ② 拉滑桿調參數（放開就聽得到）、看波形 → ③ 播放、複製 JSON（貼進 `audio.playSfx({...})`）、下載 WAV |
 | **音樂** | ① 情緒＋種子＋小節 → ② 播放（可「預先算好」避免第一拍卡頓）→ ③ 三條**聲部**推桿（主旋律／貝斯／鼓組，含靜音與獨奏） |
-| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② 逐軌挑音色（晶片／寫實合成／**真實錄音取樣**）、調音量 → ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
+| **MIDI 重新混音** | ① 匯入或拖放 .mid／.smf，**可一次多選或整批拖進來**（.rmi、gzip、前面帶 ID3 標籤的檔案也認得）→ ② **依 GM 樂器編號與音域自動配真實樂器**，再逐軌微調（晶片／寫實合成／真實錄音取樣）→ ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、下載 WAV |
 
 匯流排與聲部推桿分開放，是因為兩者作用的地方不同：匯流排立即生效，聲部是烘進音樂迴圈裡的
 （放開推桿才重新合成，並從原位置接著播），而 MIDI 是即時算出來的，所以**播放 MIDI 時聲部推桿會被

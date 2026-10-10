@@ -22,6 +22,7 @@ node bin/chiptune.js music --mood boss --seed 7 --bars 8 -o boss.wav      # seam
 node bin/chiptune.js music --mood calm --seed 3 --loops 4 --mix drums=0 -o menu.wav
 node bin/chiptune.js midi song.mid --info        # list tracks before remixing
 node bin/chiptune.js midi song.smf --track 1=pulse25 --track 3=mute --transpose 2=-12 --speed 1.2 -o remix.wav
+node bin/chiptune.js midi song.mid --auto -o remix.wav   # 依 GM 編號與音域替每一軌挑最接近的真實音色
 ```
 
 Example summary (`sfx coin`):
@@ -115,6 +116,15 @@ The console page imports **many files at once** (multi-select or a whole drop): 
 becomes a playlist entry that keeps its own track settings, and the "連續播放清單" toggle
 plays them one after another. The CLI is still one file per run: to put several pieces in
 one file, render each and concatenate the WAVs.
+
+**Voices for a whole file**: `autoInstruments(midi)` (src/gm.js) reads each track's GM
+program number and register and answers with the closest voice — `sampled:` when the
+library has a recording for that family, `real:` when it does not, chip for the synth
+programs. Register splits a family (GM 48-51 → contrabass below C3, cello below C4, violin
+above; brass 61-63 likewise) using the median pitch of the part. The console applies it on
+import (「自動配真實樂器」) and on demand (「🎻 重新配音色」); the CLI's `--auto` uses
+`samples: false`, because Node cannot fetch and decode the recordings. Choosing a voice must
+never start a download — that happens on the first play.
 
 Instruments come in two banks, `chip` (one oscillator) and `real` (additive harmonics,
 detuned copies, an attack transient and a per-voice lowpass). A bare name is chip;
