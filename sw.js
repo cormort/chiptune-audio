@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。

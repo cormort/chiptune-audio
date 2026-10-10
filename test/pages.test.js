@@ -53,6 +53,18 @@ test('importing MIDI keeps every file of a batch, not just one of them', () => {
   assert.ok(!/files\.find\(/.test(src), 'the drop handler still picks a single file out of the batch');
 });
 
+test('the performance view starts zoomed, not with the whole range squeezed in', () => {
+  // 自動播放時的演奏畫面：整首塞進去看的是全貌，但每個鍵只有幾 px，琴鍵與鏡頭就沒意義了。
+  // 第一次打開（沒有存過設定）要落在 22 個白鍵；存過設定的話照使用者選的。
+  const src = read('page/console.js');
+  const fallback = src.match(/KEY_CHOICES\.includes\(savedKeys\) \? savedKeys : (\w+)/);
+  assert.ok(fallback, 'page/console.js no longer picks a default key count');
+  const value = /^\d+$/.test(fallback[1]) ? Number(fallback[1]) : Number(src.match(new RegExp(`const ${fallback[1]} = (\\d+)`))?.[1]);
+  assert.ok(value >= 16, `the default key window is ${value} white keys: too zoomed out to see a performance`);
+  const markup = read('index.html');
+  assert.ok(markup.includes(`<option value="${value}">`), `index.html has no option for the default ${value}`);
+});
+
 test('both pages share the theme and pull in no page-local copy of it', () => {
   for (const page of PAGES) {
     const markup = read(page.html);
