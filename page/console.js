@@ -97,6 +97,8 @@ const SLIDERS = [
   ['seed', '雜訊種子', 1, 64, 1],
 ];
 const WAVE_NAMES = Object.keys(WAVE);   // SQUARE, SAW, TRIANGLE, NOISE
+// 下拉顯示中文（程式裡的名字留著，複製 JSON／CLI 的 --param wave=noise 都還對得上）
+const WAVE_LABELS = { SQUARE: '方波 SQUARE', SAW: '鋸齒波 SAW', TRIANGLE: '三角波 TRIANGLE', NOISE: '雜訊 NOISE' };
 
 let params = { ...SFX_DEFAULTS };
 const inputs = {};
@@ -104,7 +106,7 @@ const inputs = {};
 // Wave selector + sliders. 波形下拉在 HTML 裡（第一個 .param），這裡只填選項。
 {
   const wrap = $('params');
-  for (const n of WAVE_NAMES) $('waveSel').add(new Option(n, WAVE[n]));
+  for (const n of WAVE_NAMES) $('waveSel').add(new Option(WAVE_LABELS[n] || n, WAVE[n]));
   $('waveSel').onchange = (e) => { params.wave = +e.target.value; refresh(); };
 
   for (const [key, label, min, max, step] of SLIDERS) {
@@ -129,14 +131,27 @@ for (const name of Object.keys(SFX_PRESETS)) {
   const b = document.createElement('button');
   b.textContent = SFX_LABELS[name] ? `${SFX_LABELS[name]} ${name}` : name;
   b.dataset.preset = name;
-  b.onclick = () => { load(SFX_PRESETS[name], name); audio.playSfx(params); };
+  b.onclick = () => { load(SFX_PRESETS[name]); audio.playSfx(params); };
   $('presets').append(b);
 }
 
-function load(preset, name = null) {
+function load(preset) {
   params = { ...SFX_DEFAULTS, ...preset };
-  for (const b of $('presets').children) b.classList.toggle('on', b.dataset.preset === name);
   refresh();
+}
+
+/** 點亮「現在這一組參數原封不動就是它」的預設。
+ *  之前是按鈕只在「點過」時亮著，所以拉過滑桿之後畫面還掛著那個預設的名字——
+ *  聲音已經不是它了，畫面卻說它在播，這跟其他地方一樣是「畫面不可以騙人」的問題。
+ *  反過來也成立：把數值拉回某個預設的樣子，那顆按鈕會自己亮回來。 */
+function paintPresets() {
+  let hit = null;
+  for (const [name, preset] of Object.entries(SFX_PRESETS)) {
+    const same = Object.keys(SFX_DEFAULTS).every((k) => (preset[k] === undefined ? SFX_DEFAULTS[k] : preset[k]) === params[k]);
+    if (same) { hit = name; break; }
+  }
+  for (const b of $('presets').children) b.classList.toggle('on', b.dataset.preset === hit);
+  return hit;
 }
 
 // Only the params that differ from the defaults, i.e. what you'd paste into a preset.
@@ -147,6 +162,7 @@ function diffParams() {
 }
 
 function refresh() {
+  paintPresets();   // 「現在是哪個預設」由參數決定，不是由最後點過哪顆按鈕決定
   $('waveSel').value = params.wave;
   for (const [key] of SLIDERS) {
     inputs[key].value = params[key];
@@ -700,5 +716,5 @@ $('wavMidi').onclick = async () => {
 };
 
 // ---------------------------------------------------------------- 開場
-load(SFX_PRESETS.coin, 'coin');
+load(SFX_PRESETS.coin);
 syncSeek(0);

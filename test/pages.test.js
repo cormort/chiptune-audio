@@ -98,6 +98,18 @@ test('a finished MIDI frees the music bus, so the part faders stop looking disab
   assert.match(src, /setOwner\('midi'\)/, 'playing a MIDI still has to mark them inactive');
 });
 
+test('the selected preset is the one you are hearing, not the last one clicked', () => {
+  // 拉過滑桿之後參數已經不是那個預設了，按鈕卻還亮著——畫面等於在說謊。
+  // 所以「選取」必須由現在的參數算出來：拉走就不亮，拉回來自己亮回來。
+  const src = read('page/console.js');
+  assert.match(src, /function paintPresets\(/, 'the preset highlight is not derived from the parameters');
+  const refresh = src.slice(src.indexOf('function refresh()'), src.indexOf('function drawWave'));
+  assert.match(refresh, /paintPresets\(\)/, 'refresh() must repaint the highlight');
+  assert.ok(!/dataset\.preset === name/.test(src), 'a preset is still marked selected by name alone');
+  // 波形下拉要跟畫面上其他控制項一樣是中文（程式裡的名字留著給 JSON／CLI 對照）
+  assert.match(src, /方波 SQUARE/, 'the wave dropdown still shows raw enum names');
+});
+
 test('both pages share the theme and pull in no page-local copy of it', () => {
   for (const page of PAGES) {
     const markup = read(page.html);
