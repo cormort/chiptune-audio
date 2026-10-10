@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  prepareSample, normalizeInstrument,
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
   nearestSample, sampleVoice, mixSampleInto,
@@ -46,6 +47,86 @@ test('the sample library is complete and points at real-looking files', () => {
     assert.equal(sampleSynth('kazoo'), null);
   }
   assert.deepEqual(sampleUrls('kazoo'), []);
+});
+
+test('prepareSample downmixes stereo and cuts the silent lead-in', () => {
+  // 立體聲必須取平均：Salamander 鋼琴的左聲道比右小 5 dB，只取左邊等於少掉 19% 能量。
+  const stereo = {
+    length: 4, sampleRate: 44100, numberOfChannels: 2,
+    getChannelData: (c) => (c === 0 ? Float32Array.from([0.5, 0.5, 0.5, 0.5]) : Float32Array.from([0.1, 0.1, 0.1, 0.1])),
+  };
+  assert.deepEqual([...prepareSample(stereo)].map((v) => +v.toFixed(3)), [0.3, 0.3, 0.3, 0.3]);
+
+  // 開頭靜音：切到第一個超過峰值 1% 的樣本，前面留 2 ms 前導
+  const rate = 1000;                     // 每秒 1000 個樣本 → 2 ms = 2 個樣本
+  const data = new Float32Array(20);
+  data[10] = 1;                          // 第 10 個樣本才是起音
+  const silentLead = { length: 20, sampleRate: rate, numberOfChannels: 1, getChannelData: () => data };
+  const cut = prepareSample(silentLead);
+  assert.equal(cut.length, 12, 'it should start 8 samples in (10 - 2 ms of preroll)');
+  assert.equal(cut[0], 0, 'the preroll is kept');
+  assert.equal(cut[2], 1, 'the attack is sample 0 of the preroll');
+
+  // 沒有靜音就不動；全靜音不要回空陣列（呼叫端還要用長度）
+  const loud = { length: 8, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => Float32Array.from([1, 1, 1, 1, 1, 1, 1, 1]) };
+  assert.equal(prepareSample(loud).length, 8);
+  const allQuiet = { length: 5, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(5) };
+  assert.equal(prepareSample(allQuiet).length, 5);
+  assert.equal(prepareSample({ length: 0, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(0) }).length, 0);
+
+  // 慢起音的樂器（長笛前 30 ms 是吹氣的漸強）不能被切掉：1% 的門檻切在起音之前
+  const slow = new Float32Array(4000);
+  for (let i = 500; i < 4000; i++) slow[i] = Math.min(1, (i - 500) / 2000);
+  const flute = prepareSample({ length: 4000, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => slow });
+  assert.equal(flute[0], 0, 'the ramp still starts at zero');
+  assert.ok(flute.length > 3400, 'a slow attack must keep its ramp');
+});
+
+test('loading a sample stores the processed mono audio, not the raw decode', async () => {
+  // 這裡驗證的是「載入時就處理好」：pcm 是單聲道且已切掉開頭，實際播放路徑才不會晚。
+  const bank = new SampledInstruments(null);
+  const len = 5000;
+  const stereo = {
+    length: len, sampleRate: 48000, numberOfChannels: 2,
+    getChannelData: (c) => {
+      const d = new Float32Array(len);
+      for (let i = 900; i < len; i++) d[i] = c === 0 ? 0.4 : 0.2;   // 前 900 個樣本是靜音
+      return d;
+    },
+  };
+  const loaded = await bank.load('violin', {
+    fetchImpl: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) }),
+    decode: async () => stereo,
+  });
+  const voice = bank.pcm('violin');
+  assert.equal(voice.rate, 48000, 'the decoded rate is remembered for mixing');
+  const pcm = voice.notes[0].pcm;
+  assert.ok(pcm.length < len, 'the silent lead-in should be gone');
+  // 900 個樣本的空白（18.75 ms）減掉 2 ms 前導 = 16.75 → 17 ms
+  assert.equal(Math.round((len - pcm.length) / 48000 * 1000), 17, 'the silent lead-in, minus the 2 ms preroll');
+  assert.ok(Math.abs(pcm[0]) < 1e-6, 'the preroll is silence');
+  // 兩聲道取平均（0.4 + 0.2）/ 2 = 0.3，再乘上樂器的基準音量倍率
+  assert.ok(Math.abs(pcm.at(-1) - 0.3 * loaded.gain) < 1e-6, 'both channels are mixed in, then levelled');
+});
+
+test('an instrument is levelled against the others, not left at its library level', () => {
+  // 量到的差別：tonejs-instruments 那批峰值 0.706，Salamander 鋼琴只有 0.345（小 6.2 dB）。
+  // 合奏時鋼琴會特別薄，所以整組拉到同一個基準——但只調樂器之間，不調樂器內部。
+  const mk = (peak) => { const pcm = new Float32Array(8); pcm[0] = peak; return pcm; };
+  const piano = [0.27, 0.37, 0.34, 0.34].map((p) => ({ midi: 60, pcm: mk(p) }));
+  const gain = normalizeInstrument(piano);
+  assert.ok(Math.abs(gain - 0.7 / 0.34) < 0.02, `piano should be lifted ~2x, got ${gain}`);
+  assert.ok(Math.abs(piano[0].pcm[0] - 0.27 * gain) < 1e-6, 'every sample is scaled by the same factor');
+  assert.ok(piano[1].pcm[0] > piano[0].pcm[0], 'the loud sample inside the instrument stays the loud one');
+
+  const vsco = [0.70, 0.71, 0.70].map((p) => ({ midi: 60, pcm: mk(p) }));
+  assert.equal(normalizeInstrument(vsco), 1, 'an instrument already at the reference is left alone');
+
+  // 上下限：爛檔案不會被放大到破音，也不會被壓成沒聲音
+  assert.ok(normalizeInstrument([{ midi: 60, pcm: mk(0.001) }]) <= 4);
+  assert.ok(normalizeInstrument([{ midi: 60, pcm: mk(1) }]) >= 0.25);
+  assert.equal(normalizeInstrument([]), 1);
+  assert.equal(normalizeInstrument([{ midi: 60, pcm: new Float32Array(4) }]), 1, 'a silent instrument is left alone');
 });
 
 test('a note picks the nearest recording and the playback rate to reach it', () => {

@@ -7,6 +7,8 @@
 // 鼓是 one-shot：MIDI 的 note-off 不該把它切掉（真實的鼓打下去就是讓它響完），
 // 這跟旋律樂器的 release 淡出不一樣。
 
+import { prepareSample } from './samples.js';
+
 /** 真實鼓組在 renderMidi／樂器選單裡的名字（跟 chip／real／sampled:<樂器> 並列）。 */
 export const SAMPLE_KIT = 'sampled:kit';
 
@@ -127,7 +129,7 @@ export class SampledKit {
         if (!res || !res.ok) throw new Error(`${job.url}: HTTP ${res ? res.status : 'no response'}`);
         const buffer = await decodeBuffer(await res.arrayBuffer());
         if (buffer && buffer.length) {
-          pcmOf.set(job.url, buffer.getChannelData(0));
+          pcmOf.set(job.url, prepareSample(buffer));
           if (!rate) rate = buffer.sampleRate || 44100;
         } else failed++;
       } catch (err) {
