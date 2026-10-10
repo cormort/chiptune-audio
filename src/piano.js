@@ -187,10 +187,13 @@ export class SampledPiano {
     return this.bank.targetNode;
   }
 
-  /** 已載入的樣本，midi -> AudioBuffer（相容舊介面）。 */
+  /** 已載入的樣本，midi -> AudioBuffer（相容舊介面；取最強的那一層）。 */
   get buffers() {
     const out = new Map();
-    for (const n of this.bank.instruments.get(this.name)?.notes || []) out.set(n.midi, n.buffer);
+    for (const n of this.bank.instruments.get(this.name)?.notes || []) {
+      const buf = this.bank.bufferFor(n.layers[n.layers.length - 1].pcm, n.rate);
+      if (buf) out.set(n.midi, buf);
+    }
     return out;
   }
 
