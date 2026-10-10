@@ -307,7 +307,12 @@ const view = createPianoView({
     // 讀不到或沒有音符的曲目直接跳過，不要卡在壞掉的那一首上。
     const next = nextPlayable(at + 1);
     if ($('midiChain').checked && next >= 0) selectItem(next, { play: true });
-    else $('midiStatus').textContent = queue.length > 1 && next < 0 ? '清單播完' : '播放完畢';
+    else {
+      $('midiStatus').textContent = queue.length > 1 && next < 0 ? '清單播完' : '播放完畢';
+      // 播完之後音樂匯流排就空著了：聲部推桿要還原成「有效」，不然畫面會一直說
+      // 「MIDI 播放中」、推桿看起來像壞掉（實際上它們這時候是有作用的）。
+      mixer.setPartsActive(true);
+    }
   },
 });
 

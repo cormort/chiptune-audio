@@ -88,6 +88,16 @@ test('the console sections start collapsed, and the nav still opens them', () =>
   assert.ok(read('page/theme.css').includes('section[data-collapse]'), 'page/theme.css has no collapsed style');
 });
 
+test('a finished MIDI frees the music bus, so the part faders stop looking disabled', () => {
+  // 聲部推桿在 MIDI 擁有音樂匯流排時會被標成未生效（.inactive ＋ 一行提示）。
+  // 曲子播完之後匯流排就空著了，那時候推桿是有作用的——沒還原的話畫面會一直說
+  // 「MIDI 播放中」，使用者拉推桿卻以為壞掉。
+  const src = read('page/console.js');
+  const branch = src.slice(src.indexOf('const next = nextPlayable(at + 1)')).slice(0, 400);
+  assert.match(branch, /setPartsActive\(true\)/, 'the end of a piece must re-activate the part faders');
+  assert.match(src, /setOwner\('midi'\)/, 'playing a MIDI still has to mark them inactive');
+});
+
 test('both pages share the theme and pull in no page-local copy of it', () => {
   for (const page of PAGES) {
     const markup = read(page.html);
