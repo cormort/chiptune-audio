@@ -19,6 +19,8 @@ const SAMPLE_RELEASE_SECONDS = 0.14;
  *  normalised per hit, so this is headroom, not volume (each hit carries its own
  *  `gain` from the kit data, which is what balances kick against hi-hat). */
 const KIT_VOICE_GAIN = 0.9;
+/** 放開鍵的釋音（鋼琴的制音器聲）混音音量：它只是收尾的細節，不該跟主體一樣大。 */
+const SAMPLE_RELEASE_GAIN = 0.5;
 
 const DRUM_CHANNEL = 9; // GM channel 10
 
@@ -367,6 +369,12 @@ export function renderMidi(midi, opts = {}) {
             mixSampleInto(out, at, part.pcm, ratio, SAMPLE_VOICE_GAIN * vel * part.gain, {
               hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate,
             });
+          }
+          // 放開鍵：鋼琴的「制音器」聲音。延音樣本在這裡被切掉，改由這個收尾。
+          const rel = voice.release && pickHit(voice.release.kit[note], vel, 0);
+          if (rel) {
+            const relAt = at + Math.round((n.dur / speed) * sampleRate);
+            mixSampleInto(out, relAt, rel.pcm, (voice.release.rate / sampleRate) * pick.rate, SAMPLE_RELEASE_GAIN * vel);
           }
         }
         continue;

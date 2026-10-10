@@ -34,7 +34,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, 'samples', 'velocity');
 const LIB_FILE = join(ROOT, 'src', 'dynamic-library.js');
 const SRC_CACHE = '/tmp/chiptune-velocity';
-const SRC = 'https://raw.githubusercontent.com/sgossner/VSCO-2-CE/master/';
+const REPO = 'sgossner/VSCO-2-CE';
+const SRC = `https://raw.githubusercontent.com/${REPO}/master/`;
+/** 檔案清單要看 github.com 的樹狀頁（raw 沒有目錄列表）。 */
+const LIST_BASE = `https://github.com/${REPO}/tree/master/`;
+/** 鋼琴用的是同一台琴的**原版**（Salamander V3，每音 16 層，CC-BY 3.0）。 */
+const SALAMANDER = 'https://raw.githubusercontent.com/sfzinstruments/SalamanderGrandPiano/master/Samples/';
+/** 鋼琴的 21 個音（C2–C7，每 3 個半音一個）與 4 個力度層。 */
+const PIANO_NOTES = ['C2', 'D#2', 'F#2', 'A2', 'C3', 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5', 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7'];
+const PIANO_LAYERS = [3, 8, 13, 16];
 const FORCE = process.argv.includes('--force');
 
 const RATE = 44100;
@@ -60,7 +68,37 @@ const midiOf = (name) => {
 const clarinet = (notes) => Object.fromEntries(notes.map((n) => [n,
   [1, 2, 3].map((v) => `DCClar_susLong_${n}_v${v}_rr1_sum.wav`)]));
 
+/** 鋼琴：4 個力度層，外加放開鍵的釋音取樣（rel16..rel76，一個音一個檔）。 */
+const piano = {
+  label: '平台鋼琴',
+  credit: 'Salamander Grand Piano V3 — Alexander Holm（CC-BY 3.0）',
+  synth: 'real:piano',
+  seconds: 5,
+  src: SALAMANDER,
+  dir: '',
+  layers: Object.fromEntries(PIANO_NOTES.map((n) => [n, PIANO_LAYERS.map((v) => `${n}v${v}.flac`)])),
+  // 釋音：MIDI 21（A0）= rel1，所以 rel 編號 = 音號 - 20
+  release: { dir: '', files: Object.fromEntries(PIANO_NOTES.map((n) => [n, `rel${midiOf(n) - 20}.flac`])), seconds: 1.5 },
+};
+
+const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { maxBuffer: 1 << 29, ...opts });
+
+/**
+ * 有力度層的樂器：從來源資料夾的檔名自己探索「有哪些音、每個音有幾層」，
+ * 不手抄檔名（來源動輒上百個檔）。`pattern` 是檔名的形狀，`v` 執行完會拿到
+ * 「音名 → 層號」的清單；只要有兩層以上的音才會採用。
+ */
+const DISCOVER = {
+  oboe: { label: '雙簧管', credit: 'VSCO 2 Community Edition — Oboe, Vib（CC0 1.0）', synth: 'real:sax', dir: 'Woodwinds/Oboe/Vib', note: /^Oboe_Vib_([A-G]#?\d)_v(\d+)_Main\.wav$/, seconds: 4 },
+  viola: { label: '中提琴', credit: 'VSCO 2 Community Edition — Viola Section, susvib（CC0 1.0）', synth: 'real:strings', dir: 'Strings/Viola Section/susvib', note: /^ViolaEns_susvib_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4 },
+  trombone: { label: '長號', credit: 'VSCO 2 Community Edition — Tenor Trombone, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tenor Trombone/sus', note: /^tenortbn_sus_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4 },
+  tuba: { label: '低音號', credit: 'VSCO 2 Community Edition — Tuba, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tuba/sus', note: /^Tuba3_sus_([A-G]#?\d)_v(\d+)_rr1_Mid\.wav$/, seconds: 4 },
+  // 低音管試過但拿掉：來源的兩層只差 5 dB、亮度比 0.93（幾乎同音色），那是不同 take
+  // 不是力度——跟長笛同一個狀況，拿它假裝 p/f 是騙人。
+};
+
 const INSTRUMENTS = {
+  grand: piano,
   violin: {
     label: '小提琴',
     credit: 'VSCO 2 Community Edition — Solo Violin, Arco Vib（CC0 1.0）',
@@ -117,6 +155,14 @@ const INSTRUMENTS = {
     // 而且音域從 D2 到 F#5 涵蓋三個八度，不像法國號有 3 層的音只到 C3。
     layers: clarinet(['F2', 'A#2', 'D3', 'F3', 'A#3', 'D4', 'F4', 'A#4', 'D5', 'F#5']),
   },
+  ...Object.fromEntries(Object.entries(DISCOVER).map(([name, spec]) => [name, {
+    label: spec.label,
+    credit: spec.credit,
+    synth: spec.synth,
+    seconds: spec.seconds,
+    dir: spec.dir,
+    layers: discoverLayers(spec),
+  }])),
   trumpet: {
     label: '小號',
     credit: 'VSCO 2 Community Edition — Trumpet, sus（CC0 1.0）',
@@ -138,14 +184,56 @@ const INSTRUMENTS = {
   },
 };
 
-const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { maxBuffer: 1 << 29, ...opts });
+/** 來源資料夾裡有哪些檔（用 GitHub 的檔案樹頁面，不用 API 額度）。
+ *  抓不到就重試幾次：這一步失敗整個建置就沒意義，所以寧可等也不要靜靜地少幾個樂器。 */
+function listFolder(dir, tries = 4) {
+  const url = LIST_BASE + dir.split('/').map(encodeURIComponent).join('/');
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const html = sh('curl', ['-sfL', '--retry', '3', '--retry-delay', '2', url]).toString();
+      const names = [...new Set([...html.matchAll(/"name":"([^"]+\.wav)"/g)].map((m) => m[1]))];
+      if (names.length) return names;
+      last = new Error(`no .wav names in the listing of ${dir}`);
+    } catch (err) {
+      last = err;
+    }
+    sleepMs(1500 * (i + 1));
+  }
+  throw new Error(`cannot list ${dir}: ${last && last.message}`);
+}
+
+/** 同步等（建置腳本，不需要非同步）。 */
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** 從檔名清單湊出「音名 → [檔名, ...]」（由弱到強），只留有兩層以上的音。 */
+function discoverLayers(spec) {
+  const found = new Map();
+  for (const file of listFolder(spec.dir)) {
+    const m = file.match(spec.note);
+    if (!m) continue;
+    const [, noteName, layer] = m;
+    if (!found.has(noteName)) found.set(noteName, new Map());
+    found.get(noteName).set(+layer, file);
+  }
+  const layers = {};
+  for (const [noteName, byLayer] of [...found.entries()].sort()) {
+    const nums = [...byLayer.keys()].sort((a, b) => a - b);
+    if (nums.length < 2) continue;                 // 只有一層的音不放（同一個樂器裡會音量不一致）
+    layers[noteName] = nums.map((n) => byLayer.get(n));
+  }
+  return layers;
+}
+
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
-function fetchSource(path) {
-  const local = join(SRC_CACHE, path.replace(/\//g, '_'));
+function fetchSource(base, path) {
+  const local = join(SRC_CACHE, (base + path).replace(/[^\w.-]/g, '_'));
   if (existsSync(local) && !FORCE) return local;
   mkdirSync(SRC_CACHE, { recursive: true });
-  sh('curl', ['-sfL', SRC + path.split('/').map(encodeURIComponent).join('/'), '-o', local]);
+  sh('curl', ['-sfL', base + path.split('/').map(encodeURIComponent).join('/'), '-o', local]);
   return local;
 }
 
@@ -192,7 +280,7 @@ function main() {
     const dir = join(OUT_DIR, name);
     mkdirSync(dir, { recursive: true });
     const entries = {};
-    const peaksByLayer = { p: [], m: [], f: [] };
+    const peaksByLayer = {};   // 層名 -> 峰值（p／m／m1／m2／f…）
     const converted = new Map();     // 檔名 -> { pcm, layer }（還沒套該層的基準音量）
 
     for (const [noteName, layers] of Object.entries(inst.layers)) {
@@ -200,11 +288,15 @@ function main() {
       const out = [];
       // 弱層在前、強層在後：播放時挑「不超過這個力度的最大 vel」
       // 由弱到強，vel 的門檻平均切開（2 層 → 0/0.5；3 層 → 0/0.33/0.67）
-      const ordered = layers.map((file, i) => [i === 0 ? 'p' : i === layers.length - 1 ? 'f' : 'm', i / layers.length, file]);
+      const ordered = layers.map((file, i) => [
+        i === 0 ? 'p' : i === layers.length - 1 ? 'f' : layers.length === 3 ? 'm' : `m${i}`,
+        i / layers.length,
+        file,
+      ]);
       for (const [layerName, vel, file] of ordered) {
         const dest = join(dir, `${midi}-${layerName}.mp3`);
-        const source = decode(fetchSource(`${inst.dir}/${file}`), inst.seconds);
-        peaksByLayer[layerName].push(peakOf(shape(source.slice(), inst.seconds)));
+        const source = decode(fetchSource(inst.src || SRC, inst.dir ? `${inst.dir}/${file}` : file), inst.seconds);
+        (peaksByLayer[layerName] ||= []).push(peakOf(shape(source.slice(), inst.seconds)));
         if (!existsSync(dest) || FORCE) {
           converted.set(dest, { pcm: shape(source, inst.seconds), layer: layerName });
           made++;
@@ -222,13 +314,47 @@ function main() {
       if (!list.length) continue;
       list.sort((a, b) => a - b);
       const median = list[Math.floor(list.length / 2)];
-      gainByLayer[layerName] = median > 0 ? Math.min(16, Math.max(0.25, REFERENCE / median)) : 1;
+      gainByLayer[layerName] = median > 0 ? Math.min(64, Math.max(0.25, REFERENCE / median)) : 1;
     }
     for (const [dest, { pcm, layer }] of converted) {
       const g = gainByLayer[layer] || 1;
       for (let i = 0; i < pcm.length; i++) pcm[i] *= g;
       encode(pcm, dest);
     }
+    // 放開鍵的釋音取樣（目前只有鋼琴）：一個音一個檔，很短，所以整組一個資料夾
+    let release = null;
+    if (inst.release) {
+      const rdir = join(OUT_DIR, `${name}-release`);
+      mkdirSync(rdir, { recursive: true });
+      const notes = {};
+      const peaks = [];
+      const pending = [];
+      for (const [noteName, file] of Object.entries(inst.release.files)) {
+        const midi = midiOf(noteName);
+        const dest = join(rdir, `${midi}.mp3`);
+        const pcm = shape(decode(fetchSource(inst.src || SRC, inst.release.dir ? `${inst.release.dir}/${file}` : file), inst.release.seconds || 1.5), inst.release.seconds || 1.5);
+        peaks.push(peakOf(pcm));
+        pending.push([dest, pcm]);
+        notes[midi] = `${midi}.mp3`;
+      }
+      peaks.sort((a, b) => a - b);
+      const median = peaks[Math.floor(peaks.length / 2)] || 0;
+      const g = median > 0 ? Math.min(64, Math.max(0.25, REFERENCE / median)) : 1;
+      for (const [dest, pcm] of pending) {
+        if (existsSync(dest) && !FORCE) { reused++; } else { made++; }
+        for (let i = 0; i < pcm.length; i++) pcm[i] *= g;
+        encode(pcm, dest);
+      }
+      release = {
+        base: `samples/velocity/${name}-release/`,
+        notes: Object.fromEntries(Object.keys(notes).map(Number).sort((a, b) => a - b).map((k) => [k, notes[k]])),
+      };
+      console.log(`  ${name} 釋音 ${Object.keys(notes).length} 個音（基準 ×${g.toFixed(2)}）`);
+    }
+
+    // 清掉孤兒檔：資料表沒有引用的檔案不該留在目錄裡（改了層的命名就會產生）
+    const keep = new Set(Object.values(entries).flat().map((l) => l.file));
+    for (const file of readdirSync(dir)) if (!keep.has(file)) rmSync(join(dir, file));
     const gaps = Object.keys(entries).map(Number).sort((a, b) => a - b);
     library[name] = {
       label: inst.label,
@@ -238,6 +364,7 @@ function main() {
       gap: Math.max(0, ...gaps.slice(1).map((m, i) => m - gaps[i])),
       layers: Math.max(...Object.values(inst.layers).map((l) => l.length)),
       notes: Object.fromEntries(Object.keys(entries).map(Number).sort((a, b) => a - b).map((k) => [k, entries[k]])),
+      ...(release ? { release } : {}),
     };
     const gains = Object.entries(gainByLayer).filter(([, g]) => g).map(([l, g]) => `${l} ×${g.toFixed(2)}`).join('、');
     console.log(`  ${name.padEnd(8)} ${Object.keys(entries).length} 個音　基準音量 ${gains}`);
@@ -267,7 +394,14 @@ ${Object.entries(library).map(([name, inst]) => `  ${name}: {
     layers: ${inst.layers},
     notes: {
 ${Object.entries(inst.notes).map(([midi, list]) => `      ${midi}: [${list.map((l) => `{ vel: ${l.vel}, file: '${l.file}' }`).join(', ')}],`).join('\n')}
-    },
+    },${inst.release ? `
+    /** 放開鍵的釋音取樣：一個音一個檔（note-off 時播，鋼琴的「制音器」聲音）。 */
+    release: {
+      base: '${inst.release.base}',
+      notes: {
+${Object.entries(inst.release.notes).map(([midi, file]) => `        ${midi}: '${file}',`).join('\n')}
+      },
+    },` : ''}
   },`).join('\n')}
 };
 `;

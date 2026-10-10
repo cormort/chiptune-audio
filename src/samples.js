@@ -125,6 +125,12 @@ export function sampleUrls(nameOrSpec) {
     if (Array.isArray(entry)) for (const layer of entry) out.push({ midi: +midi, vel: layer.vel, url: inst.base + layer.file });
     else out.push({ midi: +midi, vel: undefined, url: inst.base + entry });
   }
+  // 釋音（放開鍵）的檔案也一起抓：它們跟延音樣本同進同出
+  if (inst.release) {
+    for (const [midi, file] of Object.entries(inst.release.notes)) {
+      out.push({ midi: +midi, vel: undefined, url: inst.release.base + file, release: true });
+    }
+  }
   return out;
 }
 
@@ -308,11 +314,14 @@ export class SampledInstruments {
     }
     const have = new Map((this.instruments.get(name)?.notes || []).map((n) => [n.midi, n]));
     const notes = new Map([...have.values()].map((n) => [n.midi, { ...n, layers: [...n.layers] }]));
+    const release = new Map((this.instruments.get(name)?.release?.notes || []).map((n) => [n.midi, n]));
+    let releaseRate = this.instruments.get(name)?.release?.rate || 0;
     let failed = 0;
     let done = 0;
-    for (const { midi, vel, url } of urls) {
+    for (const { midi, vel, url, release: isRelease } of urls) {
+      if (isRelease && release.has(midi)) { done++; continue; }
       const had = notes.get(midi);
-      const already = had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel));
+      const already = !isRelease && had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel));
       if (already) { done++; continue; }   // 上次就抓到了（處理過的 pcm 也在），不重抓
       try {
         let res = cache ? await cache.match(url) : null;
@@ -322,7 +331,10 @@ export class SampledInstruments {
         }
         if (!res || !res.ok) throw new Error(`${url}: HTTP ${res ? res.status : 'no response'}`);
         const buffer = await decodeBuffer(await res.arrayBuffer());
-        if (buffer && buffer.length) {
+        if (buffer && buffer.length && isRelease) {
+          release.set(midi, { midi, pcm: prepareSample(buffer) });
+          if (!releaseRate) releaseRate = buffer.sampleRate || 44100;
+        } else if (buffer && buffer.length) {
           const entry = notes.get(midi) || { midi, layers: [], rate: buffer.sampleRate || 44100 };
           entry.rate = buffer.sampleRate || 44100;
           entry.layers.push({ vel: vel === undefined ? 0 : vel, pcm: prepareSample(buffer) });
@@ -339,7 +351,12 @@ export class SampledInstruments {
     for (const entry of sorted) entry.layers.sort((a, b) => a.vel - b.vel);
     // 樂器之間的基準音量：鋼琴原本比別人小 6 dB（見 normalizeInstrument）
     const gain = normalizeInstrument(sorted);
-    const hit = { notes: sorted, failed, gain };
+    const hit = {
+      notes: sorted,
+      failed,
+      gain,
+      ...(release.size ? { release: { rate: releaseRate || 44100, notes: [...release.values()].sort((a, b) => a.midi - b.midi) } } : {}),
+    };
     if (sorted.length) this.instruments.set(name, hit);
     this.loadedCount = sorted.reduce((n, e) => n + e.layers.length, 0);
     this.total = urls.length;
@@ -411,6 +428,9 @@ export class SampledInstruments {
     return {
       rate: inst.notes[0].rate || 44100,
       notes: inst.notes.map((n) => ({ midi: n.midi, layers: n.layers })),
+      ...(inst.release
+        ? { release: { rate: inst.release.rate, kit: Object.fromEntries(inst.release.notes.map((n) => [n.midi, [{ vel: 0, gain: 1, pcm: [n.pcm] }]])) } }
+        : {}),
     };
   }
 

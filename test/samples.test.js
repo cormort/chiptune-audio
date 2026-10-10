@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import {
   prepareSample, normalizeInstrument, pickLayer, layerMix,
   DYNAMIC_INSTRUMENTS,
@@ -35,7 +35,9 @@ test('the sample library is complete and points at real-looking files', () => {
     for (const { midi, vel, url } of urls) {
       assert.ok(midi >= 0 && midi <= 127, `${where} has an impossible note ${midi}`);
       assert.match(url, /\.mp3$/, `${where} ${url} is not an mp3`);
-      assert.equal(url, `${inst.base}${url.slice(inst.base.length)}`, `${where} URL does not match its base`);
+      // 延音樣本在自己的 base 底下；釋音在另一個資料夾（inst.release.base）
+      const under = inst.release && url.startsWith(inst.release.base) ? inst.release.base : inst.base;
+      assert.ok(url.startsWith(under), `${where} ${url} is not under ${under}`);
       if (vel !== undefined) assert.ok(vel >= 0 && vel < 1, `${where} layer vel ${vel} out of range`);
     }
     // 有力度層的樂器：每個音至少兩層、由弱到強、同一層不會重複
@@ -399,27 +401,96 @@ test('the levelling looks at the strongest layer, not at every layer', () => {
   assert.ok(Math.abs(notes[0].layers[1].pcm[0] / notes[0].layers[0].pcm[0] - 5) < 1e-6);
 });
 
-test('the bundled velocity layers are on disk and precached', () => {
+test('a release section is loaded with the instrument and reaches renderMidi', async () => {
+  const bank = new SampledInstruments(null);
+  const spec = {
+    name: 'test-rel',
+    base: 'https://example.test/a/',
+    notes: { 60: '60.mp3' },
+    release: { base: 'https://example.test/rel/', notes: { 60: '60.mp3' } },
+  };
+  const asked = [];
+  await bank.load(spec, {
+    fetchImpl: async (url) => { asked.push(url); return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) }; },
+    decode: async () => fakeBuffer(64, 44100),
+  });
+  assert.deepEqual(asked, ['https://example.test/a/60.mp3', 'https://example.test/rel/60.mp3'], 'release files load with the instrument');
+  const voice = bank.voices(['test-rel'])['sampled:test-rel'];
+  assert.ok(voice.release, 'the release set must reach the mixer');
+  assert.equal(voice.release.rate, 44100);
+  assert.equal(voice.release.kit[60][0].pcm[0].length, 64, 'the release audio is in the kit shape');
+});
+
+test('a note-off plays the recorded release, not just a fade', () => {
+  // 延音刻意做成靜音、釋音是一個脈衝：輸出只在 note-off 的位置有東西
+  const silent = new Float32Array(SAMPLE_RATE);
+  const rel = new Float32Array(SAMPLE_RATE);
+  rel[0] = 1;
+  const midi = parseMidi(smf(1, 480, [
+    track([[0, ...tempo(500000)]]),
+    track([[0, 0x90, 60, 100], [960, 0x80, 60, 0]]),      // 1 秒長
+  ]));
+  const samples = {
+    'sampled:x': {
+      rate: SAMPLE_RATE,
+      notes: [{ midi: 60, layers: [{ vel: 0, pcm: silent }] }],
+      release: { rate: SAMPLE_RATE, kit: { 60: [{ vel: 0, gain: 1, pcm: [rel] }] } },
+    },
+  };
+  const out = renderMidi(midi, { tracks: [{ instrument: 'sampled:x' }], samples });
+  const offAt = SAMPLE_RATE;                                 // 1 秒處放開
+  assert.equal(peak(out.subarray(0, offAt - 100)), 0, 'nothing before note-off (the sustain is silent)');
+  assert.ok(peak(out.subarray(offAt, offAt + 100)) > 0.05, 'the release lands at note-off');
+  // 沒有 release 的樂器就維持原樣（只有淡出）
+  const plain = renderMidi(midi, { tracks: [{ instrument: 'sampled:x' }], samples: { 'sampled:x': { rate: SAMPLE_RATE, notes: [{ midi: 60, layers: [{ vel: 0, pcm: silent }] }] } } });
+  assert.equal(peak(plain), 0);
+});
+
+test('every bundled velocity file is on disk, referenced, and small enough to stay off the precache', () => {
   const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
   const listed = new Set([...sw.matchAll(/'([^']+)'/g)].map((m) => m[1]));
-  assert.ok(listed.has('src/dynamic-library.js'), 'src/dynamic-library.js is not precached');
   const names = Object.keys(DYNAMIC_INSTRUMENTS);
-  assert.ok(names.length >= 3, `only ${names.length} layered instruments`);
+  assert.ok(names.length >= 8, `only ${names.length} layered instruments`);
+  const referenced = new Set();
   let files = 0;
+  let bytes = 0;
   for (const name of names) {
     const inst = DYNAMIC_INSTRUMENTS[name];
     assert.ok(inst.layers >= 2, `${name} claims no layers`);
-    assert.ok(inst.credit.includes('CC0'), `${name} must credit its CC0 source`);
-    // 每個音都要有兩層，而且兩層真的存在、真的進快取
-    for (const url of sampleUrls(name).map((u) => u.url)) {
+    assert.ok(inst.credit.includes('CC0') || inst.credit.includes('CC-BY'), `${name} must credit its source`);
+    for (const { url } of sampleUrls(name)) {
       files++;
-      assert.ok(existsSync(new URL(`../${url}`, import.meta.url)), `${url} is missing (rerun tools/build-velocity.mjs)`);
-      assert.ok(listed.has(url), `${url} is not in the sw.js precache list`);
+      referenced.add(url);
+      const path = new URL(`../${url}`, import.meta.url);
+      assert.ok(existsSync(path), `${url} is missing (rerun tools/build-velocity.mjs)`);
+      bytes += readFileSync(path).length;
+    }
+    // 有釋音取樣的樂器（鋼琴）：釋音也要在，而且進預快取（它很小、放開鍵就要用）
+    if (inst.release) {
+      for (const file of Object.values(inst.release.notes)) {
+        const url = inst.release.base + file;
+        referenced.add(url);
+        assert.ok(existsSync(new URL(`../${url}`, import.meta.url)), `${url} is missing`);
+        assert.ok(listed.has(url), `${url} should be precached (releases are tiny)`);
+      }
+    }
+    // 覆蓋：這些樂器用的是內建的力度層版本，不是遠端單層版
+    assert.ok(SAMPLE_LIBRARY[name].base.startsWith('samples/velocity/'), `${name} is not the layered version`);
+  }
+  // 反過來：目錄裡的檔案都要有人用（改了層的命名會留下孤兒檔）
+  for (const name of names) {
+    const dir = new URL(`../samples/velocity/${name}/`, import.meta.url);
+    for (const file of readdirSync(dir)) {
+      if (file.endsWith('.mp3')) assert.ok(referenced.has(`samples/velocity/${name}/${file}`), `samples/velocity/${name}/${file} is not referenced`);
     }
   }
-  assert.ok(files >= 50, `only ${files} layered files`);
-  // 覆蓋：這三個樂器用的是內建的力度層版本，不是遠端單層版
-  for (const name of names) assert.ok(SAMPLE_LIBRARY[name].base.startsWith('samples/velocity/'), `${name} is not the layered version`);
+  assert.ok(files >= 150, `only ${files} layered files`);
+  // 力度層不進預快取：全部加起來十幾 MB，會讓第一次開啟變成一次大下載
+  // （用到才抓，引擎自己會存進 CacheStorage，用過一次就離線可用）
+  const mb = bytes / 1048576;
+  assert.ok(mb > 10, `the layered set is only ${mb.toFixed(1)} MB — did the build run?`);
+  assert.ok(!listed.has('samples/velocity/grand/60-p.mp3'), 'the layered instruments must not be precached');
+  assert.ok(listed.has('samples/velocity/grand-release/60.mp3'), 'the piano releases are precached');
 });
 
 test('a failed instrument is not remembered as loaded, so it can be retried', async () => {

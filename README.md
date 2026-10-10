@@ -155,16 +155,20 @@ The source is **Virtuosity Drums** (Versilian Studios × Karoryfer Samples, **CC
 
 ### Velocity layers
 
-Four of those instruments — violin, cello, trumpet (two dynamics each) and clarinet (three) —
-are **bundled** (like the drums) and carry **recorded dynamics**, so a soft note is darker, not
-just quieter: VSCO 2 CE's `_p`/`_f`, `_v1`/`_v3` and `_v1`/`_v2`/`_v3` sets (brightness ratios
-measured at 1.36×, 1.51×, 3.18× and 1.3-1.6× per step). A layer boundary is **crossfaded with
-equal power** over ±9% of velocity, so two layers do not sound like a step at 0.5 — measured,
-a violin note at velocity 0.43/0.47/0.55 brightens 0.0522 → 0.0645 → 0.0958 instead of
-jumping 0.0504 → 0.0958.
-They live in `samples/velocity/` (106 files, ~5 MB) with the generated table in
+**Nine** of those instruments carry **recorded dynamics**: the grand piano (four layers plus
+21 release samples), clarinet, trombone and tuba (three each) and violin, cello, oboe, viola
+and trumpet (two each) — VSCO 2 CE for the orchestral ones and the original Salamander V3 for
+the piano, all CC0/CC-BY. Measured per instrument, the bright layer is 0.31x (trumpet) to
+0.86x (oboe) the brightness of the soft one, and the layers are level-matched so that a layer
+is timbre and velocity is loudness. A boundary is **crossfaded with equal power** over ±9% of
+velocity, so two layers stop sounding like a step: measured on a violin note at velocity
+0.43/0.47/0.55, brightness reads 0.0522 → 0.0645 → 0.0958 instead of jumping 0.0504 →
+0.0958. The piano additionally plays a recorded **release** sample at note-off.
+They live in `samples/velocity/` (307 files, ~15 MB) with the generated table in
 `src/dynamic-library.js`, and they override the single-layer remote entries of the same name
-in `src/samples.js`. `layerMix()` returns the one or two layers to play (the boundary
+in `src/samples.js`. The velocity set is deliberately **not** in the service worker precache —
+15 MB on the first visit is worse than a download on first use — while the drums and the piano
+releases are, since almost every piece needs them. `layerMix()` returns the one or two layers to play (the boundary
 crossfade), `pickLayer()` the single loudest that fits, so the layer carries timbre and
 velocity still carries level — which is why the levels of the two
 layers are normalised to match (a 15 dB jump at the velocity boundary would be worse than no

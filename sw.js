@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v25';
+const VERSION = 'v26';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -22,7 +22,9 @@ const APP = [
   'page/console.js', 'page/keyboard.js', 'page/drum-library.js',
 ];
 
-// 鼓組的擊點（samples/drums/*.mp3）也要進快取：它們是 repo 裡的檔案，離線時才打得到。
+// 鼓組的擊點與鋼琴的釋音取樣進快取（都很小、幾乎每首都會用到）；有力度層的樂器
+// 是「用到才抓」（引擎會把它們存進 CacheStorage，用過一次就離線可用）——全部預快取
+// 會讓第一次載入變成 20 MB 以上，那太重了。
 // 清單在 build 時產生，見 tools/build-drums.mjs；漏掉一個只會讓那一擊在離線時沒聲音，
 // 所以 test/sw.test.js 會逐一比對目錄裡的檔案。
 const DRUMS = [
@@ -129,113 +131,28 @@ const DRUMS = [
   'samples/drums/84-v2.mp3',
 ];
 
-const VELOCITY = [
-  'samples/velocity/cello/24-f.mp3',
-  'samples/velocity/cello/24-p.mp3',
-  'samples/velocity/cello/28-f.mp3',
-  'samples/velocity/cello/28-p.mp3',
-  'samples/velocity/cello/31-f.mp3',
-  'samples/velocity/cello/31-p.mp3',
-  'samples/velocity/cello/35-f.mp3',
-  'samples/velocity/cello/35-p.mp3',
-  'samples/velocity/cello/38-f.mp3',
-  'samples/velocity/cello/38-p.mp3',
-  'samples/velocity/cello/41-f.mp3',
-  'samples/velocity/cello/41-p.mp3',
-  'samples/velocity/cello/45-f.mp3',
-  'samples/velocity/cello/45-p.mp3',
-  'samples/velocity/cello/48-f.mp3',
-  'samples/velocity/cello/48-p.mp3',
-  'samples/velocity/cello/52-f.mp3',
-  'samples/velocity/cello/52-p.mp3',
-  'samples/velocity/cello/55-f.mp3',
-  'samples/velocity/cello/55-p.mp3',
-  'samples/velocity/cello/59-f.mp3',
-  'samples/velocity/cello/59-p.mp3',
-  'samples/velocity/cello/62-f.mp3',
-  'samples/velocity/cello/62-p.mp3',
-  'samples/velocity/cello/65-f.mp3',
-  'samples/velocity/cello/65-p.mp3',
-  'samples/velocity/clarinet/41-f.mp3',
-  'samples/velocity/clarinet/41-m.mp3',
-  'samples/velocity/clarinet/41-p.mp3',
-  'samples/velocity/clarinet/46-f.mp3',
-  'samples/velocity/clarinet/46-m.mp3',
-  'samples/velocity/clarinet/46-p.mp3',
-  'samples/velocity/clarinet/50-f.mp3',
-  'samples/velocity/clarinet/50-m.mp3',
-  'samples/velocity/clarinet/50-p.mp3',
-  'samples/velocity/clarinet/53-f.mp3',
-  'samples/velocity/clarinet/53-m.mp3',
-  'samples/velocity/clarinet/53-p.mp3',
-  'samples/velocity/clarinet/58-f.mp3',
-  'samples/velocity/clarinet/58-m.mp3',
-  'samples/velocity/clarinet/58-p.mp3',
-  'samples/velocity/clarinet/62-f.mp3',
-  'samples/velocity/clarinet/62-m.mp3',
-  'samples/velocity/clarinet/62-p.mp3',
-  'samples/velocity/clarinet/65-f.mp3',
-  'samples/velocity/clarinet/65-m.mp3',
-  'samples/velocity/clarinet/65-p.mp3',
-  'samples/velocity/clarinet/70-f.mp3',
-  'samples/velocity/clarinet/70-m.mp3',
-  'samples/velocity/clarinet/70-p.mp3',
-  'samples/velocity/clarinet/74-f.mp3',
-  'samples/velocity/clarinet/74-m.mp3',
-  'samples/velocity/clarinet/74-p.mp3',
-  'samples/velocity/clarinet/78-f.mp3',
-  'samples/velocity/clarinet/78-m.mp3',
-  'samples/velocity/clarinet/78-p.mp3',
-  'samples/velocity/trumpet/41-f.mp3',
-  'samples/velocity/trumpet/41-p.mp3',
-  'samples/velocity/trumpet/45-f.mp3',
-  'samples/velocity/trumpet/45-p.mp3',
-  'samples/velocity/trumpet/48-f.mp3',
-  'samples/velocity/trumpet/48-p.mp3',
-  'samples/velocity/trumpet/51-f.mp3',
-  'samples/velocity/trumpet/51-p.mp3',
-  'samples/velocity/trumpet/55-f.mp3',
-  'samples/velocity/trumpet/55-p.mp3',
-  'samples/velocity/trumpet/58-f.mp3',
-  'samples/velocity/trumpet/58-p.mp3',
-  'samples/velocity/trumpet/62-f.mp3',
-  'samples/velocity/trumpet/62-p.mp3',
-  'samples/velocity/trumpet/65-f.mp3',
-  'samples/velocity/trumpet/65-p.mp3',
-  'samples/velocity/trumpet/69-f.mp3',
-  'samples/velocity/trumpet/69-p.mp3',
-  'samples/velocity/trumpet/72-f.mp3',
-  'samples/velocity/trumpet/72-p.mp3',
-  'samples/velocity/violin/55-f.mp3',
-  'samples/velocity/violin/55-p.mp3',
-  'samples/velocity/violin/57-f.mp3',
-  'samples/velocity/violin/57-p.mp3',
-  'samples/velocity/violin/60-f.mp3',
-  'samples/velocity/violin/60-p.mp3',
-  'samples/velocity/violin/64-f.mp3',
-  'samples/velocity/violin/64-p.mp3',
-  'samples/velocity/violin/67-f.mp3',
-  'samples/velocity/violin/67-p.mp3',
-  'samples/velocity/violin/69-f.mp3',
-  'samples/velocity/violin/69-p.mp3',
-  'samples/velocity/violin/72-f.mp3',
-  'samples/velocity/violin/72-p.mp3',
-  'samples/velocity/violin/76-f.mp3',
-  'samples/velocity/violin/76-p.mp3',
-  'samples/velocity/violin/79-f.mp3',
-  'samples/velocity/violin/79-p.mp3',
-  'samples/velocity/violin/81-f.mp3',
-  'samples/velocity/violin/81-p.mp3',
-  'samples/velocity/violin/84-f.mp3',
-  'samples/velocity/violin/84-p.mp3',
-  'samples/velocity/violin/88-f.mp3',
-  'samples/velocity/violin/88-p.mp3',
-  'samples/velocity/violin/91-f.mp3',
-  'samples/velocity/violin/91-p.mp3',
-  'samples/velocity/violin/93-f.mp3',
-  'samples/velocity/violin/93-p.mp3',
-  'samples/velocity/violin/96-f.mp3',
-  'samples/velocity/violin/96-p.mp3',
+const RELEASES = [
+  'samples/velocity/grand-release/36.mp3',
+  'samples/velocity/grand-release/39.mp3',
+  'samples/velocity/grand-release/42.mp3',
+  'samples/velocity/grand-release/45.mp3',
+  'samples/velocity/grand-release/48.mp3',
+  'samples/velocity/grand-release/51.mp3',
+  'samples/velocity/grand-release/54.mp3',
+  'samples/velocity/grand-release/57.mp3',
+  'samples/velocity/grand-release/60.mp3',
+  'samples/velocity/grand-release/63.mp3',
+  'samples/velocity/grand-release/66.mp3',
+  'samples/velocity/grand-release/69.mp3',
+  'samples/velocity/grand-release/72.mp3',
+  'samples/velocity/grand-release/75.mp3',
+  'samples/velocity/grand-release/78.mp3',
+  'samples/velocity/grand-release/81.mp3',
+  'samples/velocity/grand-release/84.mp3',
+  'samples/velocity/grand-release/87.mp3',
+  'samples/velocity/grand-release/90.mp3',
+  'samples/velocity/grand-release/93.mp3',
+  'samples/velocity/grand-release/96.mp3',
 ];
 
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
@@ -250,7 +167,7 @@ self.addEventListener('install', (e) => {
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
     // 鼓組與力度層的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...VELOCITY].map(async (path) => {
+    await Promise.all([...DRUMS, ...RELEASES].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
