@@ -32,9 +32,13 @@ export function downloadWav(samples, filename, sampleRate) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Service worker 只在 http(s) 有效；file:// 開啟時直接跳過。 */
+/** Service worker 只在 http(s) 有效；file:// 開啟時直接跳過。
+ *  updateViaCache: 'none' 讓瀏覽器檢查 sw.js 有沒有更新時不要用 HTTP 快取 —— 靜態主機
+ *  （GitHub Pages）對每個檔都給 max-age=600，不這樣的話部署後最多十分鐘還拿到舊的 service
+ *  worker，使用者重新載入也看不到新版。 */
 export function registerServiceWorker() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 }
 
 /** 設定記憶：把 UI 狀態存在 localStorage，重新載入不用再調一次。

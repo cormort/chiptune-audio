@@ -2,7 +2,7 @@
 // that each request is answered from the cache at once and refreshed from the
 // network in the background (stale-while-revalidate), so the app works offline
 // and picks up changes on the next load. Bump VERSION to drop old caches.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const CACHE = `chiptune-${VERSION}`;
 const APP = [
   './', 'index.html', 'keyboard.html', 'manifest.webmanifest',
@@ -34,7 +34,10 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || !cacheable(new URL(req.url))) return;
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     const hit = await cache.match(req, { ignoreSearch: true });
-    const refresh = fetch(req).then((res) => {
+    // 背景更新時跳過瀏覽器的 HTTP 快取（靜態主機的 max-age 可能還是舊檔），
+    // 否則剛部署完的那一次，新版的版本化快取會把舊檔一起存進去。
+    const fresh = url.origin === location.origin ? { cache: 'reload' } : undefined;
+    const refresh = fetch(req, fresh).then((res) => {
       // Opaque (cross-origin no-cors) font responses report status 0 but are fine to keep.
       if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
       return res;
