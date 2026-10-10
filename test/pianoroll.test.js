@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseMidi, PIANO_LOW, PIANO_HIGH, isBlackKey, pitchName, flattenMidi, pianoRange, pianoLayout,
-  noteIndexAfter, notesSoundingAt, keyAt,
+  countWhiteKeys, keyWindow, noteIndexAfter, notesSoundingAt, keyAt,
 } from '../src/index.js';
 
 import { track, smf, tempo } from './smf.js';
@@ -164,4 +164,43 @@ test('isBlackKey / pitchName: standard names over the whole piano', () => {
   assert.equal(pitchName(PIANO_LOW), 'A0');
   assert.equal(pitchName(PIANO_HIGH), 'C8');
   assert.equal(pitchName(0), 'C-1');
+});
+
+test('countWhiteKeys: what a player counts as key size', () => {
+  assert.equal(countWhiteKeys(60, 72), 8, 'one octave C4-C5');
+  assert.equal(countWhiteKeys(60, 60), 1);
+  assert.equal(countWhiteKeys(61, 61), 0, 'a black key on its own');
+  assert.equal(countWhiteKeys(PIANO_LOW, PIANO_HIGH), 52, 'all 88 keys');
+  assert.equal(countWhiteKeys(72, 60), 0, 'a reversed range draws nothing, same as pianoLayout');
+});
+
+test('keyWindow: a slice that starts on a white key and holds what was asked for', () => {
+  const w = keyWindow(60, 8);
+  assert.equal(countWhiteKeys(w.low, w.high), 8, 'exactly 8 white keys');
+  assert.ok(!isBlackKey(w.low), 'the window starts on a white key');
+  assert.ok(w.low <= 60 && 60 <= w.high, 'the centre is inside');
+
+  for (const centre of [40, 55, 60, 64, 72, 84]) {
+    for (const want of [1, 5, 8, 12, 22]) {
+      const win = keyWindow(centre, want, { low: 36, high: 96 });
+      assert.equal(countWhiteKeys(win.low, win.high), want, `${want} keys around ${centre}`);
+      assert.ok(!isBlackKey(win.low), `starts on a white key around ${centre}`);
+      assert.ok(win.low >= 36 && win.high <= 96, `stays inside the range around ${centre}`);
+      assert.ok(win.low <= centre && centre <= win.high, `contains ${centre}`);
+    }
+  }
+});
+
+test('keyWindow: clamps at both ends of the piano instead of running off it', () => {
+  assert.deepEqual(keyWindow(PIANO_LOW, 8), { low: 21, high: 33 }, 'A0 is the lowest white key');
+  assert.deepEqual(keyWindow(PIANO_HIGH, 8), { low: 96, high: 108 }, 'C8 is the highest');
+  assert.deepEqual(keyWindow(20, 8), keyWindow(PIANO_LOW, 8), 'below the piano clamps to the bottom');
+  assert.deepEqual(keyWindow(200, 8), keyWindow(PIANO_HIGH, 8), 'above it clamps to the top');
+});
+
+test('keyWindow: asking for more keys than the piece uses shows the whole piece', () => {
+  assert.deepEqual(keyWindow(60, 40, { low: 60, high: 72 }), { low: 60, high: 72 });
+  assert.deepEqual(keyWindow(60, 8, { low: 60, high: 60 }), { low: 60, high: 60 });
+  assert.equal(countWhiteKeys(...Object.values(keyWindow(60, 0))), 1, '0 keys still means one');
+  assert.equal(countWhiteKeys(...Object.values(keyWindow(60, NaN))), 1, 'garbage in, one key out');
 });

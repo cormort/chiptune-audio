@@ -350,6 +350,18 @@ export declare function pianoLayout(
   opts?: { blackRatio?: number },
 ): PianoLayout;
 
+/** How many white keys a pitch range covers (what a player counts as key size). */
+export declare function countWhiteKeys(low: number, high: number): number;
+
+/** A `whiteCount`-wide slice of the keyboard positioned around `center`, always
+ *  starting on a white key and staying inside [low, high]. Asking for more white
+ *  keys than the range has returns the whole range. */
+export declare function keyWindow(
+  center: number,
+  whiteCount: number,
+  opts?: { low?: number; high?: number },
+): { low: number; high: number };
+
 /** Index of the first note starting after `time` (notes must be time-sorted). */
 export declare function noteIndexAfter(notes: PianoNote[], time: number): number;
 /** Every note sounding at `time`, newest first. `maxDur` bounds the scan. */

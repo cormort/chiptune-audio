@@ -12,7 +12,8 @@ export {
 export { parseMidi, renderMidi, MAX_MIDI_SECONDS } from './midi.js';
 export {
   PIANO_LOW, PIANO_HIGH, PITCH_NAMES, BLACK_KEY_HEIGHT, isBlackKey, pitchName,
-  flattenMidi, pianoRange, pianoLayout, noteIndexAfter, notesSoundingAt, keyAt,
+  flattenMidi, pianoRange, pianoLayout, countWhiteKeys, keyWindow,
+  noteIndexAfter, notesSoundingAt, keyAt,
 } from './pianoroll.js';
 export { encodeWav } from './wav.js';
 export { renderAcousticPiano, AcousticPiano, SampledPiano, PIANO_SAMPLES } from './piano.js';

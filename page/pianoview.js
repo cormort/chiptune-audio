@@ -1,7 +1,7 @@
 // 鋼琴演奏顯示：落下的音符與發聲的琴鍵。幾何全部來自 src/pianoroll.js，這裡只負責畫。
 // 播放頭讀 audio.musicTime（AudioContext 的時鐘），所以重新合成、換樂器或改變速度後續播，
 // 畫面都對得上聲音；停止時停在 freeze 這個位置，讓點擊／拖曳可以預覽別的地方。
-import { instrumentNote, instrumentRelease, BLACK_KEY_HEIGHT, keyAt, noteIndexAfter, notesSoundingAt, pianoLayout, pianoRange, pitchName } from '../src/index.js';
+import { instrumentNote, instrumentRelease, BLACK_KEY_HEIGHT, keyAt, keyWindow, noteIndexAfter, notesSoundingAt, pianoLayout, pianoRange, pitchName } from '../src/index.js';
 import { fmtTime, theme } from './ui.js';
 
 const TRACK_HUES = [214, 330, 152, 32, 268, 190, 4, 96];
@@ -17,6 +17,7 @@ function drumColumn(note) {
 /** @param opts.canvas       畫布
  *  @param opts.showToggle   「顯示鋼琴演奏」checkbox（可省略）
  *  @param opts.windowSelect 視窗秒數 <select>（可省略）
+ *  @param opts.keysSelect   琴鍵大小 <select>：0＝整首塞進去，其他＝同時顯示幾個白鍵（可省略）
  *  @param opts.info         時間／狀態文字（可省略）
  *  @param opts.clock        () => ({ playing, time, owned })：現在播到哪、是否正在發聲、
  *                           音樂匯流排是否由 MIDI 擁有（用來分辨「播完」與「被停止」）
@@ -25,12 +26,13 @@ function drumColumn(note) {
  *  @param opts.audio        ChiptuneAudio：點琴鍵試聽用
  */
 export function createPianoView(opts) {
-  const { canvas, showToggle, windowSelect, info, clock, onSeek = () => {}, onTick = () => {}, audio } = opts;
+  const { canvas, showToggle, windowSelect, keysSelect, info, clock, onSeek = () => {}, onTick = () => {}, audio } = opts;
 
   const view = {
     score: { notes: [], maxDur: 0, duration: 0 },
     low: 48, high: 72,
-    layout: null, width: 0,
+    layout: null, layoutKey: '',
+    win: null,         // 目前顯示的琴鍵範圍（null＝整首音域）
     count: 0,          // 沒被靜音的音符數，只有換譜時才算
     hasDrums: false,
     freeze: 0,         // 停止時停在這個位置
@@ -50,6 +52,7 @@ export function createPianoView(opts) {
     view.count = view.score.notes.reduce((n, note) => n + (note.mute ? 0 : 1), 0);
     view.hasDrums = view.score.notes.some((n) => n.drum && !n.mute);
     view.layout = null;
+    view.win = null;
     view.freeze = Math.min(view.freeze, view.score.duration);
     schedule();
   }
@@ -78,6 +81,42 @@ export function createPianoView(opts) {
     const rollBottom = H - keysH - drumH;
     const seconds = +(windowSelect && windowSelect.value) || 4;
     return { keysH, drumH, rollBottom, seconds, pxPerSec: rollBottom / seconds };
+  }
+
+  /** 同時顯示幾個白鍵（0＝整首塞進去）。 */
+  const keyCount = () => (keysSelect ? +keysSelect.value || 0 : 0);
+
+  /** 鏡頭：琴鍵放大時，只顯示一段，並且跟著畫面上看得到的音符移動。
+   *  只有在需要的音域跑出目前視窗時才重新定位，所以畫面不會一直左右跳。 */
+  function updateWindow(from, now, seconds) {
+    const want = keyCount();
+    if (!want) { view.win = null; return; }
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = from; i < view.score.notes.length; i++) {
+      const n = view.score.notes[i];
+      if (n.time > now + seconds) break;
+      if (n.drum || n.mute || n.time + n.dur <= now) continue;   // 已經敲完的不算
+      if (n.note < lo) lo = n.note;
+      if (n.note > hi) hi = n.note;
+    }
+    if (lo > hi) {                       // 這段時間沒有音符：維持目前的視窗
+      if (!view.win) view.win = keyWindow((view.low + view.high) / 2, want, { low: view.low, high: view.high });
+      return;
+    }
+    if (view.win && lo >= view.win.low && hi <= view.win.high) return;
+    view.win = keyWindow((lo + hi) / 2, want, { low: view.low, high: view.high });
+  }
+
+  /** 目前這段琴鍵的版面（寬度或顯示範圍變了才重算）。 */
+  function layoutFor(W) {
+    const win = view.win || { low: view.low, high: view.high };
+    const key = `${W}:${win.low}-${win.high}`;
+    if (!view.layout || view.layoutKey !== key) {
+      view.layout = pianoLayout(win.low, win.high, W);
+      view.layoutKey = key;
+    }
+    return view.layout;
   }
 
   function say(text) {
@@ -120,15 +159,15 @@ export function createPianoView(opts) {
     }
 
     const { keysH, drumH, rollBottom, seconds, pxPerSec } = metrics(W, H);
-    if (!view.layout || view.width !== W) {
-      view.layout = pianoLayout(view.low, view.high, W);
-      view.width = W;
-    }
-    const keys = view.layout.keys;
     const state = clock();
     const now = state.playing ? state.time : view.freeze;
     if (state.playing) view.freeze = now;
     view.ended = !state.playing && !!state.owned;
+
+    const from = noteIndexAfter(view.score.notes, now - Math.max(seconds, view.score.maxDur));
+    updateWindow(from, now, seconds);
+    const layout = layoutFor(W);
+    const keys = layout.keys;
 
     // ---- 旋律區：往下掉的音符 ----
     g.save();
@@ -148,7 +187,6 @@ export function createPianoView(opts) {
       g.fillStyle = muted;
       g.fillText(pitchName(note), x + 3, 11);
     }
-    const from = noteIndexAfter(view.score.notes, now - Math.max(seconds, view.score.maxDur));
     for (let i = from; i < view.score.notes.length; i++) {
       const n = view.score.notes[i];
       if (n.mute || n.drum) continue;
@@ -223,7 +261,7 @@ export function createPianoView(opts) {
       g.fillStyle = hit ? trackColor(hit.track) : keyBlack;
       g.fillRect(k.x, keysTop, k.w, keysH * BLACK_KEY_HEIGHT);
     }
-    if (view.layout.whiteWidth > 22) {        // 夠寬才標音名，否則會擠成一團
+    if (layout.whiteWidth > 22) {        // 夠寬才標音名，否則會擠成一團
       g.font = '10px ui-monospace, monospace';
       g.textAlign = 'center';
       for (const [note, k] of keys) {
@@ -234,7 +272,8 @@ export function createPianoView(opts) {
       g.textAlign = 'start';
     }
 
-    say(`${fmtTime(now)} / ${fmtTime(view.score.duration)} · ${state.playing ? '播放中' : '停止'} · ${view.count} 個音符`);
+    const span = view.win ? ` · 琴鍵 ${pitchName(view.win.low)}–${pitchName(view.win.high)}` : '';
+    say(`${fmtTime(now)} / ${fmtTime(view.score.duration)} · ${state.playing ? '播放中' : '停止'} · ${view.count} 個音符${span}`);
     onTick(now, state.playing);
   }
 
@@ -248,9 +287,9 @@ export function createPianoView(opts) {
     const x = e.clientX - box.left;
     const y = e.clientY - box.top;
 
-    if (!view.layout) { view.layout = pianoLayout(view.low, view.high, W); view.width = W; }
+    const layout = layoutFor(W);
     if (y >= H - keysH) {                     // 鍵盤：試聽
-      const note = keyAt(view.layout, x, y - (H - keysH), keysH);
+      const note = keyAt(layout, x, y - (H - keysH), keysH);
       if (note === null) return;
       const voice = audio && audio.playNote(instrumentNote('piano', note, { seconds: 1.2, vel: 0.9 }));
       if (voice) setTimeout(() => voice.release(instrumentRelease('piano') || 0.08), 420);
@@ -279,13 +318,14 @@ export function createPianoView(opts) {
 
   /** 版面要重算並重畫（顯示開關、視窗秒數、視窗大小改變時）。 */
   function refresh() {
-    view.width = 0;
     view.layout = null;
+    view.win = null;      // 琴鍵數或視窗寬度變了：鏡頭重新定位
     schedule();
   }
 
   if (showToggle) showToggle.onchange = refresh;
   if (windowSelect) windowSelect.onchange = refresh;
+  if (keysSelect) keysSelect.onchange = refresh;
   // 視窗大小改變時鍵盤的像素寬度也變了：重新排版再畫一張。
   addEventListener('resize', refresh);
 

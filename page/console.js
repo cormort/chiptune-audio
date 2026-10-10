@@ -270,6 +270,7 @@ const view = createPianoView({
   canvas: $('pianoRoll'),
   showToggle: $('rollOn'),
   windowSelect: $('rollWindow'),
+  keysSelect: $('rollKeys'),
   info: $('rollInfo'),
   audio,
   clock: () => ({ playing: midiPlaying(), time: audio.musicTime, owned: nowPlaying === 'midi' }),
@@ -285,6 +286,13 @@ $('rollOn').checked = !!prefs.get('rollShow', true);
 $('rollWindow').value = String(prefs.get('rollWindow', 4));
 $('rollOn').onchange = () => { prefs.set('rollShow', $('rollOn').checked); view.refresh(); };
 $('rollWindow').onchange = () => { prefs.set('rollWindow', +$('rollWindow').value); view.refresh(); };
+// 琴鍵大小：手機（直向或橫向，取比較短的一邊判斷）第一次打開時預設只放 8 個白鍵，
+// 每個鍵才夠寬看得清楚；桌機維持整首塞進去。設定過之後就照使用者的選擇。
+const KEY_CHOICES = [0, 8, 12, 16, 22];
+const savedKeys = +prefs.get('rollKeys', NaN);
+const narrow = Math.min(innerWidth, innerHeight) < 560;
+$('rollKeys').value = String(KEY_CHOICES.includes(savedKeys) ? savedKeys : (narrow ? 8 : 0));
+$('rollKeys').onchange = () => { prefs.set('rollKeys', +$('rollKeys').value); view.refresh(); };
 
 /** 重新整理顯示用的音符（換譜、改樂器／音量／靜音／速度時）。 */
 function rebuildScore() {

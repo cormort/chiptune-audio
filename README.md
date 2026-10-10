@@ -114,10 +114,16 @@ import { flattenMidi, pianoRange, pianoLayout, notesSoundingAt, keyAt } from './
 
 const score = flattenMidi(midi, { tracks, speed });            // the notes as they will sound
 const { low, high } = pianoRange(score.notes);                 // the range worth drawing
-const layout = pianoLayout(low, high, canvasWidth);            // x/w for every key
+const win = keyWindow(60, 8, { low, high });                   // zoomed view: 8 white keys around C4
+const layout = pianoLayout(win.low, win.high, canvasWidth);    // x/w for the visible keys
 notesSoundingAt(score.notes, audio.musicTime, score.maxDur);   // the keys to light up now
 keyAt(layout, x, y - keysTop, keysHeight);                     // which key was clicked
 ```
+
+`keyWindow(centre, whiteCount, { low, high })` returns a slice that always starts on a white
+key (so a zoomed view never shows half a black key at the edge) and stays inside the range;
+`countWhiteKeys(low, high)` says how many white keys a range covers. The demo page uses them
+to keep a readable key size on a phone while the camera follows the music.
 
 `flattenMidi` takes the same per-track settings and `speed` as `renderMidi`, so a picture
 built from it matches what is heard. The helpers are pure geometry — no DOM, no audio —
@@ -166,7 +172,10 @@ for AI agents: every command, parameter ranges, and how to judge the output.
 標成未生效**，不會讓人以為推了有反應。
 
 MIDI 區下方是**鋼琴演奏顯示**：音符由上往下掉，落到鍵盤線時發聲，琴鍵亮起代表正在響
-（顏色對應軌道，第 10 聲道的鼓走另一條節奏帶）；可以選 2／4／8 秒的視窗、關掉整個顯示，
+（顏色對應軌道，第 10 聲道的鼓走另一條節奏帶）；可以選 2／4／8 秒的視窗、關掉整個顯示。
+**琴鍵大小也可以調**——「琴鍵」選單是「同時顯示幾個白鍵」（整首塞進去／8／12／16／22），
+放大之後畫面會跟著音樂左右移動，手機橫向預設就是 8 個白鍵（每個鍵約 100 px，看得很清楚），
+琴鍵上方會顯示目前這一段的音名（例如 `C4–C5`）。
 點琴鍵試聽，點鍵盤線以上或拖進度條，都可以從那個位置開始播。
 音量、混音、情緒、種子、小節與顯示設定會存在瀏覽器裡，下次開啟直接接上。
 

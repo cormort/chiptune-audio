@@ -153,6 +153,12 @@
       <label class="inline"><input id="rollOn" type="checkbox" checked> 顯示鋼琴演奏</label>
       <label class="inline">視窗 <select id="rollWindow">
         <option value="2">2 秒</option><option value="4" selected>4 秒</option><option value="8">8 秒</option></select></label>
+      <label class="inline">琴鍵 <select id="rollKeys" title="同時顯示幾個白鍵；琴鍵放大時畫面會跟著音樂左右移動">
+        <option value="0">整首塞進去</option>
+        <option value="8">8 白鍵（手機）</option>
+        <option value="12">12 白鍵</option>
+        <option value="16">16 白鍵</option>
+        <option value="22">22 白鍵</option></select></label>
       <input id="midiSeek" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="播放位置">
       <span id="rollInfo" aria-live="off">匯入 MIDI 後，這裡會跟著音樂顯示落下的音符與發聲的琴鍵</span>
     </div>

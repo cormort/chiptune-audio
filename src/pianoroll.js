@@ -129,6 +129,40 @@ export function pianoLayout(low, high, width, { blackRatio = 0.62 } = {}) {
   return { keys, whiteCount, whiteWidth, blackWidth };
 }
 
+/** How many white keys a range covers (what a player counts as "key size").
+ *  A reversed range counts 0, which is what pianoLayout would draw for it. */
+export function countWhiteKeys(low, high) {
+  const floor = clampPitch(Math.round(low));
+  const ceil = clampPitch(Math.round(high));
+  let n = 0;
+  for (let k = floor; k <= ceil; k++) if (!isBlackKey(k)) n++;
+  return n;
+}
+
+/** A slice of the keyboard holding `whiteCount` white keys, positioned around
+ *  `center`. The window always starts on a white key, so a zoomed-in view is
+ *  never half a black key wide at the edge, and it stays inside
+ *  [low, high] — the range the piece actually uses. Asking for more white keys
+ *  than the range has returns the whole range.
+ *
+ *  Returns { low, high }. */
+export function keyWindow(center, whiteCount, { low = PIANO_LOW, high = PIANO_HIGH } = {}) {
+  const floor = clampPitch(Math.round(low));
+  const ceil = Math.max(floor, clampPitch(Math.round(high)));
+  const whites = [];
+  for (let n = floor; n <= ceil; n++) if (!isBlackKey(n)) whites.push(n);
+
+  const want = Math.max(1, Math.round(Number(whiteCount)) || 1);
+  if (!whites.length) return { low: floor, high: ceil };
+  if (want >= whites.length) return { low: whites[0], high: whites[whites.length - 1] };
+
+  const c = clampPitch(Math.round(Number.isFinite(center) ? center : 60));
+  let at = 0;
+  for (let i = 0; i < whites.length && whites[i] <= c; i++) at = i;
+  const start = Math.max(0, Math.min(whites.length - want, at - Math.floor((want - 1) / 2)));
+  return { low: whites[start], high: whites[start + want - 1] };
+}
+
 /** Index of the first note starting after `time` (notes must be time-sorted),
  *  i.e. the start of the visible window when drawing forward. */
 export function noteIndexAfter(notes, time) {

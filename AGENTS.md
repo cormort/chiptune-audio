@@ -130,16 +130,22 @@ structure instead of by the number of unmatched on-notes.
 
 ## Drawing a performance (piano display)
 
-`flattenMidi`, `pianoRange`, `pianoLayout`, `notesSoundingAt` and `keyAt` (all in
-`src/pianoroll.js`) turn a parsed file into the geometry of a falling-notes keyboard, with no
-DOM and no audio:
+`flattenMidi`, `pianoRange`, `pianoLayout`, `keyWindow`, `countWhiteKeys`,
+`notesSoundingAt` and `keyAt` (all in `src/pianoroll.js`) turn a parsed file into the
+geometry of a falling-notes keyboard, with no DOM and no audio:
 
 ```js
 const score = flattenMidi(midi, { tracks, speed });           // same options as renderMidi
 const { low, high } = pianoRange(score.notes);                // range to draw
-const layout = pianoLayout(low, high, width);                 // x/w per key
+const win = keyWindow(60, 8, { low, high });                  // zoomed view: 8 white keys near C4
+const layout = pianoLayout(win.low, win.high, width);         // x/w per visible key
 notesSoundingAt(score.notes, audio.musicTime, score.maxDur);  // keys to light up now
 ```
+
+`keyWindow` is how a zoomed keyboard stays usable: it returns a slice that starts on a white
+key and stays inside the range, and `countWhiteKeys` counts the keys in a range. The demo
+page picks the window from the notes currently on screen and re-centres only when one would
+fall outside, so the camera does not jitter.
 
 `score.notes` is time-sorted and carries `{ time, dur, note, vel, track, drum, mute }` with
 the track settings and speed already applied, so a picture drawn from it matches the sound.
