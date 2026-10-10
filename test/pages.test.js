@@ -36,6 +36,23 @@ test('every in-page link points at a section the page has', () => {
   }
 });
 
+test('importing MIDI keeps every file of a batch, not just one of them', () => {
+  const markup = read('index.html');
+  const input = markup.match(/<input id="midiFile"[^>]*>/);
+  assert.ok(input, 'index.html has no #midiFile');
+  assert.match(input[0], /\bmultiple\b/, '#midiFile cannot pick more than one file');
+  // 播放清單的容器與開關：模組會查這些 id，缺一個清單就建不起來。
+  for (const id of ['midiList', 'midiListInfo', 'midiItems', 'midiClear', 'midiChain']) {
+    assert.ok(markup.includes(`id="${id}"`), `index.html does not define #${id}`);
+  }
+  const src = read('page/console.js');
+  // 兩個入口都必須把整批交出去：只拿 files[0] 或從裡面挑一個，多選就白按了。
+  assert.match(src, /\[\.\.\.e\.target\.files\]/, 'the file input does not hand over the whole selection');
+  assert.match(src, /addFiles\(files\)/, 'the selected files are never imported');
+  assert.match(src, /addFiles\(\[\.\.\.e\.dataTransfer\.files\]\)/, 'a drop does not hand over the whole batch');
+  assert.ok(!/files\.find\(/.test(src), 'the drop handler still picks a single file out of the batch');
+});
+
 test('both pages share the theme and pull in no page-local copy of it', () => {
   for (const page of PAGES) {
     const markup = read(page.html);

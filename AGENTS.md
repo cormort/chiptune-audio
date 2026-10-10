@@ -111,6 +111,11 @@ can repeat:
 - `--volume N=0..1`, `--transpose N=<semitones>`
 - `--speed 0.25..4` for the whole piece
 
+The console page imports **many files at once** (multi-select or a whole drop): each one
+becomes a playlist entry that keeps its own track settings, and the "連續播放清單" toggle
+plays them one after another. The CLI is still one file per run: to put several pieces in
+one file, render each and concatenate the WAVs.
+
 Instruments come in two banks, `chip` (one oscillator) and `real` (additive harmonics,
 detuned copies an attack transient and a per-voice lowpass). A bare name is chip;
 `real:piano`, `real:bass`, `real:marimba`, ... address the other bank:
@@ -176,8 +181,8 @@ The two pages demo this library; they are not part of the npm package. Their HTM
 only markup and the page's own CSS — all script lives in `page/`:
 
 - `page/console.js` — the control panel, wired top-to-bottom in the order the page is
-  laid out: 主控 (bus levels) → 音效 → 音樂 (part faders) → MIDI (import → tracks →
-  piano view → transport + seek bar)
+  laid out: 主控 (bus levels) → 音效 → 音樂 (part faders) → MIDI (import one or many
+  files into a playlist → tracks → piano view → transport + seek bar)
 - `page/keyboard.js` — the on-screen keyboard and its four voice banks
 - `page/pianoview.js` — the canvas falling-notes display (`src/pianoroll.js` does the geometry)
 - `page/mixer.js` — bus strips and part strips, including marking the part faders inactive

@@ -3,7 +3,7 @@
 //   1. 主控  輸出音量、靜音、匯流排（音效／音樂）推桿
 //   2. 音效  挑預設 → 調參數 → 看波形 → 試聽／複製 JSON／下載 WAV
 //   3. 音樂  情緒＋種子＋小節 → 播放 → 聲部（主旋律／貝斯／鼓組）推桿
-//   4. MIDI  匯入 → 軌道音色 → 鋼琴演奏顯示 → 播放（含進度條）
+//   4. MIDI  匯入（可多檔，排成播放清單）→ 軌道音色 → 鋼琴演奏顯示 → 播放（含進度條）
 //
 // 畫圖在 page/pianoview.js、混音台在 page/mixer.js、共用小工具在 page/ui.js，
 // 這個檔只做接線與各區的狀態。
@@ -244,15 +244,22 @@ $('wavMusic').onclick = () => {
 
 // ---------------------------------------------------------------- 4. MIDI
 // MIDI remix: parse once, then re-render with each track's instrument.
-let midi = null;
-let midiTracks = [];      // per-track { instrument, volume, mute }, indexed like midi.tracks
+// 一次可以匯入多個檔案：每一首解析後進清單（queue），清單上的每一首各自記住自己的
+// 軌道設定；點一列就換那首，開著「連續播放清單」時一首播完自動接下一首。
+const queue = [];         // { file, name, midi, tracks, notes, error }，解析完就不再變
+let at = -1;              // 清單中目前的索引（-1＝清單是空的）
+let midi = null;          // 目前這首（= queue[at].midi）
+let midiTracks = [];      // 目前這首的軌道設定；就是 queue[at].tracks，改這裡等於改清單
 let midiSpeed = 1;
 let midiName = 'midi';
+let midiDone = false;     // 「這首播完了」已經處理過，避免同一首觸發兩次
 
 // .mid and .smf are the same format; .kar (MIDI + lyrics) and .rmi (RIFF-wrapped)
 // too. parseMidi finds the MThd header itself, so a renamed file, a RIFF/RMID
 // container or one with an ID3 tag glued on the front all still load.
 const MIDI_FILE = /\.(mid|midi|smf|kar|rmi)$/i;
+// 清單空掉時 #midiInfo 要回到開場的提示；那句話寫在 HTML 裡，讀回來就不會有兩份。
+const MIDI_HINT = $('midiInfo').textContent;
 
 /** Some archives ship `song.mid.gz`; browsers can inflate it natively. */
 async function midiBytes(file) {
@@ -277,8 +284,15 @@ const view = createPianoView({
   onSeek: (t) => playMidi(t),                                  // 拖進度條／點畫布 → 重新合成續播
   onTick: (t, playing) => {
     syncSeek(t);
-    // 非循環的曲子播完時，狀態列不該還掛著「播放中」。
-    if (!playing && $('midiStatus').textContent.startsWith('播放中')) $('midiStatus').textContent = '播放完畢';
+    if (playing) { midiDone = false; return; }
+    // 非循環的曲子播完時，狀態列不該還掛著「播放中」；連續播放就接著下一首。
+    // 被使用者按停止時 owner 已經不是 midi，這裡不接手。
+    if (midiDone || nowPlaying !== 'midi' || !$('midiStatus').textContent.startsWith('播放中')) return;
+    midiDone = true;
+    // 讀不到或沒有音符的曲目直接跳過，不要卡在壞掉的那一首上。
+    const next = nextPlayable(at + 1);
+    if ($('midiChain').checked && next >= 0) selectItem(next, { play: true });
+    else $('midiStatus').textContent = queue.length > 1 && next < 0 ? '清單播完' : '播放完畢';
   },
 });
 
@@ -315,37 +329,123 @@ function syncSeek(t) {
   if (!seeking && view.duration() > 0) seek.value = String(Math.round(t / view.duration() * 1000));
 }
 
-async function loadMidiFile(file) {
-  let parsed;
+/** 讀一個檔案並解析。讀不出來也回傳一個項目（帶著訊息），讓清單上看得見是哪一個壞的。 */
+async function readMidiFile(file) {
+  const item = { file, name: file.name.replace(MIDI_FILE, '') || 'midi', midi: null, tracks: [], notes: 0, error: '' };
   try {
-    parsed = parseMidi(await midiBytes(file));
+    const parsed = parseMidi(await midiBytes(file));
+    item.midi = parsed;
+    item.notes = parsed.tracks.reduce((n, t) => n + t.notes.length, 0);
+    item.tracks = parsed.tracks.map((t) => ({ instrument: t.instrument, volume: 1, mute: false }));
   } catch (err) {
-    // Drop whatever was playing: it no longer matches what the panel shows.
-    if (nowPlaying === 'midi') stopAllMusic();
-    midi = null;
-    midiTracks = [];
-    $('midiInfo').textContent = `${file.name} 無法讀取：${err.message}`;
-    buildTracks();
-    rebuildScore();
+    item.error = err.message;
+  }
+  return item;
+}
+
+/** 從 from 開始第一首真的播得出來的曲目（沒有就 -1）。 */
+function nextPlayable(from) {
+  return queue.findIndex((it, i) => i >= from && it.midi && it.midi.tracks.length);
+}
+
+/** 這批檔案裡要收哪些：先挑副檔名像 MIDI 的；一個都沒有就整批試試看，
+ *  因為 parseMidi 靠檔頭辨認，改過名或 gzip 壓縮的檔案常常真的讀得出來。 */
+function midiCandidates(files) {
+  const list = [...files].filter((f) => f.size > 0);
+  const named = list.filter((f) => MIDI_FILE.test(f.name));
+  return named.length ? named : list;
+}
+
+/** 匯入一批檔案：全部進清單，選第一首有音符的來播（沒有就選第一個，讓人看到錯誤）。 */
+async function addFiles(files) {
+  const picked = midiCandidates(files);
+  if (!picked.length) return;
+  const first = queue.length;
+  if (picked.length > 1) $('midiStatus').textContent = `讀取 ${picked.length} 個檔案…`;
+  for (const file of picked) queue.push(await readMidiFile(file));
+  $('midiStatus').textContent = '';   // 讀取中的提示收掉；要播的話 playMidi 會自己再寫
+  const playable = nextPlayable(first);
+  selectItem(playable >= 0 ? playable : first, { play: !!$('midiAutoPlay').checked });
+}
+
+/** 換清單裡的某一首：停掉目前的聲音，換上它的解析結果與它自己的軌道設定。 */
+function selectItem(i, opts = {}) {
+  if (i < 0 || i >= queue.length) return;
+  const { offset = 0, play = !!$('midiAutoPlay').checked } = opts;
+  const it = queue[i];
+  if (nowPlaying === 'midi') stopAllMusic();   // 舊的那首不是這一首
+  at = i;
+  midi = it.midi;
+  midiTracks = it.tracks;
+  midiName = it.name || 'midi';
+  midiDone = false;
+  $('midiInfo').textContent = it.error
+    ? `${it.file.name} 無法讀取：${it.error}`
+    : !it.midi.tracks.length
+      ? `${it.file.name} 裡沒有音符`
+      : `${it.file.name}：${fmtTime(it.midi.duration)}，${it.midi.tracks.length} 軌，${it.notes} 個音符`;
+  buildList();
+  buildTracks();
+  rebuildScore();
+  if (play && midi.tracks.length) playMidi(offset);
+}
+
+/** 從清單移除一首。移掉的正好是正在播的那首時，改選最靠近的一首，但不自動出聲。 */
+function removeItem(i) {
+  if (i < 0 || i >= queue.length) return;
+  const wasCurrent = i === at;
+  queue.splice(i, 1);
+  if (!wasCurrent) {
+    if (i < at) at--;                          // 前面少了一首，索引跟著移
+    buildList();
     return;
   }
-  midi = parsed;
-  midiName = file.name.replace(MIDI_FILE, '') || 'midi';
-  midiTracks = midi.tracks.map((t) => ({ instrument: t.instrument, volume: 1, mute: false }));
-  const notes = midi.tracks.reduce((n, t) => n + t.notes.length, 0);
-  $('midiInfo').textContent = midi.tracks.length
-    ? `${file.name}：${fmtTime(midi.duration)}，${midi.tracks.length} 軌，${notes} 個音符`
-    : `${file.name} 裡沒有音符`;
+  if (nowPlaying === 'midi') stopAllMusic();
+  at = -1;
+  midi = null;
+  midiTracks = [];
+  $('midiInfo').textContent = MIDI_HINT;
+  $('midiStatus').textContent = '';
+  if (queue.length) { selectItem(Math.min(i, queue.length - 1), { play: false }); return; }
+  buildList();
   buildTracks();
-  if (nowPlaying === 'midi') stopAllMusic();   // the old piece is not this file
   rebuildScore();
-  if (midi.tracks.length && $('midiAutoPlay').checked) playMidi();
+}
+
+/** 重畫播放清單。每次增減或換首都整份重建：清單頂多幾十筆，不值得做增量更新。 */
+function buildList() {
+  const host = $('midiItems');
+  host.textContent = '';
+  $('midiList').hidden = !queue.length;
+  $('midiClear').disabled = !queue.length;
+  const total = queue.reduce((s, it) => s + (it.midi ? it.midi.duration : 0), 0);
+  $('midiListInfo').textContent = queue.length
+    ? `清單 ${queue.length} 首 · 共 ${fmtTime(total)}${$('midiChain').checked ? ' · 連續播放' : ''}`
+    : '';
+  queue.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = `plItem${i === at ? ' on' : ''}`;
+    row.innerHTML = `<span class="plNo"></span>
+      <button class="plPick" type="button"><span class="plName"></span><span class="plMeta"></span></button>
+      <button class="plX" type="button" title="從清單移除">✕</button>`;
+    row.querySelector('.plNo').textContent = String(i + 1);
+    row.querySelector('.plName').textContent = it.file.name;
+    row.querySelector('.plMeta').textContent = it.error
+      ? `讀取失敗：${it.error}`
+      : !it.midi.tracks.length
+        ? '沒有音符'
+        : `${fmtTime(it.midi.duration)} · ${it.midi.tracks.length} 軌 · ${it.notes} 音符`;
+    // 點目前這一列＝從頭再播一次，點別列就換過去（自動播放關著時只載入不出聲）。
+    row.querySelector('.plPick').onclick = () => selectItem(i, { play: i === at || !!$('midiAutoPlay').checked });
+    row.querySelector('.plX').onclick = () => removeItem(i);
+    host.append(row);
+  });
 }
 
 $('midiFile').onchange = (e) => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';   // picking the same file twice must fire change again
-  if (file) loadMidiFile(file);
+  addFiles(files);
 };
 
 // Dropping a file anywhere else would navigate away from the console.
@@ -366,9 +466,7 @@ midiSection.addEventListener('drop', (e) => {
   if (!dropsFiles(e)) return;
   e.preventDefault();
   midiSection.classList.remove('dropping');
-  const files = [...e.dataTransfer.files];
-  const file = files.find((f) => MIDI_FILE.test(f.name)) || files[0];
-  if (file) loadMidiFile(file);
+  addFiles([...e.dataTransfer.files]);   // 整批拖進來＝整批進清單
 });
 
 function buildTracks() {
@@ -410,11 +508,15 @@ function buildTracks() {
 }
 
 async function playMidi(offset = 0) {
+  midiDone = false;   // 新的一輪：下一次「播完」要重新判斷
   $('midiStatus').textContent = '合成中…';
   await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
+  if (!midi || !midi.tracks.length) return;
   const t0 = performance.now();
-  audio.playMidi(midi, { tracks: midiTracks, speed: midiSpeed, loop: $('midiLoop').checked, offset });
+  const src = audio.playMidi(midi, { tracks: midiTracks, speed: midiSpeed, loop: $('midiLoop').checked, offset });
   const ms = performance.now() - t0;
+  // 全部軌道都被靜音之類的情況：沒有東西可播就不要假裝在播，也別讓連續播放接力下去。
+  if (!src) { setOwner(null); $('midiStatus').textContent = '這首沒有可播的聲音'; return; }
   setOwner('midi');
   $('musicInfo').textContent = '';
   $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
@@ -435,6 +537,25 @@ $('midiSpeed').onchange = (e) => {
   remixIfPlaying(old / midiSpeed);   // same place in the piece at the new tempo
 };
 $('midiLoop').onchange = () => remixIfPlaying();
+// 連續播放清單：一首播完自動接下一首（清單最後一首播完就停，不繞回開頭）。
+$('midiChain').checked = prefs.get('midiChain', true) !== false;
+$('midiChain').onchange = () => {
+  prefs.set('midiChain', $('midiChain').checked);
+  midiDone = false;
+  buildList();   // 清單抬頭會跟著顯示「連續播放」
+};
+$('midiClear').onclick = () => {
+  queue.length = 0;
+  if (nowPlaying === 'midi') stopAllMusic();
+  at = -1;
+  midi = null;
+  midiTracks = [];
+  $('midiInfo').textContent = MIDI_HINT;
+  $('midiStatus').textContent = '';
+  buildList();
+  buildTracks();
+  rebuildScore();
+};
 $('wavMidi').onclick = () => {
   downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
 };
