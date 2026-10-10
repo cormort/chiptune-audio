@@ -22,6 +22,9 @@ const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 // Which kind of music owns audio.music, so the song controls never replace a MIDI.
 let nowPlaying = null;   // 'song' | 'midi' | null
 const midiPlaying = () => !!audio.music && nowPlaying === 'midi';
+// 只有真的開始播過才接手「播完了」的處理；被使用者停止時 stopAllMusic 會關掉它。
+let midiStarted = false;
+let midiDone = false;    // 這一首的「播完」已經處理過，避免重複觸發
 
 /** 換誰擁有音樂匯流排。MIDI 不是用音樂的聲部推桿合成的，所以推桿要標成未生效。 */
 function setOwner(kind) {
@@ -32,6 +35,7 @@ function setOwner(kind) {
 function stopAllMusic() {
   audio.stopMusic();
   setOwner(null);
+  midiStarted = false;
   $('musicInfo').textContent = '';
   $('midiStatus').textContent = '';
   view.setFreeze(0);
@@ -252,7 +256,6 @@ let midi = null;          // 目前這首（= queue[at].midi）
 let midiTracks = [];      // 目前這首的軌道設定；就是 queue[at].tracks，改這裡等於改清單
 let midiSpeed = 1;
 let midiName = 'midi';
-let midiDone = false;     // 「這首播完了」已經處理過，避免同一首觸發兩次
 
 // .mid and .smf are the same format; .kar (MIDI + lyrics) and .rmi (RIFF-wrapped)
 // too. parseMidi finds the MThd header itself, so a renamed file, a RIFF/RMID
@@ -286,8 +289,8 @@ const view = createPianoView({
     syncSeek(t);
     if (playing) { midiDone = false; return; }
     // 非循環的曲子播完時，狀態列不該還掛著「播放中」；連續播放就接著下一首。
-    // 被使用者按停止時 owner 已經不是 midi，這裡不接手。
-    if (midiDone || nowPlaying !== 'midi' || !$('midiStatus').textContent.startsWith('播放中')) return;
+    // 被使用者按停止時 stopAllMusic 已經把 midiStarted 關掉，這裡不接手。
+    if (midiDone || !midiStarted || nowPlaying !== 'midi') return;
     midiDone = true;
     // 讀不到或沒有音符的曲目直接跳過，不要卡在壞掉的那一首上。
     const next = nextPlayable(at + 1);
@@ -491,10 +494,17 @@ function buildTracks() {
     small.textContent = `聲道 ${t.channel + 1} · ${t.notes.length} 音符`;
     nameEl.append(small);
     const sel = row.querySelector('select');
-    // Chip voices only: a realistic voice costs ~15x per sample and the midi
-    // renderer lays down every note's full tail, which would freeze the tab.
-    // `real:<name>` is still available through the library and the CLI.
-    for (const k of Object.keys(INSTRUMENT_BANKS.chip)) sel.add(new Option(INSTRUMENT_LABELS.chip[k] || k, k));
+    // 兩組音色：晶片很快，寫實是疊泛音＋微走音＋起音雜訊的合成，每個音都要完整
+    // 算完尾巴，約慢 10-15 倍，所以標上「慢」——長曲子用寫實要等，這是誠實的提示，
+    // 不是限制。renderMidi 兩邊都認得（`real:<name>` 就是寫實那一組）。
+    for (const [label, bank] of [['晶片（快）', 'chip'], ['寫實（慢）', 'real']]) {
+      const group = document.createElement('optgroup');
+      group.label = label;
+      for (const k of Object.keys(INSTRUMENT_BANKS[bank])) {
+        group.append(new Option(INSTRUMENT_LABELS[bank][k] || k, bank === 'chip' ? k : `real:${k}`));
+      }
+      sel.append(group);
+    }
     sel.add(new Option('鼓組', 'drums'));
     sel.value = s.instrument;
     sel.onchange = () => { s.instrument = sel.value; remixIfPlaying(); };
@@ -507,9 +517,13 @@ function buildTracks() {
   });
 }
 
+/** 這一首有沒有用到寫實音色？它們每個音都要完整合成尾巴，比晶片約慢 10-15 倍。 */
+const usesRealVoices = () => midiTracks.some((t) => !t.mute && String(t.instrument).startsWith('real:'));
+
 async function playMidi(offset = 0) {
-  midiDone = false;   // 新的一輪：下一次「播完」要重新判斷
-  $('midiStatus').textContent = '合成中…';
+  midiStarted = false;   // 還沒真的開始播（這中間的 tick 不該當成「播完了」）
+  midiDone = false;      // 新的一輪：下一次「播完」要重新判斷
+  $('midiStatus').textContent = usesRealVoices() ? '合成中…（寫實音色較慢，請稍等）' : '合成中…';
   await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
   if (!midi || !midi.tracks.length) return;
   const t0 = performance.now();
@@ -518,6 +532,7 @@ async function playMidi(offset = 0) {
   // 全部軌道都被靜音之類的情況：沒有東西可播就不要假裝在播，也別讓連續播放接力下去。
   if (!src) { setOwner(null); $('midiStatus').textContent = '這首沒有可播的聲音'; return; }
   setOwner('midi');
+  midiStarted = true;
   $('musicInfo').textContent = '';
   $('midiStatus').textContent = `播放中 · 合成 ${ms.toFixed(0)} ms`;
   view.setFreeze(offset);
@@ -556,8 +571,14 @@ $('midiClear').onclick = () => {
   buildTracks();
   rebuildScore();
 };
-$('wavMidi').onclick = () => {
+$('wavMidi').onclick = async () => {
+  // 寫實音色的 WAV 要算一段時間；先讓狀態畫出來，不然畫面會像當掉。
+  if (usesRealVoices()) {
+    $('midiStatus').textContent = '匯出中…（寫實音色較慢，請稍等）';
+    await new Promise((r) => setTimeout(r));
+  }
   downloadWav(renderMidi(midi, { tracks: midiTracks, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
+  if (!midiPlaying()) $('midiStatus').textContent = `已下載 ${midiName}-remix.wav`;
 };
 
 // ---------------------------------------------------------------- 開場

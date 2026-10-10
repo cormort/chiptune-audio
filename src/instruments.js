@@ -23,9 +23,9 @@ export const INSTRUMENTS = {
   bell:     { hold: false, release: null, params: { wave: WAVE.TRIANGLE, attack: 0.002, sustain: 0, decay: 1.6, vibDepth: 0.003, vibRate: 30, bits: 4, vol: 0.55 } },
 };
 
-/** The same twelve slots, voiced as acoustic instruments instead of chip waves —
- *  what the keyboard's 寫實 (realistic) mode plays and what `real:<name>` selects
- *  in a MIDI remix.
+/** The chip bank's twelve slots voiced as acoustic instruments instead of chip
+ *  waves — what the keyboard's 寫實 (realistic) mode plays and what `real:<name>`
+ *  selects in a MIDI remix.
  *
  *  Realism here is synthesis, not samples: this stays a zero-dependency library,
  *  so instead of recording a piano the voice is built from the timbre params —
@@ -34,7 +34,11 @@ export const INSTRUMENTS = {
  *  lowpass (cutoff). `tone` is that cutoff expressed as a multiple of the note
  *  frequency, so brightness tracks pitch instead of muffling the top octave.
  *
- *  Each entry keeps the chip bank's key so `piano` means a piano in either one. */
+ *  The first twelve keep the chip bank's keys, so `piano` means a piano in
+ *  either one and switching banks on the keyboard keeps the same instrument
+ *  under the cursor. The rest are real instruments the chip bank has no slot
+ *  for (a violin is not a saw wave), so this bank is a superset: every chip key
+ *  resolves here, and the extras resolve as `real:<name>` only. */
 export const REALISTIC_INSTRUMENTS = {
   piano: { hold: false, release: 0.2, tone: 9, params: {
     wave: WAVE.SAW, h2: 0.42, h3: 0.26, h4: 0.14, h5: 0.08, unison: 1, detune: 4,
@@ -72,6 +76,53 @@ export const REALISTIC_INSTRUMENTS = {
   marimba: { hold: false, release: null, tone: 13, params: {
     wave: WAVE.TRIANGLE, h2: 0.22, h3: 0.05, h4: 0.45, chiff: 0.12,
     attack: 0.001, sustain: 0.004, decay: 0.8, vol: 0.5 } },
+
+  // ---- real instruments the chip bank has no slot for ----
+  // Each one is the same recipe aimed at a different body: a bowed string gets
+  // a slow bow noise and a player's vibrato, a reed gets breath plus the odd
+  // harmonics a cylindrical bore favours, a struck string gets a pick transient
+  // and rings out. `tone` is per instrument, not per family: the violin has to
+  // stay brighter than the cello at the same pitch.
+  violin: { hold: true, release: 0.22, tone: 8, params: {
+    wave: WAVE.SAW, h2: 0.38, h3: 0.22, h4: 0.12, h5: 0.06, unison: 1, detune: 5,
+    chiff: 0.12, attack: 0.09, vibDepth: 0.012, vibRate: 5.6, vol: 0.38 } },
+  cello: { hold: true, release: 0.3, tone: 5.5, params: {
+    wave: WAVE.SAW, h2: 0.34, h3: 0.2, h4: 0.1, unison: 1, detune: 6,
+    chiff: 0.1, attack: 0.13, vibDepth: 0.009, vibRate: 5, vol: 0.44 } },
+  trumpet: { hold: true, release: 0.1, tone: 7, params: {
+    wave: WAVE.SAW, h2: 0.5, h3: 0.34, h4: 0.2, h5: 0.12, unison: 1, detune: 6,
+    chiff: 0.12, attack: 0.045, vibDepth: 0.004, vibRate: 5.4, vol: 0.36 } },
+  sax: { hold: true, release: 0.14, tone: 6.5, params: {
+    wave: WAVE.SQUARE, duty: 0.4, h2: 0.55, h3: 0.36, h4: 0.18, h5: 0.08, unison: 1, detune: 7,
+    chiff: 0.24, attack: 0.05, vibDepth: 0.008, vibRate: 5, vol: 0.36 } },
+  // A clarinet's bore is closed at one end, so it favours the odd harmonics —
+  // that hollow fifth is what says "clarinet" rather than "organ".
+  clarinet: { hold: true, release: 0.12, tone: 6, params: {
+    wave: WAVE.SQUARE, duty: 0.5, h2: 0.07, h3: 0.44, h4: 0.05, h5: 0.2,
+    chiff: 0.18, attack: 0.04, vibDepth: 0.005, vibRate: 4.8, vol: 0.4 } },
+  // Two strings per note, plucked by a quill: bright, quick, and gone.
+  harpsichord: { hold: false, release: 0.16, tone: 12, params: {
+    wave: WAVE.SAW, h2: 0.5, h3: 0.3, h4: 0.2, h5: 0.1, unison: 1, detune: 9,
+    chiff: 0.22, attack: 0.001, sustain: 0.01, decay: 1.3, vol: 0.42 } },
+  // Metal bars with a resonator tube: the fourth harmonic is the tuning, and
+  // the motor gives it a slow tremolo rather than a vibrato.
+  vibraphone: { hold: false, release: null, tone: 14, params: {
+    wave: WAVE.TRIANGLE, h2: 0.18, h3: 0.04, h4: 0.5, h5: 0.12,
+    attack: 0.002, sustain: 0.01, decay: 2.6, vibDepth: 0.008, vibRate: 5.5, vol: 0.46 } },
+  // Two strings, a snakeskin soundbox and no fingerboard: a wide expressive
+  // vibrato and a lot of bow noise, which is most of what an erhu is.
+  erhu: { hold: true, release: 0.24, tone: 7, params: {
+    wave: WAVE.SAW, h2: 0.4, h3: 0.3, h4: 0.16, h5: 0.08, unison: 1, detune: 9,
+    chiff: 0.16, attack: 0.07, vibDepth: 0.02, vibRate: 6.2, vol: 0.36 } },
+  // Free reeds in pairs, badly out of tune with each other on purpose: the
+  // beating between them is the instrument.
+  accordion: { hold: true, release: 0.11, tone: 9, params: {
+    wave: WAVE.SQUARE, duty: 0.5, h2: 0.5, h3: 0.3, h4: 0.22, h5: 0.1, unison: 1, detune: 13,
+    chiff: 0.06, attack: 0.035, vibDepth: 0.003, vibRate: 5.8, vol: 0.36 } },
+  // A comb of tuned steel teeth: tiny, high, and mostly fourth harmonic.
+  musicbox: { hold: false, release: null, tone: 18, params: {
+    wave: WAVE.TRIANGLE, h2: 0.16, h3: 0.04, h4: 0.42, h5: 0.16, chiff: 0.08,
+    attack: 0.001, sustain: 0.004, decay: 1.5, vol: 0.46 } },
 };
 
 /** The two banks the pages switch between. */
@@ -86,6 +137,8 @@ export const INSTRUMENT_LABELS = {
   real: {
     piano: '鋼琴', epiano: '電鋼琴', organ: '管風琴', strings: '弦樂', flute: '長笛', brass: '銅管',
     guitar: '吉他', bell: '鐘琴', bass: '貝斯', harp: '豎琴', choir: '合唱', marimba: '木琴',
+    violin: '小提琴', cello: '大提琴', trumpet: '小號', sax: '薩克斯風', clarinet: '單簧管',
+    harpsichord: '大鍵琴', vibraphone: '顫音琴', erhu: '二胡', accordion: '手風琴', musicbox: '音樂盒',
   },
 };
 

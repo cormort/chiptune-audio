@@ -117,11 +117,19 @@ plays them one after another. The CLI is still one file per run: to put several 
 one file, render each and concatenate the WAVs.
 
 Instruments come in two banks, `chip` (one oscillator) and `real` (additive harmonics,
-detuned copies an attack transient and a per-voice lowpass). A bare name is chip;
-`real:piano`, `real:bass`, `real:marimba`, ... address the other bank:
+detuned copies, an attack transient and a per-voice lowpass). A bare name is chip;
+`real:piano`, `real:bass`, `real:erhu`, ... address the other bank:
 
 - chip: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`
-- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`
+- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`, plus
+  the real instruments the chip bank has no slot for — `violin cello trumpet sax clarinet
+  harpsichord vibraphone erhu accordion musicbox` — which are `real:`-only
+
+The six names both banks have (`piano organ strings flute brass bell`) are the same
+instrument in either one, so switching banks on the keyboard keeps the key under the cursor
+on the same instrument. Adding a voice is data: one entry in `REALISTIC_INSTRUMENTS`, its
+label in `INSTRUMENT_LABELS.real`, and its hash in the golden table in `test/voices.test.js`
+(`npm test` prints the mismatch, and the hash has to be recomputed on purpose).
 
 A realistic voice costs ~10-15x a chip voice per sample and every note's full tail is
 rendered, so a long piece can take minutes (measured: 15 s of MIDI with

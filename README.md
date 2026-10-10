@@ -73,16 +73,24 @@ const note = audio.playNote(instrumentNote('organ', 60));        // key down: C4
 note.release(instrumentRelease('organ'));                        // key up: fade out
 ```
 
-Two banks of twelve slots, `chip` (one oscillator, 8-bit) and `real` (additive harmonics,
+Two banks, `chip` (twelve slots, one oscillator, 8-bit) and `real` (additive harmonics,
 detuned copies, an attack transient and a per-voice lowpass — synthesis, not samples):
 
 - chip: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`
-- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`
+- real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`, plus
+  the real instruments the chip bank has no slot for: `violin cello trumpet sax clarinet
+  harpsichord vibraphone erhu accordion musicbox`
+
+The six names the two banks share (`piano organ strings flute brass bell`) are the same
+instrument in either one, so switching banks on the keyboard does not change what the key
+under the cursor plays. The rest of `real` is `real:`-only — `real:erhu` is an erhu, a bare
+`erhu` is an error, the same way `saw` has no realistic version.
 
 `instrumentNote(name, note, opts)` takes `bank: 'real'` (or a `real:<name>` prefix) and
 `vel`, and its output is ordinary SFX params — `renderSfx(instrumentNote('real:piano', 60))`
-renders one note. A realistic voice costs roughly 10-15x a chip voice per sample, which is
-why the pages keep it on the keyboard rather than in a MIDI remix.
+renders one note. A realistic voice costs roughly 10-15x a chip voice per sample and lays
+down every note's full tail, so the keyboard can afford it per note while a long MIDI remix
+cannot.
 
 ### MIDI remix
 
@@ -105,7 +113,8 @@ drums, and renders are capped at 5 minutes.
 A track can use either bank: `{ instrument: 'real:piano' }` (or the CLI's
 `--track 1=real:piano`). Realistic voices cost ~10-15x a chip voice per sample and the
 renderer lays down every note's full tail, so a long piece can take minutes — chip voices
-stay the default for that reason.
+stay the default for that reason, and the console's track menu groups them under
+「晶片（快）」 and 「寫實（慢）」 so the choice is an informed one.
 
 ### Showing the performance (piano display)
 

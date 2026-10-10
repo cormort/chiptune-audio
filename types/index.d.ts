@@ -164,7 +164,9 @@ export type InstrumentName =
 
 export type RealisticInstrumentName =
   | 'piano' | 'epiano' | 'organ' | 'strings' | 'flute' | 'brass'
-  | 'guitar' | 'bell' | 'bass' | 'harp' | 'choir' | 'marimba';
+  | 'guitar' | 'bell' | 'bass' | 'harp' | 'choir' | 'marimba'
+  | 'violin' | 'cello' | 'trumpet' | 'sax' | 'clarinet'
+  | 'harpsichord' | 'vibraphone' | 'erhu' | 'accordion' | 'musicbox';
 
 /** Any instrument in either bank: a bare chip name, or `real:<name>` (and
  *  `chip:<name>`) to pick the bank explicitly. */
@@ -186,8 +188,10 @@ export interface Instrument {
 }
 
 export declare const INSTRUMENTS: Record<InstrumentName, Instrument>;
-/** The same twelve slots voiced as acoustic instruments (additive harmonics,
- *  detuned copies, an attack transient and a per-voice lowpass). */
+/** The chip bank's twelve slots voiced as acoustic instruments, plus the real
+ *  instruments the chip bank has no slot for (additive harmonics, detuned
+ *  copies, an attack transient and a per-voice lowpass). Every chip key is
+ *  present here; the extras are selectable as `real:<name>` only. */
 export declare const REALISTIC_INSTRUMENTS: Record<RealisticInstrumentName, Instrument>;
 export declare const INSTRUMENT_BANKS: {
   chip: Record<InstrumentName, Instrument>;

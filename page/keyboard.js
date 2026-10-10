@@ -18,7 +18,7 @@ const ACOUSTIC_INSTRUMENTS = { standard: '標準鋼琴', mellow: '柔和琴音',
 const SAMPLE_INSTRUMENTS = { grand: 'Yamaha C5 平台鋼琴' };
 const BANKS = {
   chip: { label: '單一振盪器，8-bit 遊戲音色' },
-  real: { label: '疊泛音、微走音與起音雜訊，接近真實樂器' },
+  real: { label: '疊泛音、微走音與起音雜訊，接近真實樂器（小提琴、二胡、薩克斯風、大鍵琴…）' },
   acoustic: { label: '多泛音物理頻散與琴槌動態衰減，100% 離線純演算法溫潤琴音' },
   sample: { label: '準備載入真實平台鋼琴取樣（支援 CacheStorage 永久離線快取）...' },
 };

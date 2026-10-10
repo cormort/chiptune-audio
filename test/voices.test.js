@@ -130,14 +130,31 @@ test('both banks resolve by bare name, by bank, or by prefix', () => {
   for (const name of instrumentNames()) assert.ok(resolveInstrument(name), name);
 });
 
-test('every bank slot has a label and both banks keep the twelve slots', () => {
+test('every bank slot has a label, and real-only instruments stay real-only', () => {
+  // 晶片庫正好十二格；寫實庫至少同樣多，多出來的是晶片庫沒有位置的樂器
+  // （小提琴、二胡…），它們只能用 real:<name> 選，不會悄悄蓋掉晶片庫的名字。
+  const chip = Object.keys(INSTRUMENT_BANKS.chip);
+  const real = Object.keys(INSTRUMENT_BANKS.real);
+  assert.equal(chip.length, 12, 'chip');
+  assert.ok(real.length >= 12, `real has only ${real.length} slots`);
   for (const bank of ['chip', 'real']) {
-    const keys = Object.keys(INSTRUMENT_BANKS[bank]);
-    assert.equal(keys.length, 12, bank);
-    for (const k of keys) assert.ok(INSTRUMENT_LABELS[bank][k], `${bank}.${k} has no label`);
+    for (const k of Object.keys(INSTRUMENT_BANKS[bank])) {
+      assert.ok(INSTRUMENT_LABELS[bank][k], `${bank}.${k} has no label`);
+    }
   }
   assert.deepEqual(Object.keys(INSTRUMENTS), Object.keys(INSTRUMENT_LABELS.chip));
-  assert.deepEqual(Object.keys(REALISTIC_INSTRUMENTS), Object.keys(INSTRUMENT_LABELS.real));
+  assert.deepEqual(real, Object.keys(INSTRUMENT_LABELS.real));
+  // 兩庫同名的位置指的是同一種樂器（piano 在兩邊都是鋼琴），這是切換音色庫
+  // 不會換錯樂器的前提，所以至少要有一批是共用的。
+  const shared = real.filter((k) => chip.includes(k));
+  assert.ok(shared.length >= 6, `the banks share only ${shared.length} names: ${shared.join(', ')}`);
+  for (const k of real) {
+    assert.ok(resolveInstrument(`real:${k}`), `real:${k} does not resolve`);
+    if (!chip.includes(k)) {
+      assert.equal(resolveInstrument(k), null, `${k} is real-only but also resolves as a chip name`);
+      assert.ok(instrumentNames().includes(`real:${k}`), `${k} is missing from instrumentNames()`);
+    }
+  }
 });
 
 test('renderMidi takes realistic instrument names, and still rejects nonsense', () => {
@@ -245,6 +262,16 @@ const GOLDEN = {
       harp: "431fc996",
       choir: "a105c785",
       marimba: "f96d7cdc",
+      violin: "1a1e7c06",
+      cello: "9f7b3a88",
+      trumpet: "245fe25e",
+      sax: "f01eedac",
+      clarinet: "e4e47ee3",
+      harpsichord: "fd0a0e89",
+      vibraphone: "c58524a9",
+      erhu: "6c6fee93",
+      accordion: "697a1196",
+      musicbox: "582d2765",
     },
   },
 };
