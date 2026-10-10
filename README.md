@@ -153,8 +153,23 @@ The source is **Virtuosity Drums** (Versilian Studios × Karoryfer Samples, **CC
 `samples/drums/README.md` credits it and `tools/build-drums.mjs` regenerates the files
 (ffmpeg, it follows the kit's own SFZ velocity/round-robin mapping rather than guessing).
 
+### Velocity layers
+
+Three of those instruments — violin, cello and trumpet — are **bundled** (like the drums) and
+carry **two recorded dynamics** each, so a soft note is darker, not just quieter: VSCO 2 CE's
+`_p`/`_f` and `_v1`/`_v3` pairs (brightness ratios measured at 1.36×, 1.51× and 3.18×).
+They live in `samples/velocity/` (76 files, ~3.6 MB) with the generated table in
+`src/dynamic-library.js`, and they override the single-layer remote entries of the same name
+in `src/samples.js`. `pickLayer()` picks the loudest layer that fits the velocity, so the
+layer carries timbre and velocity still carries level — which is why the levels of the two
+layers are normalised to match (a 15 dB jump at the velocity boundary would be worse than no
+layers at all). The flute was going to be one of the three; VSCO's flute turns out to have
+takes rather than dynamics (4 dB, same timbre), so it is a trumpet instead and the flute keeps
+its single layer. Regenerate with `node tools/build-velocity.mjs`.
+
 Sample licensing: instruments CC-BY 3.0 (credits in `SAMPLE_LIBRARY`, i.e.
-`src/sample-library.js`; the Salamander piano is Alexander Holm's V3), drums CC0.
+`src/sample-library.js`; the Salamander piano is Alexander Holm's V3), drums CC0,
+velocity layers CC0 (VSCO 2 Community Edition).
 
 ### MIDI remix
 

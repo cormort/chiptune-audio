@@ -4,11 +4,20 @@
 //
 // 三件事讓這件事變成「零依賴」而不是「bundled 10 MB 取樣」：
 //   1. 只有被選到的樂器才抓（src/sample-library.js 的資料表列出檔名）。
-//   2. 每個樂器只留最多 12 個樣本，缺的中間音用播放速率內插（±2 個半音內幾乎聽不出來）。
+//   2. 每個樂器最多留 18 個樣本，缺的中間音用播放速率內插（±2 個半音內幾乎聽不出來）。
 //   3. 樣本還沒到（第一次選、或離線）時先用合成代理音（資料表的 `synth`），按鍵不會沒聲音。
-import { SAMPLE_LIBRARY } from './sample-library.js';
+//
+// 另外有三個樂器（小提琴、大提琴、小號）用的是**有力度層**的版本：錄音放在 repo 裡
+// （samples/velocity/，跟鼓組一樣同源、進 service worker 快取），資料在
+// src/dynamic-library.js；它們覆蓋掉下面同名的遠端單層版本（見 MERGED）。
+import { SAMPLE_LIBRARY as REMOTE_LIBRARY } from './sample-library.js';
+import { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 
-export { SAMPLE_LIBRARY, SAMPLE_CREDIT } from './sample-library.js';
+/** 遠端單層 + repo 內建力度層（同名的以內建的為準）。 */
+export const SAMPLE_LIBRARY = { ...REMOTE_LIBRARY, ...DYNAMIC_INSTRUMENTS };
+
+export { SAMPLE_CREDIT } from './sample-library.js';
+export { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */
@@ -77,11 +86,17 @@ export function prepareSample(buffer, { floor = 0.01, prerollSeconds = 0.002 } =
  *
  *  @returns {number} 實際套用的倍率（1 = 沒動）
  */
-export function normalizeInstrument(notes, target = 0.7, { min = 0.25, max = 4 } = {}) {
-  const peaks = notes.map((n) => {
+export function normalizeInstrument(notes, target = 0.7, { min = 0.25, max = 8 } = {}) {
+  const peakOf = (pcm) => {
     let peak = 0;
-    for (const v of n.pcm) { const x = Math.abs(v); if (x > peak) peak = x; }
+    for (const v of pcm) { const x = Math.abs(v); if (x > peak) peak = x; }
     return peak;
+  };
+  // 有力度層時只看「最強的那一層」：拿全部層一起算中位數的話，弱層（本來就小 15 dB）
+  // 會把基準拉低，整組被放大到破音。
+  const peaks = notes.map((n) => {
+    const layers = Array.isArray(n.layers) && n.layers.length ? n.layers : [n];
+    return Math.max(...layers.map((l) => peakOf(l.pcm || new Float32Array(0))));
   }).filter((p) => p > 0);
   if (!peaks.length) return 1;
   peaks.sort((a, b) => a - b);
@@ -90,17 +105,38 @@ export function normalizeInstrument(notes, target = 0.7, { min = 0.25, max = 4 }
   const gain = Math.min(max, Math.max(min, target / median));
   if (Math.abs(gain - 1) < 0.01) return 1;
   for (const note of notes) {
-    const pcm = note.pcm;
-    for (let i = 0; i < pcm.length; i++) pcm[i] *= gain;
+    const layers = Array.isArray(note.layers) && note.layers.length ? note.layers : [note];
+    for (const layer of layers) {
+      const pcm = layer.pcm;
+      if (!pcm) continue;
+      for (let i = 0; i < pcm.length; i++) pcm[i] *= gain;
+    }
   }
   return gain;
 }
 
-/** 一個樂器要抓的每個樣本：{ midi, url }。 */
-export function sampleUrls(name) {
-  const inst = SAMPLE_LIBRARY[name];
+/** 一個樂器要抓的每個檔案：{ midi, vel, url }。`vel` 是 undefined 表示單層樂器；
+ *  有力度層的樂器（src/dynamic-library.js）一個音會有好幾個檔。 */
+export function sampleUrls(nameOrSpec) {
+  const inst = typeof nameOrSpec === 'string' ? SAMPLE_LIBRARY[nameOrSpec] : nameOrSpec;
   if (!inst) return [];
-  return Object.entries(inst.notes).map(([midi, file]) => ({ midi: +midi, url: inst.base + file }));
+  const out = [];
+  for (const [midi, entry] of Object.entries(inst.notes)) {
+    if (Array.isArray(entry)) for (const layer of entry) out.push({ midi: +midi, vel: layer.vel, url: inst.base + layer.file });
+    else out.push({ midi: +midi, vel: undefined, url: inst.base + entry });
+  }
+  return out;
+}
+
+/** 一個音高在指定力度下要用哪一層：挑「不超過這個力度的最大 vel」。
+ *  單層的項目（沒有 layers）就是它自己。 */
+export function pickLayer(entry, vel = 1) {
+  const layers = entry && entry.layers;
+  if (!Array.isArray(layers) || !layers.length) return entry;
+  const v = Number.isFinite(vel) ? Math.min(1, Math.max(0, vel)) : 1;
+  let chosen = layers[0];
+  for (const layer of layers) if (v >= layer.vel) chosen = layer;
+  return chosen;
 }
 
 /** 挑最近的樣本。`notes` 是已載入的清單（可為空），回傳那個項目或 null。 */
@@ -114,11 +150,19 @@ export function nearestSample(notes, midi) {
   return best;
 }
 
-/** 一個音要怎麼用樣本播：挑最近的樣本，以及要套的播放速率（半音差 → 2^(d/12)）。 */
-export function sampleVoice(notes, midi) {
+/** 一個音要怎麼用樣本播：挑最近的樣本、挑力度層，以及要套的播放速率
+ *  （半音差 → 2^(d/12)）。有力度層時 `layer` 就是選中的那一層。 */
+export function sampleVoice(notes, midi, vel = 1) {
   const hit = nearestSample(notes, midi);
   if (!hit) return null;
-  return { sample: hit, semitones: midi - hit.midi, rate: 2 ** ((midi - hit.midi) / 12) };
+  const layer = pickLayer(hit, vel);
+  return {
+    sample: hit,
+    layer,
+    pcm: layer && layer.pcm ? layer.pcm : hit.pcm,
+    semitones: midi - hit.midi,
+    rate: 2 ** ((midi - hit.midi) / 12),
+  };
 }
 
 /** 讓 out[at + i] 疊上 pcm[0], pcm[1], ...（離線算 MIDI 用），線性內插。
@@ -168,7 +212,8 @@ export class SampledInstruments {
   constructor(audioContextOrGetter, outputNodeOrGetter = null) {
     this._ctx = audioContextOrGetter;
     this._output = outputNodeOrGetter;
-    /** name -> { notes: [{ midi, buffer }], failed: number } */
+    this._buffers = new WeakMap();   // pcm -> AudioBuffer（即時播放用，做過就留著）
+    /** name -> { notes: [{ midi, layers: [{ vel, pcm }], rate }], failed, gain } */
     this.instruments = new Map();
     this._loading = new Map();     // name -> Promise（同一個樂器只抓一次）
     this.loadedCount = 0;          // 最近一次載入已完成的樣本數
@@ -185,9 +230,11 @@ export class SampledInstruments {
     return out || (this.ctx ? this.ctx.destination : null);
   }
 
-  /** 這個樂器已經有幾個樣本可用。 */
+  /** 這個樂器已經有幾個「檔案」可用（跟 wanted() 同一個單位，才能比較）。 */
   loaded(name) {
-    return this.instruments.get(name)?.notes.length || 0;
+    const inst = this.instruments.get(name);
+    if (!inst) return 0;
+    return inst.notes.reduce((n, e) => n + e.layers.length, 0);
   }
 
   /** 這個樂器一共要抓幾個樣本。 */
@@ -202,21 +249,23 @@ export class SampledInstruments {
   /** 載入一個樂器的樣本；已經抓完的就直接回傳，正在載就等同一個 promise，
    *  只抓到一半（上次離線、有檔案 404）時只補缺的那幾個。
    *  `fetchImpl`／`decode` 可以換掉，測試用不到網路也能驗證整條路徑。 */
-  load(name, opts = {}) {
+  load(nameOrSpec, opts = {}) {
+    const spec = typeof nameOrSpec === 'string' ? SAMPLE_LIBRARY[nameOrSpec] : nameOrSpec;
+    if (!spec) return Promise.resolve(null);
+    const name = spec.name || (typeof nameOrSpec === 'string' ? nameOrSpec : '');
     const running = this._loading.get(name);
     if (running) return running;
-    if (!SAMPLE_LIBRARY[name]) return Promise.resolve(null);
-    const total = this.wanted(name);
+    const total = this.wanted(spec);
     if (total > 0 && this.loaded(name) >= total) return Promise.resolve(this.instruments.get(name));
-    const p = this._load(name, opts).finally(() => this._loading.delete(name));
+    const p = this._load(name, spec, opts).finally(() => this._loading.delete(name));
     this._loading.set(name, p);
     return p;
   }
 
-  async _load(name, { onProgress, fetchImpl, decode } = {}) {
+  async _load(name, spec, { onProgress, fetchImpl, decode } = {}) {
     const get = fetchImpl || ((url) => fetch(url));
     const decodeBuffer = decode || ((bytes) => this.ctx.decodeAudioData(bytes));
-    const urls = sampleUrls(name);
+    const urls = sampleUrls(spec);
     let cache = null;
     try {
       if (typeof caches !== 'undefined') cache = await caches.open(this.cacheName);
@@ -224,11 +273,13 @@ export class SampledInstruments {
       cache = null;   // 無痕模式或沒權限：照抓，只是不進快取
     }
     const have = new Map((this.instruments.get(name)?.notes || []).map((n) => [n.midi, n]));
-    const notes = [...have.values()].map((n) => ({ ...n }));
+    const notes = new Map([...have.values()].map((n) => [n.midi, { ...n, layers: [...n.layers] }]));
     let failed = 0;
     let done = 0;
-    for (const { midi, url } of urls) {
-      if (have.has(midi)) { done++; continue; }     // 上次就抓到了（處理過的 pcm 也在），不重抓
+    for (const { midi, vel, url } of urls) {
+      const had = notes.get(midi);
+      const already = had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel));
+      if (already) { done++; continue; }   // 上次就抓到了（處理過的 pcm 也在），不重抓
       try {
         let res = cache ? await cache.match(url) : null;
         if (!res) {
@@ -237,8 +288,12 @@ export class SampledInstruments {
         }
         if (!res || !res.ok) throw new Error(`${url}: HTTP ${res ? res.status : 'no response'}`);
         const buffer = await decodeBuffer(await res.arrayBuffer());
-        if (buffer && buffer.length) notes.push({ midi, pcm: prepareSample(buffer), rate: buffer.sampleRate || 44100 });
-        else failed++;
+        if (buffer && buffer.length) {
+          const entry = notes.get(midi) || { midi, layers: [], rate: buffer.sampleRate || 44100 };
+          entry.rate = buffer.sampleRate || 44100;
+          entry.layers.push({ vel: vel === undefined ? 0 : vel, pcm: prepareSample(buffer) });
+          notes.set(midi, entry);
+        } else failed++;
       } catch (err) {
         failed++;   // 單一檔案壞掉不該讓整個樂器不能用：有幾個樣本用幾個
         if (typeof console !== 'undefined') console.warn(`[samples] ${name} ${url}: ${err.message}`);
@@ -246,25 +301,28 @@ export class SampledInstruments {
       done++;
       if (onProgress) onProgress(done, urls.length, name);
     }
-    notes.sort((a, b) => a.midi - b.midi);
+    const sorted = [...notes.values()].sort((a, b) => a.midi - b.midi);
+    for (const entry of sorted) entry.layers.sort((a, b) => a.vel - b.vel);
     // 樂器之間的基準音量：鋼琴原本比別人小 6 dB（見 normalizeInstrument）
-    const gain = normalizeInstrument(notes);
-    const hit = { notes, failed, gain };
-    if (notes.length) this.instruments.set(name, hit);
-    this.loadedCount = notes.length;
+    const gain = normalizeInstrument(sorted);
+    const hit = { notes: sorted, failed, gain };
+    if (sorted.length) this.instruments.set(name, hit);
+    this.loadedCount = sorted.reduce((n, e) => n + e.layers.length, 0);
     this.total = urls.length;
     return hit;
   }
 
   /** 即時播放要用的 AudioBuffer：由處理過的 pcm 現做一顆並快取（第一次播那個音才做）。
    *  這樣記憶體只留一份單聲道、切過開頭的資料，而不是每顆樣本都留原本的立體聲解碼結果。 */
-  bufferFor(note) {
-    if (note.buffer) return note.buffer;
+  bufferFor(pcm, rate) {
+    if (!pcm || !pcm.length) return null;
+    const hit = this._buffers.get(pcm);
+    if (hit) return hit;
     const ctx = this.ctx;
-    if (!ctx || !note.pcm || !note.pcm.length) return null;
-    const buf = ctx.createBuffer(1, note.pcm.length, note.rate || 44100);
-    buf.copyToChannel(note.pcm, 0);
-    note.buffer = buf;
+    if (!ctx) return null;
+    const buf = ctx.createBuffer(1, pcm.length, rate || 44100);
+    buf.copyToChannel(pcm, 0);
+    this._buffers.set(pcm, buf);
     return buf;
   }
 
@@ -282,8 +340,8 @@ export class SampledInstruments {
     if (!ctx) return null;
     const inst = this.instruments.get(name);
     if (!inst || !inst.notes.length) return null;
-    const v = sampleVoice(inst.notes, note);
-    const buffer = this.bufferFor(v.sample);
+    const v = sampleVoice(inst.notes, note, opts.vel === undefined ? 0.85 : opts.vel);
+    const buffer = this.bufferFor(v.pcm, inst.notes[0].rate);
     if (!buffer) return null;
     if (ctx.state === 'suspended') ctx.resume();
 
@@ -318,7 +376,7 @@ export class SampledInstruments {
     if (!inst || !inst.notes.length) return null;
     return {
       rate: inst.notes[0].rate || 44100,
-      notes: inst.notes.map((n) => ({ midi: n.midi, pcm: n.pcm })),
+      notes: inst.notes.map((n) => ({ midi: n.midi, layers: n.layers })),
     };
   }
 

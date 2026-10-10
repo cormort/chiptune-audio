@@ -9,7 +9,7 @@
 // realistic synth (`real:`) when it does not, and the chip voice as the last
 // resort. Nothing here is a guess about taste — the families are GM's, and the
 // range thresholds are the instruments' own ranges.
-import { SAMPLE_LIBRARY } from './sample-library.js';
+import { SAMPLE_LIBRARY } from './samples.js';
 import { SAMPLE_KIT } from './drums.js';
 
 /** Ranges are inclusive GM program numbers; the first match wins.

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import {
-  prepareSample, normalizeInstrument,
+  prepareSample, normalizeInstrument, pickLayer,
+  DYNAMIC_INSTRUMENTS,
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
   nearestSample, sampleVoice, mixSampleInto,
@@ -23,19 +24,30 @@ test('the sample library is complete and points at real-looking files', () => {
     const where = `sample:${name}`;
     assert.ok(inst.label, `${where} has no label`);
     assert.ok(inst.credit, `${where} has no credit`);
-    assert.match(inst.base, /^https:\/\/.+\/$/, `${where} base URL looks wrong`);
+    assert.match(inst.base, /^(https:\/\/.+|[a-z0-9_./-]+)\/$/i, `${where} base URL looks wrong`);
     assert.equal(sampleLabel(name), inst.label);
     // 樣本還沒到時播的合成代理音必須真的存在，否則「按鍵不會沒聲音」就是空話。
     assert.ok(resolveInstrument(inst.synth), `${where} synth ${inst.synth} does not resolve`);
     const urls = sampleUrls(name);
     assert.ok(urls.length >= 6, `${where} has only ${urls.length} samples`);
-    const midis = urls.map((u) => u.midi);
+    const midis = [...new Set(urls.map((u) => u.midi))];
     assert.deepEqual(midis, [...midis].sort((a, b) => a - b), `${where} notes are not sorted`);
-    assert.equal(new Set(midis).size, midis.length, `${where} has duplicate notes`);
-    for (const { midi, url } of urls) {
+    for (const { midi, vel, url } of urls) {
       assert.ok(midi >= 0 && midi <= 127, `${where} has an impossible note ${midi}`);
-      assert.equal(url, `${inst.base}${inst.notes[midi]}`, `${where} URL does not match its file`);
       assert.match(url, /\.mp3$/, `${where} ${url} is not an mp3`);
+      assert.equal(url, `${inst.base}${url.slice(inst.base.length)}`, `${where} URL does not match its base`);
+      if (vel !== undefined) assert.ok(vel >= 0 && vel < 1, `${where} layer vel ${vel} out of range`);
+    }
+    // 有力度層的樂器：每個音至少兩層、由弱到強、同一層不會重複
+    if (inst.layers) {
+      assert.ok(inst.layers >= 2, `${where} claims layers but has ${inst.layers}`);
+      for (const [midi, entry] of Object.entries(inst.notes)) {
+        assert.ok(Array.isArray(entry), `${where} note ${midi} is not a layer list`);
+        assert.ok(entry.length >= 2, `${where} note ${midi} has only ${entry.length} layer(s)`);
+        assert.equal(entry[0].vel, 0, `${where} note ${midi} has no softest layer`);
+        const vels = entry.map((l) => l.vel);
+        assert.deepEqual(vels, [...vels].sort((a, b) => a - b), `${where} note ${midi} layers are out of order`);
+      }
     }
     // gap 是「相鄰樣本差幾個半音」，也就是中間的音要用播放速率拉多少。UI 拿它提醒
     // 使用者，所以數字必須跟資料一致——不一致就等於騙人。
@@ -100,7 +112,7 @@ test('loading a sample stores the processed mono audio, not the raw decode', asy
   });
   const voice = bank.pcm('violin');
   assert.equal(voice.rate, 48000, 'the decoded rate is remembered for mixing');
-  const pcm = voice.notes[0].pcm;
+  const pcm = voice.notes[0].layers[0].pcm;
   assert.ok(pcm.length < len, 'the silent lead-in should be gone');
   // 900 個樣本的空白（18.75 ms）減掉 2 ms 前導 = 16.75 → 17 ms
   assert.equal(Math.round((len - pcm.length) / 48000 * 1000), 17, 'the silent lead-in, minus the 2 ms preroll');
@@ -123,7 +135,7 @@ test('an instrument is levelled against the others, not left at its library leve
   assert.equal(normalizeInstrument(vsco), 1, 'an instrument already at the reference is left alone');
 
   // 上下限：爛檔案不會被放大到破音，也不會被壓成沒聲音
-  assert.ok(normalizeInstrument([{ midi: 60, pcm: mk(0.001) }]) <= 4);
+  assert.ok(normalizeInstrument([{ midi: 60, pcm: mk(0.001) }]) <= 8);
   assert.ok(normalizeInstrument([{ midi: 60, pcm: mk(1) }]) >= 0.25);
   assert.equal(normalizeInstrument([]), 1);
   assert.equal(normalizeInstrument([{ midi: 60, pcm: new Float32Array(4) }]), 1, 'a silent instrument is left alone');
@@ -236,63 +248,128 @@ const quietly = async (fn) => {
 
 test('SampledInstruments loads once, survives a bad file, and reports progress', async () => {
   const bank = new SampledInstruments(null);
+  // 用測試自己的小樂器，不要依賴真實資料表（真實的會隨來源更新，也會有力度層）
+  const tiny = {
+    name: 'test-one',
+    base: 'https://example.test/samples/',
+    notes: { 60: '60.mp3', 64: '64.mp3', 67: '67.mp3' },
+  };
   const asked = [];
-  const brokenUrl = sampleUrls('violin')[1].url;      // 一個檔案壞掉（404）
+  const broken = 'https://example.test/samples/64.mp3';
   const fetchImpl = async (url) => {
     asked.push(url);
-    if (url === brokenUrl) return { ok: false, status: 404 };
+    if (url === broken) return { ok: false, status: 404 };
     return { ok: true, arrayBuffer: async () => new ArrayBuffer(16) };
   };
   const decode = async () => fakeBuffer(128);
   const progress = [];
-  const hit = await quietly(() => bank.load('violin', {
+  const hit = await bank.load(tiny, {
     fetchImpl, decode, onProgress: (done, total) => progress.push([done, total]),
-  }));
+  });
 
-  const wanted = sampleUrls('violin').length;
-  assert.equal(asked.length, wanted, 'it should ask for exactly the listed files');
-  assert.equal(hit.notes.length, wanted - 1, 'the 404 file is skipped, the rest still work');
+  assert.equal(asked.length, 3, 'it should ask for exactly the listed files');
+  assert.equal(hit.notes.length, 2, 'the 404 file is skipped, the rest still work');
   assert.equal(hit.failed, 1);
-  assert.equal(progress.length, wanted, 'progress fires for every file, failures included');
-  assert.equal(progress.at(-1)[0], wanted);
-  assert.deepEqual(progress.at(-1)[1], wanted);
-  assert.equal(bank.loaded('violin'), wanted - 1);
-  assert.equal(bank.wanted('violin'), wanted);
-  assert.equal(bank.loaded('kazoo'), 0);
+  assert.equal(progress.length, 3, 'progress fires for every file, failures included');
+  assert.deepEqual(progress.at(-1), [3, 3]);
+  assert.equal(bank.loaded('test-one'), 2);
+  assert.equal(bank.wanted(tiny), 3);
+  assert.equal(bank.loaded('nope'), 0);
 
   // 只抓到一半時，下一次只補缺的那一個（不重抓已經抓到的樣本）
   const before = asked.length;
-  await quietly(() => bank.load('violin', { fetchImpl, decode }));
+  await bank.load(tiny, { fetchImpl, decode });
   assert.equal(asked.length, before + 1, 'only the missing file is retried');
-  assert.equal(asked.at(-1), brokenUrl);
-  assert.equal(bank.loaded('violin'), wanted - 1);
+  assert.equal(asked.at(-1), broken);
+  assert.equal(bank.loaded('test-one'), 2);
 
   // 整個樂器都抓完就不再多問一次
   const complete = new SampledInstruments(null);
   const calls = [];
   const okFetch = async (url) => { calls.push(url); return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) }; };
-  await complete.load('flute', { fetchImpl: okFetch, decode });
+  await complete.load(tiny, { fetchImpl: okFetch, decode });
   const first = calls.length;
-  await complete.load('flute', { fetchImpl: okFetch, decode });
+  await complete.load(tiny, { fetchImpl: okFetch, decode });
   assert.equal(calls.length, first, 'a fully loaded instrument must not be fetched again');
-  assert.equal(complete.loading('flute'), false);
+  assert.equal(complete.loading('test-one'), false);
 
   // 挑音：最近的樣本，超出音域也用最近的（低音往最近的樣本拉）
-  const notes = [...bank.instruments.get('violin').notes];
-  const best = bank.findBest('violin', notes[1].midi);
-  assert.equal(best.midi, notes[1].midi);
-  assert.equal(bank.findBest('violin', notes[1].midi + 1).midi, notes[1].midi);
-  assert.equal(bank.findBest('kazoo', 60), null);
+  const notes = [...bank.instruments.get('test-one').notes];
+  assert.equal(bank.findBest('test-one', notes[1].midi).midi, notes[1].midi);
+  assert.equal(bank.findBest('test-one', notes[1].midi + 1).midi, notes[1].midi);
+  assert.equal(bank.findBest('nope', 60), null);
 
-  // 給 renderMidi 用的樣子
-  const voices = bank.voices();
-  assert.deepEqual(Object.keys(voices), ['sampled:violin']);
-  assert.equal(voices['sampled:violin'].rate, 44100);
-  assert.equal(voices['sampled:violin'].notes.length, wanted - 1);
-  assert.equal(voices['sampled:violin'].notes[0].pcm.length, 128);
+  // 給 renderMidi 用的樣子：單層樂器也會包成一層，播放端只有一條路
+  const voices = bank.voices(['test-one']);
+  assert.deepEqual(Object.keys(voices), ['sampled:test-one']);
+  assert.equal(voices['sampled:test-one'].rate, 44100);
+  assert.equal(voices['sampled:test-one'].notes.length, 2);
+  assert.equal(voices['sampled:test-one'].notes[0].layers.length, 1);
+  assert.equal(voices['sampled:test-one'].notes[0].layers[0].pcm.length, 128);
 
   // 沒有 AudioContext 就沒有聲音可播，但也不能丟例外
-  assert.equal(bank.playNote('violin', 60), null);
+  assert.equal(bank.playNote('test-one', 60), null);
+});
+
+test('velocity picks the layer, and the layer carries its own audio', () => {
+  const notes = [{ midi: 60, layers: [
+    { vel: 0, pcm: Float32Array.from([0.1]) },
+    { vel: 0.5, pcm: Float32Array.from([0.9]) },
+  ] }];
+  const near = (got, want, what) => assert.ok(Math.abs(got - want) < 1e-6, `${what}: ${got} !== ${want}`);
+  near(sampleVoice(notes, 60, 0.1).pcm[0], 0.1, 'a soft note uses the soft layer');
+  near(sampleVoice(notes, 60, 0.5).pcm[0], 0.9, 'the boundary belongs to the louder layer');
+  near(sampleVoice(notes, 60, 1).pcm[0], 0.9);
+  near(sampleVoice(notes, 60).pcm[0], 0.9, 'no velocity means full velocity');
+  // 單層（沒有 layers）還是它自己
+  const single = [{ midi: 60, pcm: Float32Array.from([0.4]) }];
+  near(sampleVoice(single, 60, 0.2).pcm[0], 0.4);
+  near(pickLayer({ pcm: Float32Array.from([1]) }, 0.3).pcm[0], 1);
+  // 音高照樣挑最近的，但層要照力度
+  const two = [
+    { midi: 60, layers: [{ vel: 0, pcm: Float32Array.from([1]) }, { vel: 0.5, pcm: Float32Array.from([2]) }] },
+    { midi: 64, layers: [{ vel: 0, pcm: Float32Array.from([3]) }, { vel: 0.5, pcm: Float32Array.from([4]) }] },
+  ];
+  near(sampleVoice(two, 63, 0.9).pcm[0], 4, 'nearest pitch first, then the layer');
+  near(sampleVoice(two, 63, 0.1).pcm[0], 3);
+  assert.equal(sampleVoice([], 60, 1), null);
+});
+
+test('the levelling looks at the strongest layer, not at every layer', () => {
+  // 弱層本來就小 15 dB，如果一起算中位數，整組會被放大到破音
+  const mk = (peak) => { const pcm = new Float32Array(4); pcm[0] = peak; return pcm; };
+  const notes = [
+    { midi: 60, layers: [{ vel: 0, pcm: mk(0.1) }, { vel: 0.5, pcm: mk(0.5) }] },
+    { midi: 64, layers: [{ vel: 0, pcm: mk(0.1) }, { vel: 0.5, pcm: mk(0.5) }] },
+  ];
+  const gain = normalizeInstrument(notes);
+  // 強層中位峰值 0.5 → 拉到 0.7（×1.4）。若把弱層也算進去，基準會被拉低、整組放大到破音。
+  assert.ok(Math.abs(gain - 0.7 / 0.5) < 0.02, `should level against the strong layers (median 0.5), got ${gain}`);
+  // 兩層都乘同一個倍率：p 與 f 的音量差（就是力度）保持不變
+  assert.ok(Math.abs(notes[0].layers[1].pcm[0] / notes[0].layers[0].pcm[0] - 5) < 1e-6);
+});
+
+test('the bundled velocity layers are on disk and precached', () => {
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const listed = new Set([...sw.matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  assert.ok(listed.has('src/dynamic-library.js'), 'src/dynamic-library.js is not precached');
+  const names = Object.keys(DYNAMIC_INSTRUMENTS);
+  assert.ok(names.length >= 3, `only ${names.length} layered instruments`);
+  let files = 0;
+  for (const name of names) {
+    const inst = DYNAMIC_INSTRUMENTS[name];
+    assert.ok(inst.layers >= 2, `${name} claims no layers`);
+    assert.ok(inst.credit.includes('CC0'), `${name} must credit its CC0 source`);
+    // 每個音都要有兩層，而且兩層真的存在、真的進快取
+    for (const url of sampleUrls(name).map((u) => u.url)) {
+      files++;
+      assert.ok(existsSync(new URL(`../${url}`, import.meta.url)), `${url} is missing (rerun tools/build-velocity.mjs)`);
+      assert.ok(listed.has(url), `${url} is not in the sw.js precache list`);
+    }
+  }
+  assert.ok(files >= 50, `only ${files} layered files`);
+  // 覆蓋：這三個樂器用的是內建的力度層版本，不是遠端單層版
+  for (const name of names) assert.ok(SAMPLE_LIBRARY[name].base.startsWith('samples/velocity/'), `${name} is not the layered version`);
 });
 
 test('a failed instrument is not remembered as loaded, so it can be retried', async () => {

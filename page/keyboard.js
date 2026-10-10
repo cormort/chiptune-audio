@@ -75,7 +75,8 @@ function buildInstruments() {
       // 樣本庫本身有洞的樂器（例如法國號中間差了 14 個半音）要講清楚：中間的音是
       // 用播放速率硬拉的，差越多越不像，這不是使用者可以從畫面看出來的事。
       const wide = inst.gap >= 6 ? `（相鄰錄音差 ${inst.gap} 個半音，中間的音用播放速率內插）` : '';
-      b.title = `樣本：${inst.credit}${wide}`;
+      const layers = inst.layers ? `（有 ${inst.layers} 層力度：小力彈音色也比較暗）` : '';
+      b.title = `樣本：${inst.credit}${layers}${wide}`;
     }
     b.onclick = () => {
       instrument = name;

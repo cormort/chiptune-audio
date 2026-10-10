@@ -17,7 +17,7 @@ const APP = [
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
   'src/instruments.js', 'src/midi.js', 'src/wav.js', 'src/piano.js', 'src/pianoroll.js',
-  'src/samples.js', 'src/sample-library.js', 'src/gm.js', 'src/drums.js',
+  'src/samples.js', 'src/sample-library.js', 'src/dynamic-library.js', 'src/gm.js', 'src/drums.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
   'page/console.js', 'page/keyboard.js', 'page/drum-library.js',
 ];
@@ -129,6 +129,85 @@ const DRUMS = [
   'samples/drums/84-v2.mp3',
 ];
 
+const VELOCITY = [
+  'samples/velocity/cello/24-f.mp3',
+  'samples/velocity/cello/24-p.mp3',
+  'samples/velocity/cello/28-f.mp3',
+  'samples/velocity/cello/28-p.mp3',
+  'samples/velocity/cello/31-f.mp3',
+  'samples/velocity/cello/31-p.mp3',
+  'samples/velocity/cello/35-f.mp3',
+  'samples/velocity/cello/35-p.mp3',
+  'samples/velocity/cello/38-f.mp3',
+  'samples/velocity/cello/38-p.mp3',
+  'samples/velocity/cello/41-f.mp3',
+  'samples/velocity/cello/41-p.mp3',
+  'samples/velocity/cello/45-f.mp3',
+  'samples/velocity/cello/45-p.mp3',
+  'samples/velocity/cello/48-f.mp3',
+  'samples/velocity/cello/48-p.mp3',
+  'samples/velocity/cello/52-f.mp3',
+  'samples/velocity/cello/52-p.mp3',
+  'samples/velocity/cello/55-f.mp3',
+  'samples/velocity/cello/55-p.mp3',
+  'samples/velocity/cello/59-f.mp3',
+  'samples/velocity/cello/59-p.mp3',
+  'samples/velocity/cello/62-f.mp3',
+  'samples/velocity/cello/62-p.mp3',
+  'samples/velocity/cello/65-f.mp3',
+  'samples/velocity/cello/65-p.mp3',
+  'samples/velocity/trumpet/41-f.mp3',
+  'samples/velocity/trumpet/41-p.mp3',
+  'samples/velocity/trumpet/45-f.mp3',
+  'samples/velocity/trumpet/45-p.mp3',
+  'samples/velocity/trumpet/48-f.mp3',
+  'samples/velocity/trumpet/48-p.mp3',
+  'samples/velocity/trumpet/51-f.mp3',
+  'samples/velocity/trumpet/51-p.mp3',
+  'samples/velocity/trumpet/55-f.mp3',
+  'samples/velocity/trumpet/55-p.mp3',
+  'samples/velocity/trumpet/58-f.mp3',
+  'samples/velocity/trumpet/58-p.mp3',
+  'samples/velocity/trumpet/62-f.mp3',
+  'samples/velocity/trumpet/62-p.mp3',
+  'samples/velocity/trumpet/65-f.mp3',
+  'samples/velocity/trumpet/65-p.mp3',
+  'samples/velocity/trumpet/69-f.mp3',
+  'samples/velocity/trumpet/69-p.mp3',
+  'samples/velocity/trumpet/72-f.mp3',
+  'samples/velocity/trumpet/72-p.mp3',
+  'samples/velocity/violin/55-f.mp3',
+  'samples/velocity/violin/55-p.mp3',
+  'samples/velocity/violin/57-f.mp3',
+  'samples/velocity/violin/57-p.mp3',
+  'samples/velocity/violin/60-f.mp3',
+  'samples/velocity/violin/60-p.mp3',
+  'samples/velocity/violin/64-f.mp3',
+  'samples/velocity/violin/64-p.mp3',
+  'samples/velocity/violin/67-f.mp3',
+  'samples/velocity/violin/67-p.mp3',
+  'samples/velocity/violin/69-f.mp3',
+  'samples/velocity/violin/69-p.mp3',
+  'samples/velocity/violin/72-f.mp3',
+  'samples/velocity/violin/72-p.mp3',
+  'samples/velocity/violin/76-f.mp3',
+  'samples/velocity/violin/76-p.mp3',
+  'samples/velocity/violin/79-f.mp3',
+  'samples/velocity/violin/79-p.mp3',
+  'samples/velocity/violin/81-f.mp3',
+  'samples/velocity/violin/81-p.mp3',
+  'samples/velocity/violin/84-f.mp3',
+  'samples/velocity/violin/84-p.mp3',
+  'samples/velocity/violin/88-f.mp3',
+  'samples/velocity/violin/88-p.mp3',
+  'samples/velocity/violin/91-f.mp3',
+  'samples/velocity/violin/91-p.mp3',
+  'samples/velocity/violin/93-f.mp3',
+  'samples/velocity/violin/93-p.mp3',
+  'samples/velocity/violin/96-f.mp3',
+  'samples/velocity/violin/96-p.mp3',
+];
+
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
@@ -140,8 +219,8 @@ self.addEventListener('install', (e) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
-    // 鼓組有 100 個小檔案：一起抓，但不要跟上面那批搶
-    await Promise.all(DRUMS.map(async (path) => {
+    // 鼓組與力度層的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
+    await Promise.all([...DRUMS, ...VELOCITY].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
