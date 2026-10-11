@@ -121,7 +121,15 @@ one file, render each and concatenate the WAVs.
 program number and register and answers with the closest voice — `sampled:` when the
 library has a recording for that family, `real:` when it does not, chip for the synth
 programs. Register splits a family (GM 48-51 → contrabass below C3, cello below C4, violin
-above; brass 61-63 likewise) using the median pitch of the part. The console applies it on
+above; brass 61-63 likewise) using the median pitch of the part. The answer also carries
+`outOfRange`: how far the part reaches outside the chosen recording's range, in semitones.
+Past `MAX_SAMPLE_SHIFT` (3) the recordings are not used at all, because a rate-shifted
+recording is a different instrument — a contrabass lifted 16 semitones is not a contrabass
+and a flute slowed six is a bass flute. Instead the same family lends a member that fits
+(the high melody on a GM 43 part goes to the violin), and when no member can cover the part
+(a string pad spanning 4.7 octaves) the family's `fallback` synth voice takes it. Both
+cases are pinned by tests taken from real files: Deep Wilderness's melody (program 43,
+F#3-D#5) and Rygar's flute (program 73, down to F#3). The console applies it on
 import (「自動配真實樂器」) and on demand (「🎻 重新配音色」); the CLI's `--auto` uses
 `samples: false`, because Node cannot fetch and decode the recordings. Choosing a voice must
 never start a download — that happens on the first play.
@@ -363,7 +371,15 @@ piano, and the mono fold below.
 
 Two findings worth keeping in mind when touching the bundled samples:
 
-- **Do not fold a decorrelated stereo pair with `(L+R)/2`.** Salamander's two channels are
+- **Do not fold a decorrelated stereo pair with `(L+R)/2`.** The build tools now decode
+  every source to two channels, measure left, right *and* the fold, and keep whichever has
+  the most energy (measured over the whole bundled set: the fold won 0 times out of 307 —
+  147 left, 160 right). Rebuilding with that rule recovered 2.6 dB on the piano note it was
+  measured on, up to 6.7 dB on individual notes (the fold had made some notes quieter than
+  others by that much, which is a level error *between* notes), and it put the snare's
+  centroid back from 877 Hz to 1094 Hz and the hi-hat's from 4426 Hz to 4828 Hz — the fold
+  had been cancelling exactly the high-frequency part of those hits. The original
+  measurements: Salamander's two channels are
   two different microphone perspectives (their per-band phase difference scatters from +28°
   to -137°, lag-0 correlation -0.29 to -0.79), so the fold cancels about 5 dB of each note's
   energy *and* reshapes its spectrum differently per note (measured: A3v8 channels 0.0138 /

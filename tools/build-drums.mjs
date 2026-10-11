@@ -119,12 +119,32 @@ function fetchSource(path) {
   return local;
 }
 
-/** FLAC → 單聲道 f32 44.1 kHz。 */
+/** FLAC → 單聲道 f32 44.1 kHz。
+ *
+ *  跟 tools/build-velocity.mjs 一樣：立體來源不能用 ffmpeg 的 `-ac 1` 相加。這套鼓的
+ *  來源是立體（48 kHz），左右量起來差 2.0–2.9 dB（每個擊點都是右邊比較大），相加會
+ *  抵消掉那一部分——而抵消是**頻率相關**的，所以不只是變小聲，音色也被重塑（小鼓的
+ *  響線、鈸的尾音最容易聽出來）。這裡量左／右／相加三個候選，取能量最大的。 */
 function decode(file, seconds) {
-  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '1', '-ar', String(RATE), '-t', String(seconds + 0.5), '-']);
+  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '2', '-ar', String(RATE), '-t', String(seconds + 0.5), '-']);
   // Buffer 可能是共用的大 ArrayBuffer 裡的一段，先複製再轉，避免對齊問題
   const copy = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  return new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
+  const st = new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
+  const frames = st.length >> 1;
+  const cands = [new Float32Array(frames), new Float32Array(frames), new Float32Array(frames)];
+  const energy = [0, 0, 0];
+  for (let i = 0; i < frames; i++) {
+    const l = st[2 * i];
+    const r = st[2 * i + 1];
+    cands[0][i] = l;
+    cands[1][i] = r;
+    cands[2][i] = (l + r) / 2;
+    energy[0] += l * l;
+    energy[1] += r * r;
+    energy[2] += cands[2][i] * cands[2][i];
+  }
+  if (energy[0] === energy[1] && energy[1] === energy[2]) return cands[0];   // 單聲道來源
+  return cands[energy.indexOf(Math.max(...energy))];
 }
 
 /** 去掉開頭靜音、切長度、尾端淡出、正規化。 */

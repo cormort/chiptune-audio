@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  gmInstrument, autoInstruments, medianNote,
+  gmInstrument, autoInstruments, medianNote, outOfRange, MAX_SAMPLE_SHIFT,
   resolveInstrument, SAMPLE_LIBRARY, SAMPLE_PREFIX, parseMidi,
 } from '../src/index.js';
 import { track, smf, tempo } from './smf.js';
@@ -78,8 +78,12 @@ test('a family that spans several instruments is picked by register', () => {
   assert.equal(strings(59), 'sampled:cello');
   assert.equal(strings(60), 'sampled:violin');
   assert.equal(strings(84), 'sampled:violin');
-  // 同一個家族用 median 而不是平均值：一個低音長音加幾個高音裝飾不該把整軌拉上去
-  assert.equal(gmInstrument(48, { notes: [{ note: 40 }, { note: 40 }, { note: 40 }, { note: 96 }] }).instrument, 'sampled:contrabass');
+  // 同一個家族用 median 而不是平均值：一個低音長音加幾個高音裝飾不該把整軌拉上去。
+  // 但音域也要蓋得住——40 到 96 是 4.7 個八度，家族裡沒有任何一把獨奏樂器蓋得住，
+  // 所以正確答案是家族的合成弦樂（把 C7 用小提琴的錄音拉高 37 個半音才是壞掉）。
+  assert.equal(gmInstrument(48, { notes: [{ note: 40 }, { note: 40 }, { note: 40 }, { note: 96 }] }).instrument, 'real:strings');
+  // 蓋得住的低音長音還是低音提琴
+  assert.equal(gmInstrument(48, { notes: [{ note: 40 }, { note: 40 }, { note: 40 }, { note: 56 }] }).instrument, 'sampled:contrabass');
   // 沒有音符時取家族中間的一項，不要挑到極端
   assert.equal(gmInstrument(48, { notes: [] }).instrument, 'sampled:cello');
   assert.equal(strings(40), gmInstrument(44, { notes: [{ note: 40 }] }).instrument, '44 震音弦樂跟 48 弦樂群同一套規則');
@@ -151,4 +155,62 @@ test('the console applies the plan on import and on demand', async () => {
   // 選音色不該順便下載：抓樣本只發生在播放／匯出（ensureSamples）
   const importPath = script.slice(script.indexOf('async function readMidiFile'), script.indexOf('function instrumentShort'));
   assert.ok(!importPath.includes('load('), 'importing must not start downloading samples');
+});
+
+// 取樣庫的音域是有限的（長笛 C4–C7、低音提琴 F#1–B3）。配音只看 GM 編號與音域
+// 中位數的話，一個「program 43 但旋律坐在 D#4」的軌會被配到低音提琴，然後每個音
+// 被拉高最多 16 個半音——那不是低音提琴，是變聲怪。這兩個案例都來自真實檔案：
+// Deep Wilderness 的旋律軌與 Rygar 的長笛軌。
+test('a voice whose recordings cannot cover the part falls back instead of shifting', () => {
+  const range = (lo, hi) => Array.from({ length: hi - lo + 1 }, (_, i) => ({ note: lo + i }));
+  // Deep Wilderness 旋律：program 43（低音提琴，樣本 F#1–B3），實際 F#3–D#5
+  const melody = range(54, 75);
+  const deep = gmInstrument(43, { notes: melody });
+  assert.equal(deep.instrument, 'real:bass', 'a contrabass lifted 16 semitones is not a contrabass');
+  assert.equal(deep.sampled, false);
+  assert.equal(deep.outOfRange, 16, 'the measurement has to be published');
+  assert.equal(gmInstrument(43, { notes: melody, samples: false }).instrument, 'real:bass');
+  // 蓋得住的低音提琴照樣用錄音
+  const low = gmInstrument(43, { notes: range(30, 55) });
+  assert.equal(low.instrument, 'sampled:contrabass');
+  assert.equal(low.sampled, true);
+  assert.equal(low.outOfRange, 0);
+  // 掉出範圍 2 個半音還在容忍值內：照樣用錄音，但把差距報出來
+  assert.equal(gmInstrument(43, { notes: range(28, 55) }).outOfRange, 2);
+  // Rygar 長笛：program 73，樣本 C4–C7，旋律掉到 F#3（低 6 個半音）
+  const flute = gmInstrument(73, { notes: range(54, 75) });
+  assert.equal(flute.instrument, 'real:flute', 'a flute slowed six semitones is a bass flute');
+  assert.equal(flute.outOfRange, 6);
+  assert.equal(gmInstrument(73, { notes: range(60, 84) }).instrument, 'sampled:flute');
+  // 3 個半音以內仍然用錄音（小提琴最高到 C7，B3 只是低一點）
+  const viola = gmInstrument(41, { notes: range(52, 72) });
+  assert.equal(viola.instrument, 'sampled:violin');
+  assert.equal(viola.outOfRange, 3);
+  assert.equal(MAX_SAMPLE_SHIFT, 3, 'the tolerance is part of the contract');
+});
+
+test('a family with several members lends one that fits the register', () => {
+  // GM 48-51 弦樂群：中位數在 C4 以上給小提琴，但音域掉到低音提琴的地盤時，
+  // 由同一個家族裡蓋得住的成員接手（而不是硬用小提琴拉 20 個半音以下）。
+  const lowPad = gmInstrument(49, { notes: [{ note: 64 }, { note: 36 }, { note: 40 }, { note: 43 }] });
+  assert.equal(lowPad.sampled, true, 'a low string pad should still be a recording');
+  assert.ok(['sampled:cello', 'sampled:contrabass'].includes(lowPad.instrument), `got ${lowPad.instrument}`);
+  const highPad = gmInstrument(49, { notes: [{ note: 64 }, { note: 67 }, { note: 72 }] });
+  assert.equal(highPad.instrument, 'sampled:violin');
+  assert.equal(highPad.outOfRange, 0);
+  // 整個家族都蓋不到（極端音域）就退回合成弦樂，而不是變速
+  const tooLow = gmInstrument(49, { notes: [{ note: 12 }, { note: 14 }] });
+  assert.equal(tooLow.instrument, 'real:strings', 'nothing in the string family reaches C0');
+  assert.equal(tooLow.sampled, false);
+  assert.ok(tooLow.outOfRange > MAX_SAMPLE_SHIFT);
+});
+
+test('outOfRange measures the part against the recorded range', () => {
+  const flute = SAMPLE_LIBRARY.flute;                 // C4-C7
+  assert.equal(outOfRange(flute, [{ note: 60 }, { note: 96 }]), 0);
+  assert.equal(outOfRange(flute, [{ note: 48 }]), 12);
+  assert.equal(outOfRange(flute, [{ note: 108 }]), 12);
+  assert.equal(outOfRange(flute, []), 0, 'no notes means nothing to fit');
+  assert.equal(outOfRange(null, [{ note: 60 }]), 0);
+  assert.equal(outOfRange(flute, null), 0);
 });

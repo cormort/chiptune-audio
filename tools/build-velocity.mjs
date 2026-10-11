@@ -17,7 +17,8 @@
 //   node tools/build-velocity.mjs            # 只轉缺的檔案
 //   node tools/build-velocity.mjs --force    # 全部重轉
 //
-// 每個擊點的處理：單聲道 44.1 kHz、去掉開頭靜音（保留 3 ms）、切到 `seconds` 秒、
+// 每個擊點的處理：單聲道 44.1 kHz（立體來源見 decode()：量過左／右／相加再取最好的，
+// 不是盲目相加）、去掉開頭靜音（保留 3 ms）、切到 `seconds` 秒、
 // 尾端 60 ms 淡出。
 //
 // 音量：**每一層各自正規化到同一個基準（0.7）**，不是保留「p 比 f 小 15 dB」。
@@ -237,11 +238,45 @@ function fetchSource(base, path) {
   return local;
 }
 
-/** FLAC/WAV → 單聲道 f32 44.1 kHz（只解到需要的長度）。 */
+/** 解碼的統計：每一種來源最後選了哪個聲道（跑完會印出來）。 */
+const channelChoice = { left: 0, right: 0, mid: 0, mono: 0 };
+
+/** FLAC/WAV → 單聲道 f32 44.1 kHz（只解到需要的長度）。
+ *
+ *  **立體來源不能直接 `(L+R)/2`。** Salamander 的兩個聲道是兩支不同視角的麥克風
+ *  （各頻帶相位差從 +28° 散到 −137°、zero-lag 相關 −0.29～−0.79），相加不是中性的
+ * 單聲道混音而是**部分抵消**：量到 A3v8 的左/右是 0.0138 / 0.0147 RMS，相加只剩
+ * 0.0076（少 5.2 dB），而且 250–500 Hz 多了 2–5 dB、500–2000 Hz 少了 3–4 dB——
+ * 音色被重塑，每個音還不一樣。VSCO 的立體檔是相干的一對，相加只差 0.6–2.3 dB，
+ * 那時候相加才是對的（標準的單聲道混音）。
+ *
+ *  所以這裡解成兩聲道，量左、右、相加三個候選的能量，取最大的那個；單聲道來源
+ *  （卡林巴、tonejs 那批）三個候選一樣，行為跟以前相同。ffmpeg 的 `-ac 1` 就是
+ *  上面那個抵消的相加，不能再用。 */
 function decode(file, seconds) {
-  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '1', '-ar', String(RATE), '-t', String(seconds + 0.4), '-']);
+  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '2', '-ar', String(RATE), '-t', String(seconds + 0.4), '-']);
   const copy = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  return new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
+  const st = new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
+  const frames = st.length >> 1;
+  const left = new Float32Array(frames);
+  const right = new Float32Array(frames);
+  const mid = new Float32Array(frames);
+  const energy = [0, 0, 0];
+  for (let i = 0; i < frames; i++) {
+    const l = st[2 * i];
+    const r = st[2 * i + 1];
+    left[i] = l;
+    right[i] = r;
+    mid[i] = (l + r) / 2;
+    energy[0] += l * l;
+    energy[1] += r * r;
+    energy[2] += mid[i] * mid[i];
+  }
+  // 完全一樣（單聲道來源，或左右相同）就不用挑
+  if (energy[0] === energy[1] && energy[1] === energy[2]) { channelChoice.mono++; return left; }
+  const best = energy.indexOf(Math.max(...energy));
+  channelChoice[['left', 'right', 'mid'][best]]++;
+  return [left, right, mid][best];
 }
 
 /** 去掉開頭靜音、切長度、尾端淡出。不正規化（p 與 f 的音量差要留著）。 */
@@ -411,6 +446,7 @@ ${Object.entries(inst.release.notes).map(([midi, file]) => `        ${midi}: '${
     for (const file of readdirSync(dir)) bytes += readFileSync(join(dir, file)).length;
   }
   console.log(`\n寫入 ${Object.keys(library).length} 個樂器、${made} 個新檔案（沿用 ${reused}），檔案共 ${kb(bytes)}`);
+  console.log(`立體來源的聲道選擇：左 ${channelChoice.left}、右 ${channelChoice.right}、相加 ${channelChoice.mid}，單聲道 ${channelChoice.mono}`);
 }
 
 main();

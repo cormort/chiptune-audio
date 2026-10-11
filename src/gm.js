@@ -33,10 +33,10 @@ const FAMILIES = [
   { from: 40, to: 41, family: '小提琴／中提琴', sampled: 'violin' },
   { from: 42, to: 42, family: '大提琴', sampled: 'cello' },
   { from: 43, to: 43, family: '低音提琴', sampled: 'contrabass' },
-  { from: 44, to: 45, family: '弦樂（震音／撥奏）', byRange: 'strings' },
+  { from: 44, to: 45, family: '弦樂（震音／撥奏）', byRange: 'strings', fallback: 'real:strings' },
   { from: 46, to: 46, family: '豎琴', sampled: 'harp' },
   { from: 47, to: 47, family: '定音鼓', drums: true },
-  { from: 48, to: 51, family: '弦樂群', byRange: 'strings' },
+  { from: 48, to: 51, family: '弦樂群', byRange: 'strings', fallback: 'real:strings' },
   { from: 52, to: 54, family: '人聲', synth: 'real:choir' },
   { from: 55, to: 55, family: '樂團齊奏', synth: 'real:brass' },
   { from: 56, to: 56, family: '小號', sampled: 'trumpet' },
@@ -44,7 +44,7 @@ const FAMILIES = [
   { from: 58, to: 58, family: '低音號', sampled: 'tuba' },
   { from: 59, to: 59, family: '弱音小號', sampled: 'trumpet' },
   { from: 60, to: 60, family: '法國號', sampled: 'french-horn' },
-  { from: 61, to: 63, family: '銅管群', byRange: 'brass' },
+  { from: 61, to: 63, family: '銅管群', byRange: 'brass', fallback: 'real:brass' },
   { from: 64, to: 67, family: '薩克斯風', sampled: 'saxophone' },
   { from: 68, to: 69, family: '雙簧管', synth: 'real:sax' },
   { from: 70, to: 70, family: '低音管', sampled: 'bassoon' },
@@ -90,11 +90,34 @@ export function medianNote(notes) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-/** A sampled name resolved to a real one: a typo or a library change falls back
- *  to that instrument's synth voice rather than emitting something unusable. */
-function sampledVoice(name) {
+/** How far a part reaches outside an instrument's *recorded* range, in semitones.
+ *  0 means every note has a recording within reach. */
+export function outOfRange(spec, notes) {
+  if (!spec || !Array.isArray(notes) || !notes.length) return 0;
+  const midis = Object.keys(spec.notes).map(Number);
+  if (!midis.length) return 0;
+  const lo = Math.min(...midis);
+  const hi = Math.max(...midis);
+  let worst = 0;
+  for (const n of notes) worst = Math.max(worst, lo - n.note, n.note - hi);
+  return Math.max(0, worst);
+}
+
+/** Beyond this much playback-rate shifting a recording stops being that instrument:
+ *  the flute transposed six semitones down is a bass flute, and a contrabass lifted
+ *  sixteen is not a contrabass at all. Measured per instrument by comparing the
+ *  source's recorded range with the part's (see tools/analyze.mjs). */
+export const MAX_SAMPLE_SHIFT = 3;
+
+/** A sampled name resolved to a real one, with the two things the caller needs
+ *  to know: which voice the recordings give (`sampled`) and whether they can
+ *  actually cover the part's register (`fits`). A typo or a library change
+ *  returns null, and the caller falls back to a synth voice instead. */
+function sampledVoice(name, notes) {
   const spec = SAMPLE_LIBRARY[name];
-  return spec ? { instrument: `sampled:${name}`, synth: spec.synth } : null;
+  if (!spec) return null;
+  const shift = outOfRange(spec, notes);
+  return { sampled: `sampled:${name}`, synth: spec.synth, fits: shift <= MAX_SAMPLE_SHIFT, outOfRange: shift };
 }
 
 /**
@@ -109,22 +132,37 @@ export function gmInstrument(program, opts = {}) {
   const { notes = null, samples = true } = opts;
   const p = Number.isFinite(program) ? Math.min(127, Math.max(0, Math.round(program))) : 0;
   const fam = FAMILIES.find((f) => p >= f.from && p <= f.to) || FAMILIES[0];
-  const say = (instrument, sampled) => ({ instrument, family: fam.family, sampled });
+  const say = (instrument, sampled, outOfRange = 0) => ({ instrument, family: fam.family, sampled, outOfRange });
 
   if (fam.drums) return say('drums', false);
   if (fam.synth) return say(fam.synth, false);          // 合成庫的名字本來就不用下載
+
   if (fam.byRange) {
     const mid = medianNote(notes);
     const steps = BY_RANGE[fam.byRange];
     // 沒有音符可用時取家族的中間那一項，不要因為沒資訊就挑到極端
-    const step = mid === null ? steps[Math.floor(steps.length / 2)] : steps.find((s) => mid < s.below) || steps[steps.length - 1];
-    const voice = sampledVoice(step.sampled);
-    if (!voice) return say(fam.synth || 'piano', false);
-    return samples ? say(voice.instrument, true) : say(voice.synth, false);
+    const first = mid === null ? steps[Math.floor(steps.length / 2)] : steps.find((s) => mid < s.below) || steps[steps.length - 1];
+    const firstVoice = sampledVoice(first.sampled, notes);
+    // CLI（samples: false）走的是合成音色：那個沒有音域限制，所以照音域挑成員就好
+    if (!samples) return say(firstVoice ? firstVoice.synth : fam.fallback || 'piano', false);
+    if (firstVoice && firstVoice.fits) return say(firstVoice.sampled, true, firstVoice.outOfRange);
+    // 錄音蓋不到這條軌的音域：往同一個家族的其他成員找一個蓋得住的
+    // （低音提琴蓋不到的高音旋律交給小提琴，而不是硬拉 16 個半音）
+    for (const step of steps) {
+      if (step === first) continue;
+      const voice = sampledVoice(step.sampled, notes);
+      if (voice && voice.fits) return say(voice.sampled, true, voice.outOfRange);
+    }
+    // 整個家族都沒有一把蓋得住（例如橫跨 4.7 個八度的弦樂群）：用家族的合成音色。
+    // 它沒有音域限制，也不會把某個音拉高 37 個半音。
+    return say(fam.fallback || (firstVoice && firstVoice.synth) || 'piano', false, firstVoice ? firstVoice.outOfRange : 0);
   }
-  const voice = sampledVoice(fam.sampled);
+
+  const voice = sampledVoice(fam.sampled, notes);
   if (!voice) return say(fam.synth || 'piano', false);
-  return samples ? say(voice.instrument, true) : say(voice.synth, false);
+  return samples && voice.fits
+    ? say(voice.sampled, true, voice.outOfRange)
+    : say(voice.synth, false, voice.outOfRange);
 }
 
 /**

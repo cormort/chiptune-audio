@@ -184,7 +184,23 @@ velocity, so two layers stop sounding like a step: measured on a violin note at 
 0.0958. The piano additionally plays a recorded **release** sample at note-off.
 They live in `samples/velocity/` (307 files, ~15 MB) with the generated table in
 `src/dynamic-library.js`, and they override the single-layer remote entries of the same name
-in `src/samples.js`. The velocity set is deliberately **not** in the service worker precache —
+in `src/samples.js`.
+
+The build never blindly folds a stereo source to mono. Salamander's two channels are two
+different microphone perspectives (their per-band phase difference scatters from +28° to
+−137°, lag-0 correlation −0.29 to −0.79), so `(L+R)/2` is not a neutral mixdown but a partial
+**cancellation**: measured on A3v8, the channels are 0.0138 / 0.0147 RMS and the fold is
+0.0076 (−5 dB), with 250–500 Hz 2–5 dB louder and 500–2000 Hz 3–4 dB quieter than either
+channel — a per-note timbre change, not just a level loss. VSCO's stereo pairs are coherent
+by comparison (the fold lands 0.6–2.3 dB below the best channel), so for them summing is
+fine. `tools/build-velocity.mjs` and `tools/build-drums.mjs` therefore decode two channels,
+measure left, right and the fold, and keep the strongest: across the 307 bundled files the
+fold never won (147 left, 160 right). Rebuilding recovered 2.6 dB on that piano note and up
+to 6.7 dB on individual notes, and put the snare's spectral centroid back from 877 Hz to
+1094 Hz and the hi-hat's from 4426 Hz to 4828 Hz — the fold had been cancelling exactly the
+high-frequency part of those hits. `npm run analyze -- <files>` is the tool that measured it.
+
+The velocity set is deliberately **not** in the service worker precache —
 15 MB on the first visit is worse than a download on first use — while the drums and the piano
 releases are, since almost every piece needs them. `layerMix()` returns the one or two layers to play (the boundary
 crossfade), `pickLayer()` the single loudest that fits, so the layer carries timbre and

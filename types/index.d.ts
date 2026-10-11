@@ -340,6 +340,10 @@ export interface GmSuggestion {
   family: string;
   /** True when the voice is a recording and therefore has to be downloaded first. */
   sampled: boolean;
+  /** How far the part reaches outside the chosen instrument's recorded range, in
+   *  semitones (0 when every note has a recording within `MAX_SAMPLE_SHIFT`).
+   *  Past that limit the answer is the instrument's synth voice instead. */
+  outOfRange: number;
 }
 /** The voice for one GM program; `notes` picks between instruments of a family by
  *  register, and `samples: false` keeps the answer download-free (the CLI). */
@@ -354,6 +358,13 @@ export declare function autoInstruments(
 ): (GmSuggestion & { track: number })[];
 /** The pitch a part sits at: the median of its notes, or null when it has none. */
 export declare function medianNote(notes: { note: number }[] | null | undefined): number | null;
+/** How far a part reaches outside an instrument's recorded range, in semitones. */
+export declare function outOfRange(
+  spec: SampleInstrument | null | undefined,
+  notes: { note: number }[] | null | undefined,
+): number;
+/** Beyond this much playback-rate shifting a recording stops being that instrument. */
+export declare const MAX_SAMPLE_SHIFT: number;
 
 export interface MidiNote {
   /** Start, in seconds. */
