@@ -17,12 +17,18 @@ const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master
 // 取樣樂器的名稱與中文名來自 src/sample-library.js（20 種真實錄音）。
 const SAMPLE_NAMES = sampleNames();
 const SAMPLE_LABELS = Object.fromEntries(SAMPLE_NAMES.map((n) => [n, sampleLabel(n)]));
-// 物理擬真鋼琴自己一套 API（preset），所以這兩個庫各有自己的可選音色清單。
+// 「鋼琴」那一套以前是物理模型（src/piano.js 的 AcousticPiano），現在改成**真實取樣的
+// 平台鋼琴**（sampled:grand，Salamander 四層力度＋釋音，內建、離線可用）。三個選項改成
+// 觸鍵力度：柔和＝輕觸（真的會用到比較暗的弱層）、標準＝中、明亮＝重觸——用錄音自己的
+// 動態而不是外加 EQ。樣本還沒到的那一瞬間仍然退回原本的物理模型，按鍵不會沒聲音。
 const ACOUSTIC_INSTRUMENTS = { standard: '標準鋼琴', mellow: '柔和琴音', bright: '明亮鋼琴' };
+const ACOUSTIC_TOUCH = { standard: 1, mellow: 0.68, bright: 1.15 };
+/** 「鋼琴」那套播的取樣樂器（跟 src/sample-library.js 的資料表同名）。 */
+const ACOUSTIC_SAMPLE = 'grand';
 const BANKS = {
   chip: { label: '單一振盪器，8-bit 遊戲音色' },
   real: { label: '疊泛音、微走音與起音雜訊，接近真實樂器（小提琴、二胡、薩克斯風、大鍵琴…）' },
-  acoustic: { label: '多泛音物理頻散與琴槌動態衰減，100% 離線純演算法溫潤琴音' },
+  acoustic: { label: '真實取樣的平台鋼琴（內建、離線可用）；柔和／明亮是觸鍵力度' },
   sample: { label: `真實樂器錄音，共 ${SAMPLE_NAMES.length} 種；選到才抓樣本，抓過就離線可用` },
 };
 
@@ -39,6 +45,20 @@ let instrument = 'square';
 
 /** 選到取樣音色就開始抓它的樣本；抓過的從瀏覽器快取來，一個樂器只抓一次。 */
 function loadSample(name = instrument) {
+  // 「鋼琴」那套（acoustic）抓的是同一個內建平台鋼琴，所以這條路也要走
+  if (bank === 'acoustic') {
+    if (sampled.loaded(ACOUSTIC_SAMPLE)) { $('bankHint').textContent = '平台鋼琴：樣本就緒，離線也能彈'; return; }
+    $('bankHint').textContent = '平台鋼琴：載入樣本…';
+    sampled.load(ACOUSTIC_SAMPLE, {
+      onProgress: (done, total) => { if (bank === 'acoustic') $('bankHint').textContent = `平台鋼琴：載入樣本 ${done}/${total}…`; },
+    }).then((hit) => {
+      if (bank !== 'acoustic') return;
+      $('bankHint').textContent = hit && hit.notes.length
+        ? `${hit.notes.length} 個錄音就緒（${hit.notes[0].layers.length} 層力度＋釋音）· ${SAMPLE_CREDIT}`
+        : '樣本載入失敗，先用物理模型代替';
+    });
+    return;
+  }
   if (bank !== 'sample' || !SAMPLE_LIBRARY[name]) return;
   const label = sampleLabel(name);
   const total = sampled.wanted(name);
@@ -114,7 +134,7 @@ function setBank(next) {
   }
   buildInstruments();
   saveVoice();
-  if (bank === 'sample') loadSample();   // 只抓目前選到的那個樂器
+  if (bank === 'sample' || bank === 'acoustic') loadSample();   // 只抓目前選到的那個樂器
 }
 
 for (const el of document.querySelectorAll('[data-bank]')) {
@@ -128,7 +148,7 @@ if (bankKeys(bank).includes(prefs.get('instrument'))) {
   instrument = prefs.get('instrument');
   paintInstruments();
   saveVoice();
-  if (bank === 'sample') loadSample();   // setBank 先抓的是第一個，改回上次用的那一個
+  if (bank === 'sample' || bank === 'acoustic') loadSample();   // setBank 先抓的是第一個，改回上次用的那一個
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -197,8 +217,16 @@ function noteOn(i) {
       loadSample();        // 順便開始抓，下一次按就是真的錄音
     }
   } else if (bank === 'acoustic') {
-    voice = acousticPiano.playNote(n, { preset: instrument, vel: 0.85 });
-    release = 0.22;
+    // 真實取樣的平台鋼琴；三個選項只是觸鍵力度（柔和會真的用到比較暗的弱層）
+    const vel = Math.min(1, 0.85 * (ACOUSTIC_TOUCH[instrument] || 1));
+    voice = sampled.playNote(ACOUSTIC_SAMPLE, n, { vel });
+    if (voice) {
+      release = 0.2;            // 放開就是悶掉（鋼琴的制音器）
+    } else {
+      voice = acousticPiano.playNote(n, { preset: instrument, vel: 0.85 });
+      release = 0.22;
+      loadSample();             // 順便開始抓，下一次按就是真的錄音
+    }
   } else {
     voice = audio.playNote(instrumentNote(instrument, n, { bank }));
     release = instrumentRelease(instrument, bank);
