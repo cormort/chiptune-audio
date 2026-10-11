@@ -124,5 +124,18 @@
   </section>
 </main>
 
-<script type="module" src="page/kalimba.js"></script>
+<script type="module">
+  // 這一頁是新的，但 service worker 是「先用快取、背景更新」：部署後第一次開啟時，
+  // 新頁面（從網路來）會配到舊快取的 src/index.js，而舊的沒有卡林巴的匯出——模組匯入
+  // 失敗，畫面會是空的卡林巴（沒有任何錯誤訊息，因為模組根本沒開始跑）。
+  // 所以匯入失敗就自動重載一次；那一次的 service worker 已經是新的。sessionStorage
+  // 是保險：真的壞掉時只重載一次，不要變成無限重載。
+  import('./page/kalimba.js')
+    .then(() => sessionStorage.removeItem('kalimba:stale'))
+    .catch(() => {
+      if (sessionStorage.getItem('kalimba:stale')) return;
+      sessionStorage.setItem('kalimba:stale', '1');
+      location.reload();
+    });
+</script>
 </html>
