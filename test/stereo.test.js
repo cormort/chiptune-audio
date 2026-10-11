@@ -95,7 +95,7 @@ test('the bundled grand piano ships stereo, and the other instruments stay mono'
   assert.equal(mp3Channels(read('samples/velocity/grand-release/60.mp3')), 2, 'the damper samples too');
   // 其餘樂器（VSCO）留單聲道：相加只差 0.6–2.3 dB，留立體會讓 15 MB 變成 27 MB
   assert.equal(mp3Channels(read('samples/velocity/violin/55-p.mp3')), 1);
-  assert.equal(mp3Channels(read('samples/velocity/clarinet/46-p.mp3')), 1);
+  assert.equal(mp3Channels(read('samples/velocity/clarinet/53-p.mp3')), 1);
   assert.equal(mp3Channels(read('samples/flute/60-a.mp3')), 1);
   assert.equal(mp3Channels(read('samples/drums/36-v1-r1.mp3')), 1);
 });

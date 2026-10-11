@@ -96,8 +96,10 @@ test('a family with several members lends one that fits the register', () => {
   assert.equal(wide.sampled, false);
   const high = gmInstrument(61, { notes: [{ note: 62 }, { note: 66 }] });
   assert.equal(high.instrument, 'sampled:trumpet');
-  // 比小號的錄音還高（78-80）時，家族裡沒有人蓋得住 → 合成銅管，而不是硬拉 8 個半音
-  assert.equal(gmInstrument(61, { notes: [{ note: 78 }, { note: 80 }] }).instrument, 'real:brass');
+  // 八度修正之後小號的錄音是 53-84，78-80 蓋得住（以前量錯八度時蓋不到）
+  assert.equal(gmInstrument(61, { notes: [{ note: 78 }, { note: 80 }] }).instrument, 'sampled:trumpet');
+  // 比家族裡任何一把都高（90-92）→ 合成銅管，而不是硬拉十幾個半音
+  assert.equal(gmInstrument(61, { notes: [{ note: 90 }, { note: 92 }] }).instrument, 'real:brass');
 });
 
 test('a voice whose recordings cannot cover the part falls back instead of shifting', () => {

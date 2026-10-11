@@ -92,10 +92,10 @@ const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { maxBuffer: 1 << 2
  * 「音名 → 層號」的清單；只要有兩層以上的音才會採用。
  */
 const DISCOVER = {
-  oboe: { label: '雙簧管', credit: 'VSCO 2 Community Edition — Oboe, Vib（CC0 1.0）', synth: 'real:sax', dir: 'Woodwinds/Oboe/Vib', note: /^Oboe_Vib_([A-G]#?\d)_v(\d+)_Main\.wav$/, seconds: 4 },
-  viola: { label: '中提琴', credit: 'VSCO 2 Community Edition — Viola Section, susvib（CC0 1.0）', synth: 'real:strings', dir: 'Strings/Viola Section/susvib', note: /^ViolaEns_susvib_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4 },
-  trombone: { label: '長號', credit: 'VSCO 2 Community Edition — Tenor Trombone, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tenor Trombone/sus', note: /^tenortbn_sus_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4 },
-  tuba: { label: '低音號', credit: 'VSCO 2 Community Edition — Tuba, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tuba/sus', note: /^Tuba3_sus_([A-G]#?\d)_v(\d+)_rr1_Mid\.wav$/, seconds: 4 },
+  oboe: { label: '雙簧管', credit: 'VSCO 2 Community Edition — Oboe, Vib（CC0 1.0）', synth: 'real:sax', dir: 'Woodwinds/Oboe/Vib', note: /^Oboe_Vib_([A-G]#?\d)_v(\d+)_Main\.wav$/, seconds: 4  },
+  viola: { label: '中提琴', credit: 'VSCO 2 Community Edition — Viola Section, susvib（CC0 1.0）', synth: 'real:strings', dir: 'Strings/Viola Section/susvib', note: /^ViolaEns_susvib_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4  },
+  trombone: { label: '長號', credit: 'VSCO 2 Community Edition — Tenor Trombone, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tenor Trombone/sus', note: /^tenortbn_sus_([A-G]#?\d)_v(\d+)_1\.wav$/, seconds: 4  },
+  tuba: { label: '低音號', credit: 'VSCO 2 Community Edition — Tuba, sus（CC0 1.0）', synth: 'real:brass', dir: 'Brass/Tuba/sus', note: /^Tuba3_sus_([A-G]#?\d)_v(\d+)_rr1_Mid\.wav$/, seconds: 4  },
   // 低音管試過但拿掉：來源的兩層只差 5 dB、亮度比 0.93（幾乎同音色），那是不同 take
   // 不是力度——跟長笛同一個狀況，拿它假裝 p/f 是騙人。
 };
@@ -362,6 +362,13 @@ const peakOf = (pcm) => {
   return p;
 };
 
+// 量出來的八度修正：這七個來源的檔名比實際音高低一個八度（`A#3_v1` 裡是 468.5 Hz =
+// A#4；卡林巴、長笛、弦樂群、小號…都是同一個 VSCO 慣例）。沒有列在這裡的（Salamander
+// 鋼琴、Solo Violin）量起來本來就是對的。逐檔驗證：npm run analyze 或 tools 裡的稽核。
+for (const name of ['cello', 'clarinet', 'oboe', 'trombone', 'tuba', 'viola', 'trumpet']) {
+  if (INSTRUMENTS[name]) INSTRUMENTS[name].octave = 12;
+}
+
 function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const library = {};
@@ -377,7 +384,7 @@ function main() {
     const converted = new Map();     // 檔名 -> { pcm, layer }（還沒套該層的基準音量）
 
     for (const [noteName, layers] of Object.entries(inst.layers)) {
-      const midi = midiOf(noteName);
+      const midi = midiOf(noteName) + (inst.octave || 0);
       const out = [];
       // 弱層在前、強層在後：播放時挑「不超過這個力度的最大 vel」
       // 由弱到強，vel 的門檻平均切開（2 層 → 0/0.5；3 層 → 0/0.33/0.67）
@@ -427,7 +434,7 @@ function main() {
       const peaks = [];
       const pending = [];
       for (const [noteName, file] of Object.entries(inst.release.files)) {
-        const midi = midiOf(noteName);
+        const midi = midiOf(noteName) + (inst.octave || 0);
         const dest = join(rdir, `${midi}.mp3`);
         const pcm = shape(decode(fetchSource(inst.src || SRC, inst.release.dir ? `${inst.release.dir}/${file}` : file), inst.release.seconds || 1.5, !!inst.stereo), inst.release.seconds || 1.5);
         peaks.push(peakOf(pcm));
