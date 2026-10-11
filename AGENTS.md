@@ -350,3 +350,27 @@ bump `VERSION` there when you add a file.
 - For repeated sounds, vary `seed` (noise) or play with `{ rate: 0.9 + Math.random() * 0.2 }`.
 - Pick music by the scene's feeling first (`mood`), then try a few seeds.
 - `npm test` must pass after any change to `src/`.
+
+## Measuring audio instead of guessing
+
+`tools/analyze.mjs` (`npm run analyze -- <files>`) turns "it sounds fake" into numbers:
+peak/RMS/crest, noise floor, octave-band energy, spectral centroid and rolloff, stereo
+width (side/mid + L/R correlation), onsets, decay to -20 dB, per-note pitch, and
+`--compare A B` (aligned correlation and residual energy between two files). Everything
+this project claims about sample quality was measured with something like it — the 24-50 ms
+digital lead-ins, the piano's 6.2 dB level gap, the 96 kbps encode being inaudible to the
+piano, and the mono fold below.
+
+Two findings worth keeping in mind when touching the bundled samples:
+
+- **Do not fold a decorrelated stereo pair with `(L+R)/2`.** Salamander's two channels are
+  two different microphone perspectives (their per-band phase difference scatters from +28°
+  to -137°, lag-0 correlation -0.29 to -0.79), so the fold cancels about 5 dB of each note's
+  energy *and* reshapes its spectrum differently per note (measured: A3v8 channels 0.0138 /
+  0.0147 RMS, the fold 0.0076; 250-500 Hz 2-5 dB louder and 500-2000 Hz 3-4 dB quieter than
+  either channel). VSCO's stereo sources are benign in comparison (fold 0.6-2.3 dB below the
+  best channel). `-ac 1` in a build tool is that fold; pick the stronger channel instead.
+- **Encoding bitrate is not where realism is lost.** For a piano note every band up to
+  16 kHz matches the 48 kHz/24-bit original within 1 dB at 96 kbps mono; only the >16 kHz
+  band differs (-83 dB original vs -104 dB), which is inaudible. Look at the source
+  recordings and the playback rate, not the encoder.
