@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v29';
+const VERSION = 'v30';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -21,7 +21,7 @@ const APP = [
   'src/kalimba.js', 'src/kalimba-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
   'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/drum-library.js',
-  'src/flute-library.js', 'src/flute-vib-library.js', 'src/strings-library.js',
+  'src/flute-library.js', 'src/flute-vib-library.js', 'src/strings-library.js', 'src/guitar-library.js',
 ];
 
 // 鼓組的擊點與鋼琴的釋音取樣進快取（都很小、幾乎每首都會用到）；有力度層的樂器
@@ -275,6 +275,105 @@ const STRINGS_AND_VIB = [
   'samples/flute-vib/96-a.mp3',
 ];
 
+const GUITARS = [
+  'samples/guitar-acoustic/37-v1.mp3',
+  'samples/guitar-acoustic/37-v2.mp3',
+  'samples/guitar-acoustic/37-v3.mp3',
+  'samples/guitar-acoustic/40-v1.mp3',
+  'samples/guitar-acoustic/40-v2.mp3',
+  'samples/guitar-acoustic/40-v3.mp3',
+  'samples/guitar-acoustic/42-v1.mp3',
+  'samples/guitar-acoustic/42-v2.mp3',
+  'samples/guitar-acoustic/42-v3.mp3',
+  'samples/guitar-acoustic/45-v1.mp3',
+  'samples/guitar-acoustic/45-v2.mp3',
+  'samples/guitar-acoustic/45-v3.mp3',
+  'samples/guitar-acoustic/48-v1.mp3',
+  'samples/guitar-acoustic/48-v2.mp3',
+  'samples/guitar-acoustic/48-v3.mp3',
+  'samples/guitar-acoustic/51-v1.mp3',
+  'samples/guitar-acoustic/51-v2.mp3',
+  'samples/guitar-acoustic/51-v3.mp3',
+  'samples/guitar-acoustic/54-v1.mp3',
+  'samples/guitar-acoustic/54-v2.mp3',
+  'samples/guitar-acoustic/54-v3.mp3',
+  'samples/guitar-acoustic/57-v1.mp3',
+  'samples/guitar-acoustic/57-v2.mp3',
+  'samples/guitar-acoustic/57-v3.mp3',
+  'samples/guitar-acoustic/63-v1.mp3',
+  'samples/guitar-acoustic/63-v2.mp3',
+  'samples/guitar-acoustic/63-v3.mp3',
+  'samples/guitar-acoustic/66-v1.mp3',
+  'samples/guitar-acoustic/66-v2.mp3',
+  'samples/guitar-acoustic/66-v3.mp3',
+  'samples/guitar-acoustic/69-v1.mp3',
+  'samples/guitar-acoustic/69-v2.mp3',
+  'samples/guitar-acoustic/69-v3.mp3',
+  'samples/guitar-acoustic/72-v1.mp3',
+  'samples/guitar-acoustic/72-v2.mp3',
+  'samples/guitar-acoustic/72-v3.mp3',
+  'samples/guitar-acoustic/75-v1.mp3',
+  'samples/guitar-acoustic/75-v2.mp3',
+  'samples/guitar-acoustic/75-v3.mp3',
+  'samples/guitar-acoustic/78-v1.mp3',
+  'samples/guitar-acoustic/78-v2.mp3',
+  'samples/guitar-acoustic/78-v3.mp3',
+  'samples/guitar-acoustic/81-v1.mp3',
+  'samples/guitar-acoustic/81-v2.mp3',
+  'samples/guitar-acoustic/81-v3.mp3',
+  'samples/guitar-acoustic/84-v1.mp3',
+  'samples/guitar-acoustic/84-v2.mp3',
+  'samples/guitar-acoustic/84-v3.mp3',
+  'samples/guitar-electric/37-v1.mp3',
+  'samples/guitar-electric/37-v2.mp3',
+  'samples/guitar-electric/37-v3.mp3',
+  'samples/guitar-electric/40-v1.mp3',
+  'samples/guitar-electric/40-v2.mp3',
+  'samples/guitar-electric/40-v3.mp3',
+  'samples/guitar-electric/42-v1.mp3',
+  'samples/guitar-electric/42-v2.mp3',
+  'samples/guitar-electric/42-v3.mp3',
+  'samples/guitar-electric/45-v1.mp3',
+  'samples/guitar-electric/45-v2.mp3',
+  'samples/guitar-electric/45-v3.mp3',
+  'samples/guitar-electric/48-v1.mp3',
+  'samples/guitar-electric/48-v2.mp3',
+  'samples/guitar-electric/48-v3.mp3',
+  'samples/guitar-electric/51-v1.mp3',
+  'samples/guitar-electric/51-v2.mp3',
+  'samples/guitar-electric/51-v3.mp3',
+  'samples/guitar-electric/54-v1.mp3',
+  'samples/guitar-electric/54-v2.mp3',
+  'samples/guitar-electric/54-v3.mp3',
+  'samples/guitar-electric/57-v1.mp3',
+  'samples/guitar-electric/57-v2.mp3',
+  'samples/guitar-electric/57-v3.mp3',
+  'samples/guitar-electric/63-v1.mp3',
+  'samples/guitar-electric/63-v2.mp3',
+  'samples/guitar-electric/63-v3.mp3',
+  'samples/guitar-electric/66-v1.mp3',
+  'samples/guitar-electric/66-v2.mp3',
+  'samples/guitar-electric/66-v3.mp3',
+  'samples/guitar-electric/69-v1.mp3',
+  'samples/guitar-electric/69-v2.mp3',
+  'samples/guitar-electric/69-v3.mp3',
+  'samples/guitar-electric/72-v1.mp3',
+  'samples/guitar-electric/72-v2.mp3',
+  'samples/guitar-electric/72-v3.mp3',
+  'samples/guitar-electric/75-v1.mp3',
+  'samples/guitar-electric/75-v2.mp3',
+  'samples/guitar-electric/75-v3.mp3',
+  'samples/guitar-electric/78-v1.mp3',
+  'samples/guitar-electric/78-v2.mp3',
+  'samples/guitar-electric/78-v3.mp3',
+  'samples/guitar-electric/81-v1.mp3',
+  'samples/guitar-electric/81-v2.mp3',
+  'samples/guitar-electric/81-v3.mp3',
+  'samples/guitar-electric/84-v1.mp3',
+  'samples/guitar-electric/84-v2.mp3',
+  'samples/guitar-electric/84-v3.mp3',
+];
+
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
@@ -287,7 +386,7 @@ self.addEventListener('install', (e) => {
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
     // 鼓組、力度層的釋音與卡林巴的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB].map(async (path) => {
+    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB, ...GUITARS].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));

@@ -19,6 +19,7 @@ import { KALIMBA_INSTRUMENT } from './kalimba-library.js';
 import { FLUTE_INSTRUMENT } from './flute-library.js';
 import { FLUTE_VIB_INSTRUMENT } from './flute-vib-library.js';
 import { STRINGS_INSTRUMENT } from './strings-library.js';
+import { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
 /** 遠端單層 + repo 內建（同名或同一個名字以內建的為準；卡林巴只有內建這一份）。 */
 export const SAMPLE_LIBRARY = {
@@ -31,6 +32,9 @@ export const SAMPLE_LIBRARY = {
   'flute-vib': FLUTE_VIB_INSTRUMENT,
   // 弦樂群：原本的取樣庫裡沒有這個樂器（GM 44-45／48-51 以前借獨奏小提琴／大提琴）
   strings: STRINGS_INSTRUMENT,
+  // 木吉他與電吉他：Karoryfer Shinyguitar（CC0），各 16 個音高 × 3 層力度，
+  // 覆蓋遠端那兩個單層版本（單層＝小力彈只是同一段錄音變小聲）
+  ...GUITAR_INSTRUMENTS,
 };
 
 export { SAMPLE_CREDIT } from './sample-library.js';
@@ -39,6 +43,7 @@ export { KALIMBA_INSTRUMENT, KALIMBA_SOURCE } from './kalimba-library.js';
 export { FLUTE_INSTRUMENT } from './flute-library.js';
 export { FLUTE_VIB_INSTRUMENT } from './flute-vib-library.js';
 export { STRINGS_INSTRUMENT } from './strings-library.js';
+export { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */
