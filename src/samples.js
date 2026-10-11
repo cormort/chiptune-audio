@@ -10,14 +10,19 @@
 // 另外有三個樂器（小提琴、大提琴、小號）用的是**有力度層**的版本：錄音放在 repo 裡
 // （samples/velocity/，跟鼓組一樣同源、進 service worker 快取），資料在
 // src/dynamic-library.js；它們覆蓋掉下面同名的遠端單層版本（見 MERGED）。
+//
+// 卡林巴琴（kalimba）也是 repo 內建的，理由不一樣：它是 kalimba.html 那把模擬器的主角，
+// 打開頁面就該能彈，所以 17 個簧片的錄音（約 0.6 MB）跟鼓組一樣進預快取。
 import { SAMPLE_LIBRARY as REMOTE_LIBRARY } from './sample-library.js';
 import { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
+import { KALIMBA_INSTRUMENT } from './kalimba-library.js';
 
-/** 遠端單層 + repo 內建力度層（同名的以內建的為準）。 */
-export const SAMPLE_LIBRARY = { ...REMOTE_LIBRARY, ...DYNAMIC_INSTRUMENTS };
+/** 遠端單層 + repo 內建（同名或同一個名字以內建的為準；卡林巴只有內建這一份）。 */
+export const SAMPLE_LIBRARY = { ...REMOTE_LIBRARY, ...DYNAMIC_INSTRUMENTS, kalimba: KALIMBA_INSTRUMENT };
 
 export { SAMPLE_CREDIT } from './sample-library.js';
 export { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
+export { KALIMBA_INSTRUMENT, KALIMBA_SOURCE } from './kalimba-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */

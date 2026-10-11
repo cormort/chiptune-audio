@@ -153,6 +153,24 @@ The source is **Virtuosity Drums** (Versilian Studios × Karoryfer Samples, **CC
 `samples/drums/README.md` credits it and `tools/build-drums.mjs` regenerates the files
 (ffmpeg, it follows the kit's own SFZ velocity/round-robin mapping rather than guessing).
 
+### Sampled kalimba
+
+The **kalimba** (thumb piano) is bundled the same way and for a stronger reason: it is the
+instrument `kalimba.html` is built around, so it has to be playable the moment the page
+opens, and offline afterwards. `samples/kalimba/` holds one recording per tine — 17 files,
+~0.6 MB of mono 44.1 kHz mp3 — with the generated table in `src/kalimba-library.js`.
+
+The source is a **Moozica 17-key kalimba recorded by Simone Piervergili**
+(`NeoSoundFonts/SimonePiervergili-Kalimba`, **CC0 1.0**). The pitch of each file comes from
+that repo's SFZ `pitch_keycenter`, **not** from the file name: `C3.wav` contains middle C, so
+following the names would put the whole instrument an octave low. Measured, every tine was
+**sharp** — up to 22 cents (a quarter tone) at the top — so the build resamples each one onto
+equal temperament (worst residual 0.2 cents; 1.0 cent measured back out of the shipped mp3s).
+Each tine is peak-normalised on its own too: the source spread 13 dB between takes, which is
+thumb force, not instrument design. The tine keeps its timbre (decay 3.9 s at the bottom to
+0.4 s at the top) and velocity carries the level. Regenerate with
+`node tools/build-kalimba.mjs` (`--check` measures without converting).
+
 ### Velocity layers
 
 **Nine** of those instruments carry **recorded dynamics**: the grand piano (four layers plus
@@ -178,6 +196,7 @@ its single layer. Regenerate with `node tools/build-velocity.mjs`.
 
 Sample licensing: instruments CC-BY 3.0 (credits in `SAMPLE_LIBRARY`, i.e.
 `src/sample-library.js`; the Salamander piano is Alexander Holm's V3), drums CC0,
+kalimba CC0 (Moozica, recorded by Simone Piervergili),
 velocity layers CC0 (VSCO 2 Community Edition).
 
 ### MIDI remix
@@ -304,13 +323,25 @@ MIDI 區下方是**鋼琴演奏顯示**：音符由上往下掉，落到鍵盤�
 音量、混音、情緒、種子、小節、顯示與連續播放設定會存在瀏覽器裡，下次開啟直接接上。
 
 `keyboard.html` 是電子琴：四套音色庫（晶片音色／寫實合成／物理擬真鋼琴／**真實錄音取樣**——平台鋼琴、
-小提琴、大提琴、長笛、單簧管、薩克斯風、小號、木吉他、豎琴、木琴等 20 種，選到才下載、抓過可離線），
+小提琴、大提琴、長笛、單簧管、薩克斯風、小號、木吉他、豎琴、木琴、卡林巴琴等 23 種，選到才下載、
+抓過可離線；卡林巴琴是內建的，打開就能彈），
 按住發聲、放開停止，可彈和弦；可用滑鼠、觸控或電腦鍵盤（Z–M / Q–U），
 琴鍵標示可切換電腦按鍵、音名或簡譜；音量、八度、標示與選用的音色同樣會記住。
 
+`kalimba.html` 是**卡林巴琴模擬器**：17 根簧片照實體排列畫出來——最長（最低）的中央簧在正中間，
+往兩邊交替升高，長度比是 `1/√f`（自由棒的頻率與長度平方成反比），所以尾端排成一個 V 字。
+點簧片就撥、按住拖過去是刮奏、手機可多指同時撥，電腦鍵盤是數字排 `1`–`9`（左半邊＋中央）
+與 `Q`–`I`（右半邊）。可以移調（C／G／F／D／B♭／E♭）、切換標示（簡譜／音名／按鍵）、
+依「撥在簧片的哪個位置」決定力度（尾端大聲、靠琴橋小聲），按「止音」把還在響的簧片悶掉。
+還有兩首示範曲，以及**錄音**：記下撥了哪一根、什麼時候、多大力，匯出時用同一個引擎重算成 WAV。
+
+簧片的排列、長度、按鍵對應、調性與示範曲都在 `src/kalimba.js`（純資料與算式，沒有 DOM），
+頁面只負責畫出來與接事件——所以排列不變式（中央最低、往兩邊單調、音高排序後左右交替）
+在 `test/kalimba.test.js` 裡測得起來。
+
 ### 頁面的程式放在 `page/`
 
-兩個 HTML 只留標記與自己的版面，程式在 `page/`，共用的部分不再各寫一份：
+每個 HTML 只留標記與自己的版面，程式在 `page/`，共用的部分不再各寫一份：
 
 | 檔案 | 內容 |
 |---|---|
@@ -320,6 +351,7 @@ MIDI 區下方是**鋼琴演奏顯示**：音符由上往下掉，落到鍵盤�
 | `page/pianoview.js` | canvas 鋼琴演奏顯示（幾何來自 `src/pianoroll.js`） |
 | `page/console.js` | 控制台頁面：把上面幾塊接起來 |
 | `page/keyboard.js` | 電子琴頁面 |
+| `page/kalimba.js` | 卡林巴琴模擬器頁面（簧片幾何來自 `src/kalimba.js`） |
 
 `test/pages.test.js` 會檢查模組查的每個 `#id` 都真的在該頁 markup 裡、導覽連結都指向存在的區塊，
 `test/sw.test.js` 則確保 `page/` 的每個檔案都進了 service worker 的快取清單——
@@ -333,8 +365,8 @@ npx serve .        # 或 python3 -m http.server
 
 ### 安裝成 App（PWA）
 
-兩個頁面都可以安裝：Chrome／Edge 網址列的「安裝」圖示，或手機瀏覽器的「加到主畫面」。
-安裝後可離線使用；長按 App 圖示有「電子琴」捷徑。
+三個頁面都可以安裝：Chrome／Edge 網址列的「安裝」圖示，或手機瀏覽器的「加到主畫面」。
+安裝後可離線使用；長按 App 圖示有「電子琴」與「卡林巴琴」捷徑。
 `sw.js` 先用快取回應，同時在背景更新，所以部署新版後要**重新開啟一次**才會看到。
 改了頁面或 `page/`／`src/` 的檔案時，記得同步調高 `sw.js` 裡的 `VERSION`
 （`test/sw.test.js` 會確認清單沒有漏掉任何模組）。

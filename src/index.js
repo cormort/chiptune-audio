@@ -20,7 +20,12 @@ export { encodeWav } from './wav.js';
 export { renderAcousticPiano, AcousticPiano, SampledPiano, PIANO_SAMPLES } from './piano.js';
 export { SAMPLE_KIT, SampledKit, pickHit, kitNotes, kitHas } from './drums.js';
 export {
-  SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, DYNAMIC_INSTRUMENTS, SampledInstruments,
+  SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, DYNAMIC_INSTRUMENTS, KALIMBA_INSTRUMENT, KALIMBA_SOURCE,
+  SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
   nearestSample, sampleVoice, mixSampleInto, prepareSample, normalizeInstrument, pickLayer, layerMix,
 } from './samples.js';
+export {
+  KALIMBA_TINES, KALIMBA_CENTER, TINE_KEYS, KALIMBA_TUNINGS, KALIMBA_DEMOS,
+  tineNumber, tineNote, tineIndexFor, tineForKey, tineLength, tinePositions, velocityAt, demoSeconds,
+} from './kalimba.js';

@@ -10,6 +10,7 @@ const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf
 const PAGES = [
   { html: 'index.html', scripts: ['page/console.js', 'page/mixer.js', 'page/pianoview.js', 'page/ui.js'] },
   { html: 'keyboard.html', scripts: ['page/keyboard.js', 'page/ui.js'] },
+  { html: 'kalimba.html', scripts: ['page/kalimba.js', 'page/ui.js'] },
 ];
 
 test('page modules only look up ids the page markup defines', () => {

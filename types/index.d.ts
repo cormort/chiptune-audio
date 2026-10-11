@@ -166,7 +166,7 @@ export type RealisticInstrumentName =
   | 'piano' | 'epiano' | 'organ' | 'strings' | 'flute' | 'brass'
   | 'guitar' | 'bell' | 'bass' | 'harp' | 'choir' | 'marimba'
   | 'violin' | 'cello' | 'trumpet' | 'sax' | 'clarinet'
-  | 'harpsichord' | 'vibraphone' | 'erhu' | 'accordion' | 'musicbox';
+  | 'harpsichord' | 'vibraphone' | 'erhu' | 'accordion' | 'musicbox' | 'kalimba';
 
 /** Any instrument in either bank: a bare chip name, or `real:<name>` (and
  *  `chip:<name>`) to pick the bank explicitly. */
@@ -296,6 +296,41 @@ export declare function instrumentNote(
 ): SfxParams;
 /** Fade on key release, or null when the note rings out on its own. */
 export declare function instrumentRelease(name: AnyInstrumentName, bank?: InstrumentBank): number | null;
+
+/** The bundled kalimba: the same shape as a `SAMPLE_LIBRARY` entry, but its 17
+ *  files live in the repo (`samples/kalimba/`) and are precached. */
+export declare const KALIMBA_INSTRUMENT: SampleInstrument;
+/** Where the recordings come from, and what the build measured and corrected. */
+export declare const KALIMBA_SOURCE: {
+  repo: string;
+  license: string;
+  files: Record<number, string>;
+  tuning: Record<number, { hz: number; cents: number; ratio: number }>;
+};
+
+/** The 17 tines from left to right: the lowest (longest) is in the centre
+ *  (`KALIMBA_CENTER`) and the pitch alternates outward, so the tips form a V. */
+export declare const KALIMBA_TINES: number[];
+export declare const KALIMBA_CENTER: number;
+/** Computer key per tine, same order: digits `1`–`9` then `q`–`i`. */
+export declare const TINE_KEYS: string[];
+export declare const KALIMBA_TUNINGS: { id: string; label: string; transpose: number }[];
+export declare const KALIMBA_DEMOS: { id: string; label: string; bpm: number; notes: [number, number, number][] }[];
+/** Just intonation number for one tine (`1`, `3·`, `2··`). */
+export declare function tineNumber(index: number): string;
+/** The MIDI note a tine plays at a given transposition. */
+export declare function tineNote(index: number, transpose?: number): number | null;
+export declare function tineIndexFor(midi: number): number;
+export declare function tineForKey(key: string): number;
+/** Relative tine length, 1 at the centre tine: a free bar's frequency goes as
+ *  the inverse square of its length, so length ∝ 1/√f. */
+export declare function tineLength(midi: number): number;
+export declare function tinePositions(): {
+  index: number; midi: number; side: 'L' | 'C' | 'R'; x: number; length: number; key: string; number: string;
+}[];
+/** Velocity for plucking at `positionY` (0 at the bridge, 1 at the tip). */
+export declare function velocityAt(positionY: number): number;
+export declare function demoSeconds(demo: { bpm: number; notes: [number, number, number][] }): number;
 
 /** A voice picked from a part's General MIDI program number and register. */
 export interface GmSuggestion {

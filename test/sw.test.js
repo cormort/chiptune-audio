@@ -5,8 +5,8 @@ import { SampledInstruments } from '../src/index.js';
 
 // The service worker precaches an explicit file list. A module missing from it
 // loads fine online but breaks the whole app offline, so pin the list to src/
-// and page/ (the page layer is what the two pages actually load).
-test('sw.js precaches every module in src/ and page/, and both pages', () => {
+// and page/ (the page layer is what the three pages actually load).
+test('sw.js precaches every module in src/ and page/, and every page', () => {
   const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
   const listed = new Set([...sw.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   for (const dir of ['src', 'page']) {
@@ -15,7 +15,9 @@ test('sw.js precaches every module in src/ and page/, and both pages', () => {
     for (const f of modules) assert.ok(listed.has(`${dir}/${f}`), `${dir}/${f} is not in the sw.js precache list`);
   }
   assert.ok(listed.has('page/theme.css'), 'page/theme.css is not in the sw.js precache list');
-  for (const f of ['index.html', 'keyboard.html', 'manifest.webmanifest']) assert.ok(listed.has(f), f);
+  for (const f of ['index.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest']) {
+    assert.ok(listed.has(f), f);
+  }
 });
 
 // 換一版就清掉舊快取是對的，但清掉的範圍要是「外殼」而已。樣本快取裝的是使用者

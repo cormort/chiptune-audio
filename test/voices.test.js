@@ -272,6 +272,7 @@ const GOLDEN = {
       erhu: "6c6fee93",
       accordion: "697a1196",
       musicbox: "582d2765",
+      kalimba: "52ec105e",
     },
   },
 };

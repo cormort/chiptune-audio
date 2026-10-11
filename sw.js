@@ -7,19 +7,20 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v26';
+const VERSION = 'v27';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
 const SHELL_PREFIX = 'chiptune-v';
 const APP = [
-  './', 'index.html', 'keyboard.html', 'score.html', 'manifest.webmanifest',
+  './', 'index.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
   'src/instruments.js', 'src/midi.js', 'src/wav.js', 'src/piano.js', 'src/pianoroll.js',
   'src/samples.js', 'src/sample-library.js', 'src/dynamic-library.js', 'src/gm.js', 'src/drums.js',
+  'src/kalimba.js', 'src/kalimba-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
-  'page/console.js', 'page/keyboard.js', 'page/drum-library.js',
+  'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/drum-library.js',
 ];
 
 // 鼓組的擊點與鋼琴的釋音取樣進快取（都很小、幾乎每首都會用到）；有力度層的樂器
@@ -155,6 +156,30 @@ const RELEASES = [
   'samples/velocity/grand-release/96.mp3',
 ];
 
+// 卡林巴琴的 17 根簧片（約 0.6 MB）。這一把跟鼓組一樣是**內建的樂器**，不是「用到才抓」
+// 的遠端樣本庫：kalimba.html 那把模擬器打開就要能彈、而且離線也要能彈。
+// 清單在 build 時產生，見 tools/build-kalimba.mjs；漏掉一根只會讓那根簧片沒聲音，
+// 所以 test/kalimba.test.js 會逐一比對目錄裡的檔案。
+const KALIMBA = [
+  'samples/kalimba/60.mp3',
+  'samples/kalimba/62.mp3',
+  'samples/kalimba/64.mp3',
+  'samples/kalimba/65.mp3',
+  'samples/kalimba/67.mp3',
+  'samples/kalimba/69.mp3',
+  'samples/kalimba/71.mp3',
+  'samples/kalimba/72.mp3',
+  'samples/kalimba/74.mp3',
+  'samples/kalimba/76.mp3',
+  'samples/kalimba/77.mp3',
+  'samples/kalimba/79.mp3',
+  'samples/kalimba/81.mp3',
+  'samples/kalimba/83.mp3',
+  'samples/kalimba/84.mp3',
+  'samples/kalimba/86.mp3',
+  'samples/kalimba/88.mp3',
+];
+
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
@@ -166,8 +191,8 @@ self.addEventListener('install', (e) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
-    // 鼓組與力度層的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...RELEASES].map(async (path) => {
+    // 鼓組、力度層的釋音與卡林巴的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
+    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));

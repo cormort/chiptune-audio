@@ -133,7 +133,7 @@ detuned copies, an attack transient and a per-voice lowpass). A bare name is chi
 - chip: `square pulse25 pulse12 triangle saw organ flute strings brass piano pluck bell`
 - real: `piano epiano organ strings flute brass guitar bell bass harp choir marimba`, plus
   the real instruments the chip bank has no slot for — `violin cello trumpet sax clarinet
-  harpsichord vibraphone erhu accordion musicbox` — which are `real:`-only
+  harpsichord vibraphone erhu accordion musicbox kalimba` — which are `real:`-only
 
 The six names both banks have (`piano organ strings flute brass bell`) are the same
 instrument in either one, so switching banks on the keyboard keeps the key under the cursor
@@ -148,10 +148,11 @@ with chip voices). Use it for short pieces or accept the wait.
 
 ## Sampled instruments (real recordings)
 
-The third family is neither bank: 20 real instruments played from recordings, addressed as
+The third family is neither bank: real instruments played from recordings, addressed as
 `sampled:<name>` — `grand` (Salamander piano) plus `violin cello contrabass harp
 guitar-acoustic guitar-nylon guitar-electric bass-electric flute clarinet saxophone trumpet
-trombone french-horn tuba bassoon organ harmonium xylophone`. The file lists live in
+trombone french-horn tuba bassoon organ harmonium xylophone`, and the bundled `kalimba` (see
+below). The file lists live in
 `src/sample-library.js` (generated; samples CC-BY 3.0 from `nbrosowsky/tonejs-instruments`,
 i.e. VSCO 2 CE / University of Iowa MIS / Karoryfer / Freesound — keep `credit` per
 instrument accurate). `src/samples.js` is the engine:
@@ -237,6 +238,34 @@ no `opts.samples` entry throws. `page/drum-library.js` and `samples/` are page a
 are not in the npm package (`package.json` files), so a library user brings their own kit
 description to the same engine.
 
+### Sampled kalimba (`sampled:kalimba`)
+
+The kalimba is bundled for the same reason as the drums, only more so: `kalimba.html` **is** a
+kalimba, so its 17 tines have to be there the moment the page opens. `samples/kalimba/*.mp3`
+(one recording per tine, ~0.6 MB) plus the generated `src/kalimba-library.js`
+(`KALIMBA_INSTRUMENT`, shaped like a `SAMPLE_LIBRARY` entry, so `SampledInstruments` loads it
+through the ordinary path), precached in `sw.js` under `KALIMBA`.
+
+Source: a Moozica 17-key kalimba recorded by Simone Piervergili
+(`NeoSoundFonts/SimonePiervergili-Kalimba`, **CC0 1.0**, mono 48 kHz WAVs). Two things about
+that source are traps, both handled by `tools/build-kalimba.mjs` and pinned by
+`test/kalimba.test.js`:
+
+- **The file names are an octave below the pitch.** `C3.wav` is middle C (MIDI 60). The
+  authority is the SFZ's `pitch_keycenter`; `KALIMBA_SOURCE.files` records both.
+- **Every tine is tuned sharp**, up to 22 cents at the top and never the same amount twice, so
+  scales and transposition come out of tune. The build measures each tine (0.5 s DFT scan with
+  a parabolic refine — a kalimba tine is nearly a pure tone, and autocorrelation happily
+  reports a sub-octave), resamples it onto equal temperament and records the correction in
+  `KALIMBA_SOURCE.tuning`. Residual is <0.2 cents, and <1 cent measured back out of the mp3s.
+
+Each tine is also normalised on its own to 0.9 (the source spread 13 dB between takes — thumb
+force, not instrument design): the tine carries timbre (ring time 3.9 s → 0.4 s across the
+range) and velocity carries level. `src/kalimba.js` is the instrument model — the tine layout
+(longest, lowest tine in the centre, alternating outward, so the tips form a V), length as
+`1/√f`, the keymap, the tunings and the demo tunes. It is pure data: no DOM, no audio, so the
+layout invariants are testable. `page/kalimba.js` only draws it and wires events.
+
 Output is capped at 5 minutes. A malformed file that retriggers a pitch without ever
 sending its note-off cannot stack voices: at most 8 pending note-ons are kept per
 channel/pitch (the oldest is stolen), so render time and memory stay bounded by the file's
@@ -284,15 +313,18 @@ audio.setMix({ music: 0.5, sfx: 1 });
 Types are in `types/index.d.ts`. Pages using ES modules must be served over
 HTTP (`npx serve .`), not opened as `file://`.
 
-## The demo pages (`index.html`, `keyboard.html`)
+## The demo pages (`index.html`, `keyboard.html`, `kalimba.html`)
 
-The two pages demo this library; they are not part of the npm package. Their HTML holds
+The pages demo this library; they are not part of the npm package. Their HTML holds
 only markup and the page's own CSS — all script lives in `page/`:
 
 - `page/console.js` — the control panel, wired top-to-bottom in the order the page is
   laid out: 主控 (bus levels) → 音效 → 音樂 (part faders) → MIDI (import one or many
   files into a playlist → tracks → piano view → transport + seek bar)
 - `page/keyboard.js` — the on-screen keyboard and its four voice banks
+- `page/kalimba.js` — the 17-tine kalimba simulator: it draws `src/kalimba.js`'s tine
+  layout, plays `sampled:kalimba`, and records a performance into a WAV through
+  `renderMidi` (so the file is the same engine and the same recordings you heard)
 - `page/pianoview.js` — the canvas falling-notes display (`src/pianoroll.js` does the geometry)
 - `page/mixer.js` — bus strips and part strips, including marking the part faders inactive
   while a MIDI owns the music bus
@@ -300,7 +332,11 @@ only markup and the page's own CSS — all script lives in `page/`:
   and `collapsibleSections()`: any `<section data-collapse>` gets a heading that toggles it
   (the console's three working sections start collapsed, the choice is remembered, an in-page
   link to a collapsed section expands it, and importing a file expands the MIDI section)
-- `page/theme.css` — the shared design tokens both pages load
+- `page/theme.css` — the shared design tokens the pages load
+
+A kalimba tine rings until it runs out of energy, so note-off does not stop it: the page lets
+the voice ring out (like the piano) and offers an explicit 止音 (damp) button instead. Do not
+"fix" that by fading on pointer-up — it is what the instrument does.
 
 If you rename a control, change the page markup and the module together:
 `test/pages.test.js` checks that every `$('id')` a page module looks up exists in that

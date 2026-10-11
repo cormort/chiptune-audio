@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>chiptune-audio 卡林巴琴</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121420" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chiptune">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
+<!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
+<link rel="stylesheet" href="page/theme.css">
+<style>
+  /* 卡林巴琴：一塊木頭 + 17 根鋼簧。簧片由木橋往下伸，長度 ∝ 1/√f（自由棒的頻率與
+     長度平方成反比），所以最低的中央簧最長、兩邊最短，尾端排成一個 V 字。 */
+  .kalimba { position: relative; height: 330px; margin: 14px 0 10px; border-radius: 16px;
+             background: linear-gradient(#a9713f, #7d4f28 55%, #5f3a1c);
+             box-shadow: inset 0 2px 0 rgba(255, 255, 255, .22), inset 0 -14px 24px rgba(0, 0, 0, .28),
+                         0 10px 22px rgba(0, 0, 0, .22);
+             user-select: none; touch-action: none; overflow: hidden; }
+  .field { position: absolute; left: 0; right: 0; top: 34px; bottom: 46px; }
+  /* 木橋壓在簧片上面：簧片穿過橋下，看得見的才是會振動的長度 */
+  .bridge { position: absolute; left: 4%; right: 4%; top: 0; height: 13px; z-index: 3;
+            background: linear-gradient(#f0dcb4, #c9a86a 60%, #8f6f3c); border-radius: 3px;
+            box-shadow: 0 2px 3px rgba(0, 0, 0, .45); }
+  .tine { position: absolute; top: 0; width: 3%; transform: translateX(-50%); transform-origin: top center;
+          border-radius: 1px 1px 3px 3px;
+          background: linear-gradient(90deg, #6d747d, #cfd6de 38%, #f4f7fa 50%, #aab2bb 62%, #5f666e);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, .5); cursor: pointer; }
+  .tine .label { position: absolute; left: 50%; bottom: -1.9em; transform: translateX(-50%);
+                 font: 11px/1.35 var(--font-mono); color: #ffeccd; text-align: center; white-space: nowrap;
+                 text-shadow: 0 1px 3px rgba(0, 0, 0, .8); pointer-events: none; }
+  .tine .label b { display: block; font-weight: 600; font-size: 12px; }
+  .tine .label .key { display: block; font-size: 10px; color: #bcd8ff; }
+  .tine:hover { background: linear-gradient(90deg, #8b939d, #eef4fa 40%, #ffffff 52%, #c6ced8 64%, #7b838d); }
+  .tine.down { background: linear-gradient(90deg, #c08a2a, #ffe6a8 40%, #fff8e6 52%, #f0c05c 64%, #a9761d);
+               box-shadow: 0 0 12px 2px rgba(255, 214, 130, .75); }
+  .tine.down { animation: pluck .45s cubic-bezier(.2, .8, .3, 1); }
+  @keyframes pluck {
+    0% { transform: translateX(-50%) scaleX(1.9); }
+    35% { transform: translateX(-50%) scaleX(.75); }
+    100% { transform: translateX(-50%) scaleX(1); }
+  }
+  @media (prefers-reduced-motion: reduce) { .tine.down { animation: none; } }
+  #held { font: 13px var(--font-mono); color: var(--muted); min-height: 1.2em; }
+  .keys-hint kbd { font: 11px var(--font-mono); background: var(--bg); border: 1px solid var(--line);
+                   border-radius: 4px; padding: 0 3px; }
+</style>
+
+<main>
+  <header>
+    <h1>chiptune-audio 卡林巴琴</h1>
+    <nav class="nav" aria-label="頁面">
+      <a href="#boardSection">琴鍵</a>
+      <a href="#setupSection">設定</a>
+      <a href="#recordSection">錄音與示範</a>
+      <a href="keyboard.html">電子琴</a>
+      <a href="index.html">← 控制台</a>
+    </nav>
+  </header>
+
+  <!-- 琴鍵：17 根簧片的實體排列，直接撥（可以滑過去刮奏） -->
+  <section id="boardSection">
+    <h2>琴鍵</h2>
+    <p class="muted" style="margin:-.35rem 0 .6rem">
+      點簧片就撥一下；按住拖過去是刮奏（Glissando），手機可以多指同時撥。
+      <b>最長的最低音在正中間</b>，往兩邊交替升高——左邊 8 根、右邊 8 根，兩隻拇指各一邊。
+    </p>
+    <div class="kalimba" id="board" role="group" aria-label="卡林巴琴的 17 根簧片">
+      <div class="field"><div class="bridge"></div></div>
+    </div>
+    <div id="held" aria-live="polite"></div>
+    <p class="muted" id="sampleHint">正在準備簧片的錄音…</p>
+  </section>
+
+  <!-- 設定：音量、調性、標示、力度 -->
+  <section id="setupSection">
+    <h2>設定</h2>
+    <div class="row">
+      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7" style="width:8rem"></label>
+      <label class="inline">調性 <select id="tuning"></select></label>
+      <label class="inline">標示 <select id="label"></select></label>
+      <label class="inline">力度 <input id="velocity" type="range" min="0.3" max="1" step="0.01" value="0.85" style="width:7rem"></label>
+      <label class="inline"><input id="autoVelocity" type="checkbox" checked> 依撥的位置決定力度</label>
+      <button id="damp">止音</button>
+    </div>
+    <p class="muted">簧片是鋼的，撥了會一直響到沒能量為止（跟鋼琴一樣，放開不會停）——要停就按「止音」。
+      「依撥的位置決定力度」打開時，撥簧片尾端比較大聲、靠琴橋比較小聲，跟真的拇指一樣。</p>
+  </section>
+
+  <!-- 錄音與示範 -->
+  <section id="recordSection">
+    <h2>錄音與示範</h2>
+    <div class="row">
+      <button id="record">● 開始錄音</button>
+      <button id="exportWav">⬇ 匯出 WAV</button>
+      <span class="muted" id="recInfo">還沒錄任何東西</span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="inline">示範曲 <select id="demo"></select></label>
+      <button id="playDemo">▶ 播放</button>
+      <button id="stopDemo">■ 停止</button>
+    </div>
+    <p class="muted">
+      錄音記下你撥了哪一根、什麼時候、多大力，匯出時用同一個引擎重新算成 WAV——
+      所以檔案裡的每一個音都跟這把琴的錄音一致，不是另外合成的。
+    </p>
+  </section>
+
+  <section id="aboutSection">
+    <h2>關於這把琴</h2>
+    <p class="muted">
+      17 音卡林巴（Moozica），音域 C4–E6，17 根簧片各有一個真實錄音。
+      簧片的排列、長度比與按鍵對應寫在 <code>src/kalimba.js</code>，取樣與校正過程在
+      <code>samples/kalimba/README.md</code>。<br>
+      電腦鍵盤：數字排 <kbd>1</kbd>–<kbd>9</kbd> 是左邊到中央的 9 根簧片，
+      <kbd>Q</kbd>–<kbd>I</kbd> 是中央右邊的 8 根——跟畫面上左右手的分工一樣。
+    </p>
+  </section>
+</main>
+
+<script type="module" src="page/kalimba.js"></script>
+</html>

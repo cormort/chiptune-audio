@@ -1,7 +1,7 @@
 {
   "name": "chiptune-audio 控制台",
   "short_name": "Chiptune",
-  "description": "8-bit 音效、音樂、MIDI 重新混音與電子琴",
+  "description": "8-bit 音效、音樂、MIDI 重新混音、電子琴與卡林巴琴",
   "lang": "zh-Hant",
   "start_url": "./index.html",
   "scope": "./",
@@ -14,6 +14,7 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "電子琴", "url": "./keyboard.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+    { "name": "電子琴", "url": "./keyboard.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "卡林巴琴", "url": "./kalimba.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

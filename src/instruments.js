@@ -123,6 +123,15 @@ export const REALISTIC_INSTRUMENTS = {
   musicbox: { hold: false, release: null, tone: 18, params: {
     wave: WAVE.TRIANGLE, h2: 0.16, h3: 0.04, h4: 0.42, h5: 0.16, chiff: 0.08,
     attack: 0.001, sustain: 0.004, decay: 1.5, vol: 0.46 } },
+  // 卡林巴：一根鋼簧被拇指撥響。量過 17 個真實簧片的錄音（samples/kalimba/）：
+  // 泛音比基頻低 22–71 dB，也就是**幾乎是純音**，而前 15 ms 的起音能量比基頻高
+  // 6–48 dB——那個「鏘」的一聲是拇指打到簧片上的敲擊，不是泛音。所以這個音色的重點
+  // 是：乾淨的三角波底、很少的泛音、明顯的 chiff、以及很長的衰減（低音簧片量到
+  // 2.1 秒才掉 20 dB，高音 0.2 秒——`decay` 是固定的，這一段由簧片本身長度造成，
+  // 合成庫做不出來，所以這只是取樣還沒到時的代理音色）。
+  kalimba: { hold: false, release: null, tone: 7, params: {
+    wave: WAVE.TRIANGLE, h2: 0.08, h3: 0.02, h4: 0.03, h5: 0.01,
+    chiff: 0.3, attack: 0.001, sustain: 0.005, decay: 2.6, vol: 0.5 } },
 };
 
 /** The two banks the pages switch between. */
@@ -139,6 +148,7 @@ export const INSTRUMENT_LABELS = {
     guitar: '吉他', bell: '鐘琴', bass: '貝斯', harp: '豎琴', choir: '合唱', marimba: '木琴',
     violin: '小提琴', cello: '大提琴', trumpet: '小號', sax: '薩克斯風', clarinet: '單簧管',
     harpsichord: '大鍵琴', vibraphone: '顫音琴', erhu: '二胡', accordion: '手風琴', musicbox: '音樂盒',
+    kalimba: '卡林巴琴',
   },
 };
 

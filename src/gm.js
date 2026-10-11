@@ -57,7 +57,9 @@ const FAMILIES = [
   { from: 104, to: 104, family: '西塔琴', sampled: 'guitar-nylon' },
   { from: 105, to: 105, family: '斑鳩琴', sampled: 'guitar-acoustic' },
   { from: 106, to: 107, family: '三味線／箏', sampled: 'guitar-nylon' },
-  { from: 108, to: 108, family: '卡林巴', synth: 'real:musicbox' },
+  // 卡林巴的代理音色（`synth`）寫在 src/kalimba-library.js 的項目裡，不是寫在這裡：
+  // family 上的 `synth` 是「這個家族沒有錄音」，會在 `sampled` 之前被用掉。
+  { from: 108, to: 108, family: '卡林巴', sampled: 'kalimba' },
   { from: 109, to: 109, family: '風笛', synth: 'real:accordion' },
   { from: 110, to: 110, family: '民謠提琴', sampled: 'violin' },
   { from: 111, to: 111, family: '嗩吶', synth: 'real:sax' },
