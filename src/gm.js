@@ -33,10 +33,11 @@ const FAMILIES = [
   { from: 40, to: 41, family: '小提琴／中提琴', sampled: 'violin' },
   { from: 42, to: 42, family: '大提琴', sampled: 'cello' },
   { from: 43, to: 43, family: '低音提琴', sampled: 'contrabass' },
-  { from: 44, to: 45, family: '弦樂（震音／撥奏）', byRange: 'strings', fallback: 'real:strings' },
+  // 弦樂群：現在有真正的分軌弦樂錄音（小提琴組＋中提琴組＋大提琴組），不再借獨奏樂器
+  { from: 44, to: 45, family: '弦樂（震音／撥奏）', sampled: 'strings' },
   { from: 46, to: 46, family: '豎琴', sampled: 'harp' },
   { from: 47, to: 47, family: '定音鼓', drums: true },
-  { from: 48, to: 51, family: '弦樂群', byRange: 'strings', fallback: 'real:strings' },
+  { from: 48, to: 51, family: '弦樂群', sampled: 'strings' },
   { from: 52, to: 54, family: '人聲', synth: 'real:choir' },
   { from: 55, to: 55, family: '樂團齊奏', synth: 'real:brass' },
   { from: 56, to: 56, family: '小號', sampled: 'trumpet' },
@@ -71,11 +72,6 @@ const FAMILIES = [
  *  The numbers are the instruments' own ranges: below C3 is a bass instrument,
  *  below C4 a tenor one, above that the soprano member of the family. */
 const BY_RANGE = {
-  strings: [
-    { below: 48, sampled: 'contrabass' },
-    { below: 60, sampled: 'cello' },
-    { sampled: 'violin' },
-  ],
   brass: [
     { below: 50, sampled: 'tuba' },
     { below: 58, sampled: 'trombone' },

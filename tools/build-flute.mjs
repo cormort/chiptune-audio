@@ -14,8 +14,12 @@
 //
 // 需要的東西：Node 18+、ffmpeg（含 libmp3lame）、網路。輸出已進版控，平常不用重跑。
 //
-//   node tools/build-flute.mjs            # 只轉缺的檔案
-//   node tools/build-flute.mjs --force    # 全部重轉
+//   node tools/build-flute.mjs              # 只轉缺的檔案（無顫音版）
+//   node tools/build-flute.mjs --force      # 全部重轉
+//   node tools/build-flute.mjs --vibrato    # 另一個變體：susvib（有顫音的長笛）
+//
+// 兩個變體是同一個工具跑出來的：`susNV`（無顫音，預設，GM 73 用的）與 `susvib`
+// （有顫音，`sampled:flute-vib`，社員想吹長音時自己選）。
 //
 // 每個 take 的處理：單聲道 44.1 kHz（立體來源量過左／右／相加再取最好的）、去掉開頭
 // 靜音（保留 3 ms）、切到 `SECONDS` 秒、尾端 60 ms 淡出，最後**同一個音的兩個 take
@@ -26,13 +30,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_DIR = join(ROOT, 'samples', 'flute');
-const LIB_FILE = join(ROOT, 'src', 'flute-library.js');
-const SRC_CACHE = '/tmp/chiptune-flute';
+const VIB = process.argv.includes('--vibrato');
+const OUT_DIR = join(ROOT, 'samples', VIB ? 'flute-vib' : 'flute');
+const LIB_FILE = join(ROOT, 'src', VIB ? 'flute-vib-library.js' : 'flute-library.js');
+const SRC_CACHE = VIB ? '/tmp/chiptune-flute-vib' : '/tmp/chiptune-flute';
 const REPO = 'sgossner/VSCO-2-CE';
-const SRC_DIR = 'Woodwinds/Flute/susNV';
+const SRC_DIR = VIB ? 'Woodwinds/Flute/susvib' : 'Woodwinds/Flute/susNV';
 const SRC = `https://raw.githubusercontent.com/${REPO}/master/`;
-const CREDIT = 'VSCO 2 Community Edition — Flute/susNV（CC0 1.0）';
+const CREDIT = `VSCO 2 Community Edition — Flute/${VIB ? 'susvib（有顫音）' : 'susNV'}（CC0 1.0）`;
 const FORCE = process.argv.includes('--force');
 
 const RATE = 44100;
@@ -43,7 +48,7 @@ const PREROLL = 0.003;
 const REFERENCE = 0.7;      // 樂器內部各音之間（不是 take 之間）的基準改用 normalizeInstrument
 
 /** 來源：音名 → 這個音有哪幾個 take 的檔名（v1／v3，C6 只有一個）。 */
-const SOURCES = {
+const SOURCES_NV = {
   C3: ['LDFlute_susNV_C3_v1_1.wav', 'LDFlute_susNV_C3_v3_1.wav'],
   E3: ['LDFlute_susNV_E3_v1_1.wav', 'LDFlute_susNV_E3_v3_1.wav'],
   A3: ['LDFlute_susNV_A3_v1_1.wav', 'LDFlute_susNV_A3_v3_1.wav'],
@@ -55,7 +60,23 @@ const SOURCES = {
   A5: ['LDFlute_susNV_A5_v1_1.wav', 'LDFlute_susNV_A5_v3_1.wav'],
   C6: ['LDFlute_susNV_C6_v1_1.wav'],
 };
+/** susvib（有顫音）：10 個音，其中 C4／E4／E5 有第二個 take。 */
+const SOURCES_VIB = {
+  C3: ['LDFlute_susvib_C3_v1_1.wav'],
+  E3: ['LDFlute_susvib_E3_v1_1.wav'],
+  A3: ['LDFlute_susvib_A3_v1_1.wav'],
+  C4: ['LDFlute_susvib_C4_v1_1.wav', 'LDFlute_susvib_C4_v1_2.wav'],
+  E4: ['LDFlute_susvib_E4_v1_1.wav', 'LDFlute_susvib_E4_v1_2.wav'],
+  A4: ['LDFlute_susvib_A4_v1_1.wav'],
+  C5: ['LDFlute_susvib_C5_v1_1.wav'],
+  E5: ['LDFlute_susvib_E5_v1_1.wav', 'LDFlute_susvib_E5_v1_2.wav'],
+  A5: ['LDFlute_susvib_A5_v1_1.wav'],
+  C6: ['LDFlute_susvib_C6_v1_1.wav'],
+};
+const SOURCES = VIB ? SOURCES_VIB : SOURCES_NV;
 const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+/** 量到的頻率最接近哪個音號。 */
+const midiOfHz = (hz) => Math.round(69 + 12 * Math.log2(hz / 440));
 /** 來源檔名的音高比實際低一個八度（量到的，見檔頭）。 */
 const SOURCE_OCTAVE = 12;
 const midiOf = (name) => {
@@ -187,32 +208,46 @@ function main() {
   let reused = 0;
 
   for (const [name, files] of Object.entries(SOURCES)) {
-    const midi = midiOf(name);
-    // 先把這個音的所有 take 解出來，才知道要對齊到哪個峰值
-    const takes = files.map((f) => shape(decode(fetchSource(f))));
+    // **音號以量到的為準**，檔名只當對照：susvib 那批檔名自己就不一致（`C3_v1_1.wav`
+    // 裡是 524.5 Hz = C5、`C4_v1_2.wav` 裡是 1046.5 = C6，其餘都是檔名 +12）。
+    // 長笛的基頻很強，諧波求和量得準（susNV 那 19 個檔全部與檔名 +12 相符，誤差 4 音分內）。
+    const nameMidi = midiOf(name);
+    // 先把這個音的所有 take 解出來，才知道要對齊到哪個峰值、也才知道音高
+    const pcmList = files.map((f) => shape(decode(fetchSource(f))));
+    const hzList = pcmList.map(measureHz);
+    const midi = midiOfHz(hzList[0]);
     const want = 440 * 2 ** ((midi - 69) / 12);
-    const hz = takes.map(measureHz);
+    // 只收「量起來就是這個音」的版本：susvib 那批有兩個檔名與內容差一個八度
+    // （`C4_v1_2.wav` 量到 1046.5 Hz = C6），拿它跟 C5 輪替會變成兩個八度在跳。
+    const keep = pcmList.map((_, i) => midiOfHz(hzList[i]) === midi);
+    const takes = pcmList.filter((_, i) => keep[i]);
+    const hz = hzList.filter((_, i) => keep[i]);
     const cents = hz.map((h) => 1200 * Math.log2(h / want));
     const target = Math.max(...takes.map(peakOf));
     const gains = takes.map((t) => target / (peakOf(t) || 1));
-    const rowsFor = [];
+    const entry = notes[midi] || { takes: [], rows: [] };
+    const rowsFor = entry.rows;
     takes.forEach((pcm, i) => {
       const g = gains[i];
       for (let k = 0; k < pcm.length; k++) pcm[k] *= g;
-      const dest = join(OUT_DIR, `${midi}-${'ab'[i]}.mp3`);
+      const slot = 'ab'[entry.takes.length];
+      const dest = join(OUT_DIR, `${midi}-${slot}.mp3`);
       if (existsSync(dest) && !FORCE) reused++;
       else { encode(pcm, dest); made++; }
-      rowsFor.push({ take: 'ab'[i], peak: peakOf(pcm), gain: g, hz: hz[i], cents: cents[i] });
+      entry.takes.push(`${midi}-${slot}.mp3`);
+      rowsFor.push({ take: slot, peak: peakOf(pcm), gain: g, hz: hz[i], cents: cents[i], from: files[i] });
     });
-    notes[midi] = { takes: takes.map((_, i) => `${midi}-${'ab'[i]}.mp3`) };
-    rows.push({ name, midi, takes: rowsFor });
+    notes[midi] = entry;
+    if (!rows.some((r) => r.midi === midi)) rows.push({ name, midi, nameMidi, takes: rowsFor });
+    else { const hit = rows.find((r) => r.midi === midi); hit.name += `+${name}`; }
   }
 
   console.log('音名  音號  take  量到Hz    應該Hz   音分   校正倍率  峰值');
   for (const r of rows) {
     for (const t of r.takes) {
       const want = 440 * 2 ** ((r.midi - 69) / 12);
-      console.log(`${r.name.padEnd(4)} ${String(r.midi).padStart(4)}  ${t.take}    ${t.hz.toFixed(1).padStart(7)}  ${want.toFixed(1).padStart(7)}  ${t.cents.toFixed(1).padStart(6)}   ×${t.gain.toFixed(2).padStart(5)}   ${t.peak.toFixed(3)}`);
+      const drift = r.midi - r.nameMidi;
+      console.log(`${r.name.padEnd(4)} ${String(r.midi).padStart(4)}  ${t.take}    ${t.hz.toFixed(1).padStart(7)}  ${want.toFixed(1).padStart(7)}  ${t.cents.toFixed(1).padStart(6)}   ×${t.gain.toFixed(2).padStart(5)}   ${t.peak.toFixed(3)}${drift ? `   （檔名 ${drift > 0 ? '+' : ''}${drift} 半音）` : ''}`);
     }
   }
   const midis = Object.keys(notes).map(Number).sort((a, b) => a - b);
@@ -220,16 +255,18 @@ function main() {
   const twoTake = rows.filter((r) => r.takes.length > 1).length;
   const worstCents = Math.max(...rows.flatMap((r) => r.takes.map((t) => Math.abs(t.cents))));
   const checks = [
-    [`${midis.length} 個音（${midis[0]}–${midis[midis.length - 1]}）`, midis.length === 10],
-    [`音域 C4–C7，跟長笛這件樂器一致`, midis[0] === 60 && midis[midis.length - 1] === 96],
-    [`檔名 +12 之後音高正確（最大誤差 ${worstCents.toFixed(1)} 音分）`, worstCents < 25],
-    [`${twoTake} 個音有兩個 take 可以輪替`, twoTake >= 8],
+    [`${midis.length} 個音（${midis[0]}–${midis[midis.length - 1]}）`, VIB ? midis.length >= 9 : midis.length === 10],
+    // 音域：susNV 那批是 C4–C7；susvib 那批檔名不一致（兩個檔高一個八度），實際音域
+    // 以量到的為準 E4–C7，所以只要求落在長笛的音域裡。
+    [`音域落在長笛的音域內（C4–C7）`, midis[0] >= 60 && midis[midis.length - 1] <= 96],
+    [`量到的音高與音號相符（最大誤差 ${worstCents.toFixed(1)} 音分）`, worstCents < 25],
+    [`${twoTake} 個音有兩個 take 可以輪替`, twoTake >= (VIB ? 3 : 8)],
     [`相鄰錄音最多差 ${Math.max(...gaps)} 個半音`, Math.max(...gaps) <= 5],
   ];
   for (const [what, ok] of checks) console.log(`${ok ? '  ok  ' : ' FAIL '} ${what}`);
 
   const body = midis.map((m) => `    ${m}: { takes: [${notes[m].takes.map((f) => `'${f}'`).join(', ')}] },`).join('\n');
-  const out = `// 長笛的取樣表（產生的，不是手寫的）：音號 → 每個音有哪幾個 take（輪流用）。
+  const out = `// ${VIB ? '有顫音的長笛' : '長笛'}的取樣表（產生的，不是手寫的）：音號 → 每個音有哪幾個 take（輪流用）。
 //
 // 來源：${CREDIT}
 // 10 個音（C3–C6）、8 個音有兩個 take。轉檔方式與理由見 tools/build-flute.mjs。
@@ -237,8 +274,8 @@ function main() {
 // 這一份**覆蓋掉** src/sample-library.js 裡同名的遠端長笛（那個是 C4–C7、每個音一個 take）：
 // 音域低一個八度才蓋得住旋律，兩個 take 輪替才不會「同一個音一模一樣」。
 // 檔案在 repo 裡，跟鼓組與卡林巴一樣進 service worker 預快取。
-export const FLUTE_INSTRUMENT = {
-  label: '長笛',
+export const ${VIB ? 'FLUTE_VIB_INSTRUMENT' : 'FLUTE_INSTRUMENT'} = {
+  label: ${VIB ? "'長笛（有顫音）'" : "'長笛'"};
   credit: '${CREDIT}',
   synth: 'real:flute',
   base: 'samples/flute/',

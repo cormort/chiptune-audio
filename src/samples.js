@@ -17,6 +17,8 @@ import { SAMPLE_LIBRARY as REMOTE_LIBRARY } from './sample-library.js';
 import { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 import { KALIMBA_INSTRUMENT } from './kalimba-library.js';
 import { FLUTE_INSTRUMENT } from './flute-library.js';
+import { FLUTE_VIB_INSTRUMENT } from './flute-vib-library.js';
+import { STRINGS_INSTRUMENT } from './strings-library.js';
 
 /** 遠端單層 + repo 內建（同名或同一個名字以內建的為準；卡林巴只有內建這一份）。 */
 export const SAMPLE_LIBRARY = {
@@ -25,12 +27,18 @@ export const SAMPLE_LIBRARY = {
   kalimba: KALIMBA_INSTRUMENT,
   // 內建長笛（C4–C7、每個音兩個 take）覆蓋遠端那個（同音域但每個音只有一個 take）
   flute: FLUTE_INSTRUMENT,
+  // 有顫音的長笛（susvib）：想吹長音時自己選，GM 73 仍然用無顫音那個
+  'flute-vib': FLUTE_VIB_INSTRUMENT,
+  // 弦樂群：原本的取樣庫裡沒有這個樂器（GM 44-45／48-51 以前借獨奏小提琴／大提琴）
+  strings: STRINGS_INSTRUMENT,
 };
 
 export { SAMPLE_CREDIT } from './sample-library.js';
 export { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 export { KALIMBA_INSTRUMENT, KALIMBA_SOURCE } from './kalimba-library.js';
 export { FLUTE_INSTRUMENT } from './flute-library.js';
+export { FLUTE_VIB_INSTRUMENT } from './flute-vib-library.js';
+export { STRINGS_INSTRUMENT } from './strings-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */

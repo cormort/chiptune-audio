@@ -123,3 +123,34 @@ test('SampledInstruments loads both takes per pitch and rotates them per note', 
   const pcm = sampled.pcm('flute');
   assert.ok(pcm.notes.some((x) => Array.isArray(x.takes) && x.takes.length === 2), 'pcm() must expose takes');
 });
+
+// 弦樂群與有顫音的長笛：同樣是內建的取樣樂器，資料表 ↔ 磁碟 ↔ 預快取三個方向都要一致。
+// 弦樂群是新的樂器（原本的取樣庫裡沒有），有顫音長笛是 susvib 那個變體。
+test('the string ensemble and the vibrato flute are bundled and consistent', async () => {
+  const { STRINGS_INSTRUMENT, FLUTE_VIB_INSTRUMENT } = await import('../src/index.js');
+  const check = (inst, dir, minPitches) => {
+    const onDisk = new Set(readdirSync(new URL(`../samples/${dir}/`, import.meta.url)).filter((f) => f.endsWith('.mp3')));
+    const urls = sampleUrls(inst);
+    const pitches = [...new Set(urls.map((u) => u.midi))].sort((a, b) => a - b);
+    assert.ok(pitches.length >= minPitches, `${inst.label} only covers ${pitches.length} pitches`);
+    const referenced = new Set();
+    for (const u of urls) {
+      const file = u.url.slice(inst.base.length);
+      assert.ok(onDisk.has(file), `samples/${dir}/${file} is missing (rerun the build tool)`);
+      referenced.add(file);
+    }
+    for (const f of onDisk) assert.ok(referenced.has(f), `samples/${dir}/${f} is not referenced`);
+    const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+    for (const f of onDisk) assert.ok(sw.includes(`samples/${dir}/${f}`), `samples/${dir}/${f} is not precached`);
+    return { pitches, urls };
+  };
+  const strings = check(STRINGS_INSTRUMENT, 'strings', 20);
+  assert.deepEqual(strings.pitches, [...strings.pitches].sort((a, b) => a - b));
+  assert.equal(strings.pitches[0], 36, 'the cello section must reach C2');
+  assert.equal(strings.pitches[strings.pitches.length - 1], 86, 'the violin section must reach D6');
+  assert.equal(STRINGS_INSTRUMENT.synth, 'real:strings');
+  assert.ok(strings.urls.some((u) => u.take === 1), 'the sections have two takes per pitch');
+  const vib = check(FLUTE_VIB_INSTRUMENT, 'flute-vib', 9);
+  assert.equal(FLUTE_VIB_INSTRUMENT.label, '長笛（有顫音）');
+  assert.ok(vib.pitches[0] >= 60 && vib.pitches[vib.pitches.length - 1] <= 96, 'inside the flute range');
+});

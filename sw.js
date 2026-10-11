@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v28';
+const VERSION = 'v29';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -21,7 +21,7 @@ const APP = [
   'src/kalimba.js', 'src/kalimba-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
   'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/drum-library.js',
-  'src/flute-library.js',
+  'src/flute-library.js', 'src/flute-vib-library.js', 'src/strings-library.js',
 ];
 
 // 鼓組的擊點與鋼琴的釋音取樣進快取（都很小、幾乎每首都會用到）；有力度層的樂器
@@ -205,6 +205,76 @@ const FLUTE = [
   'samples/flute/93-b.mp3',
   'samples/flute/96-a.mp3',
 ];
+// 弦樂群（三組分軌弦樂合起來，26 個音 × 兩個 take）與有顫音的長笛：都是內建的樂器，
+// 跟鼓組、卡林巴一樣進預快取。清單由 tools/build-strings.mjs 與 tools/build-flute.mjs
+// 產生，test/strings.test.js 會逐一比對目錄裡的檔案。
+const STRINGS_AND_VIB = [
+  'samples/strings/36-a.mp3',
+  'samples/strings/36-b.mp3',
+  'samples/strings/40-a.mp3',
+  'samples/strings/40-b.mp3',
+  'samples/strings/43-a.mp3',
+  'samples/strings/43-b.mp3',
+  'samples/strings/47-a.mp3',
+  'samples/strings/47-b.mp3',
+  'samples/strings/48-a.mp3',
+  'samples/strings/48-b.mp3',
+  'samples/strings/50-a.mp3',
+  'samples/strings/50-b.mp3',
+  'samples/strings/52-a.mp3',
+  'samples/strings/52-b.mp3',
+  'samples/strings/53-a.mp3',
+  'samples/strings/53-b.mp3',
+  'samples/strings/55-a.mp3',
+  'samples/strings/55-b.mp3',
+  'samples/strings/57-a.mp3',
+  'samples/strings/57-b.mp3',
+  'samples/strings/59-a.mp3',
+  'samples/strings/59-b.mp3',
+  'samples/strings/60-a.mp3',
+  'samples/strings/60-b.mp3',
+  'samples/strings/62-a.mp3',
+  'samples/strings/62-b.mp3',
+  'samples/strings/64-a.mp3',
+  'samples/strings/64-b.mp3',
+  'samples/strings/65-a.mp3',
+  'samples/strings/65-b.mp3',
+  'samples/strings/66-a.mp3',
+  'samples/strings/66-b.mp3',
+  'samples/strings/67-a.mp3',
+  'samples/strings/67-b.mp3',
+  'samples/strings/69-a.mp3',
+  'samples/strings/69-b.mp3',
+  'samples/strings/71-a.mp3',
+  'samples/strings/71-b.mp3',
+  'samples/strings/72-a.mp3',
+  'samples/strings/72-b.mp3',
+  'samples/strings/74-a.mp3',
+  'samples/strings/74-b.mp3',
+  'samples/strings/76-a.mp3',
+  'samples/strings/76-b.mp3',
+  'samples/strings/77-a.mp3',
+  'samples/strings/77-b.mp3',
+  'samples/strings/79-a.mp3',
+  'samples/strings/79-b.mp3',
+  'samples/strings/83-a.mp3',
+  'samples/strings/83-b.mp3',
+  'samples/strings/86-a.mp3',
+  'samples/strings/86-b.mp3',
+  'samples/flute-vib/64-a.mp3',
+  'samples/flute-vib/69-a.mp3',
+  'samples/flute-vib/72-a.mp3',
+  'samples/flute-vib/72-b.mp3',
+  'samples/flute-vib/76-a.mp3',
+  'samples/flute-vib/76-b.mp3',
+  'samples/flute-vib/81-a.mp3',
+  'samples/flute-vib/84-a.mp3',
+  'samples/flute-vib/88-a.mp3',
+  'samples/flute-vib/88-b.mp3',
+  'samples/flute-vib/93-a.mp3',
+  'samples/flute-vib/96-a.mp3',
+];
+
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
@@ -217,7 +287,7 @@ self.addEventListener('install', (e) => {
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
     // 鼓組、力度層的釋音與卡林巴的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE].map(async (path) => {
+    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));

@@ -246,6 +246,28 @@ no `opts.samples` entry throws. `page/drum-library.js` and `samples/` are page a
 are not in the npm package (`package.json` files), so a library user brings their own kit
 description to the same engine.
 
+### Sampled string ensemble and vibrato flute
+
+Two more bundled instruments, both built by `tools/build-flute.mjs --vibrato` /
+`tools/build-strings.mjs` (shared steps in `tools/sampled-source.mjs`):
+
+- **`strings`** (弦樂群, G2-D6 after the octave fix, 26 pitches, two takes each): VSCO's
+  Violin/Viola/Cello *Section* `susvib` recordings merged by register, so a wide string part
+  gets cellos at the bottom and violins on top. The library had **no** ensemble recording
+  before: GM 44-45 and 48-51 borrowed a *solo* violin/cello/contrabass, which is why a
+  string pad sounded thin.
+- **`flute-vib`** (長笛（有顫音）, E4-C7, 9 pitches): the same flute with the source's vibrato
+  articulation, selectable by name. GM 73 still uses the plain one.
+
+Two traps in that source, both caught by measuring rather than trusting file names: the
+`susvib` names are inconsistent (two files are an octave above the rest, and one file's two
+"takes" are a different octave from each other — a take that is not the same note is dropped
+by the build), and the low string sections have very weak fundamentals (the cello section's
+C2 sits at 65.4 Hz, **-49.6 dB** below its second harmonic), so harmonic summation reports
+them an octave or two high. The build therefore takes the **pitch class** from the
+measurement and the **octave** from the naming convention plus the instrument's own range
+(a cello section's lowest note is C2, not C1), and prints the disagreement count.
+
 ### Sampled kalimba (`sampled:kalimba`)
 
 The kalimba is bundled for the same reason as the drums, only more so: `kalimba.html` **is** a
