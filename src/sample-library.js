@@ -177,7 +177,7 @@ export const SAMPLE_LIBRARY = {
     label: '古典吉他',
     credit: 'Freesound（quartertone）',
     synth: 'real:guitar',
-    gap: 5,
+    gap: 4,
     base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-nylon/',
     notes: {   // B1 的檔案量起來是 B3（差 +24 半音，來源檔名標錯），不用它：
    // 這個最低音改用最近的鄰居（B1 以上都是正確的）
