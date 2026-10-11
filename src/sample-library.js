@@ -152,8 +152,8 @@ export const SAMPLE_LIBRARY = {
     synth: 'real:guitar',
     gap: 3,
     base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-acoustic/',
-    notes: {
-      38: 'D2.mp3',
+    notes: {   // D2 的檔案量起來是 D3（差 +12 半音，來源檔名標錯），不用它：
+   // 這個最低音改用最近的鄰居（D2 以上都是正確的）
       40: 'E2.mp3',
       42: 'Fs2.mp3',
       44: 'Gs2.mp3',
@@ -179,8 +179,8 @@ export const SAMPLE_LIBRARY = {
     synth: 'real:guitar',
     gap: 5,
     base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-nylon/',
-    notes: {
-      35: 'B1.mp3',
+    notes: {   // B1 的檔案量起來是 B3（差 +24 半音，來源檔名標錯），不用它：
+   // 這個最低音改用最近的鄰居（B1 以上都是正確的）
       40: 'E2.mp3',
       42: 'Fs2.mp3',
       45: 'A2.mp3',
