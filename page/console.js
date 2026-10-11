@@ -9,7 +9,7 @@
 // 這個檔只做接線與各區的狀態。
 import {
   ChiptuneAudio, SFX_PRESETS, SFX_DEFAULTS, WAVE, renderSfx, generateSong, MOODS, SAMPLE_RATE,
-  INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderSong, flattenMidi,
+  INSTRUMENT_BANKS, INSTRUMENT_LABELS, parseMidi, renderMidi, renderMidiStereo, renderSong, flattenMidi,
   SampledInstruments, SAMPLE_LIBRARY, SAMPLE_PREFIX, sampleNames, sampleLabel, sampleSynth,
   autoInstruments, SampledKit, SAMPLE_KIT,
 } from '../src/index.js';
@@ -711,7 +711,8 @@ $('wavMidi').onclick = async () => {
     $('midiStatus').textContent = '匯出中…（寫實音色較慢，請稍等）';
     await new Promise((r) => setTimeout(r));
   }
-  downloadWav(renderMidi(midi, { tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
+  // 立體匯出：取樣樂器有自己的左右聲道時（平台鋼琴）就保留，其他樂器兩邊一樣。
+  downloadWav(renderMidiStereo(midi, { tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
   if (!midiPlaying()) $('midiStatus').textContent = `已下載 ${midiName}-remix.wav`;
 };
 

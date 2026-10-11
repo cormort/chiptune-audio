@@ -6,7 +6,7 @@ import {
   DYNAMIC_INSTRUMENTS,
   SAMPLE_LIBRARY, SAMPLE_CREDIT, SAMPLE_PREFIX, SampledInstruments,
   sampleName, sampleNames, sampleLabel, sampleSynth, sampleUrls,
-  nearestSample, sampleVoice, mixSampleInto,
+  nearestSample, sampleVoice, prepareSampleChannels, mixSampleInto,
   parseMidi, renderMidi, resolveInstrument, SAMPLE_RATE,
 } from '../src/index.js';
 import { track, smf, tempo } from './smf.js';
@@ -63,13 +63,26 @@ test('the sample library is complete and points at real-looking files', () => {
   assert.deepEqual(sampleUrls('kazoo'), []);
 });
 
-test('prepareSample downmixes stereo and cuts the silent lead-in', () => {
-  // 立體聲必須取平均：Salamander 鋼琴的左聲道比右小 5 dB，只取左邊等於少掉 19% 能量。
+test('prepareSample keeps the louder channel, and prepareSampleChannels keeps both', () => {
+  // 立體聲**不能取平均**。Salamander 鋼琴的兩個聲道是兩支不同視角的麥克風
+  //（各頻帶相位差 +28°～−137°、lag-0 相關 −0.29～−0.79），相加會抵消約 5 dB 而且
+  // 每個音被不同地重塑（量到的數字見 tools/analyze.mjs 與 AGENTS.md），所以單聲道
+  // 播放用**能量較大的那個聲道**；要立體就兩個都留著。
   const stereo = {
     length: 4, sampleRate: 44100, numberOfChannels: 2,
     getChannelData: (c) => (c === 0 ? Float32Array.from([0.5, 0.5, 0.5, 0.5]) : Float32Array.from([0.1, 0.1, 0.1, 0.1])),
   };
-  assert.deepEqual([...prepareSample(stereo)].map((v) => +v.toFixed(3)), [0.3, 0.3, 0.3, 0.3]);
+  assert.deepEqual([...prepareSample(stereo)].map((v) => +v.toFixed(3)), [0.5, 0.5, 0.5, 0.5], 'the louder channel, not the average');
+  const both = prepareSampleChannels(stereo);
+  assert.deepEqual([...both.mono], [0.5, 0.5, 0.5, 0.5]);
+  assert.deepEqual([...both.left].map((v) => +v.toFixed(3)), [0.5, 0.5, 0.5, 0.5]);
+  assert.deepEqual([...both.right].map((v) => +v.toFixed(3)), [0.1, 0.1, 0.1, 0.1]);
+  // 單聲道來源沒有左右，mono 就是它自己
+  const mono = { length: 3, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => Float32Array.from([0.2, 0.2, 0.2]) };
+  const one = prepareSampleChannels(mono);
+  assert.equal(one.left, null);
+  assert.equal(one.right, null);
+  assert.deepEqual([...one.mono].map((v) => +v.toFixed(3)), [0.2, 0.2, 0.2]);
 
   // 開頭靜音：切到第一個超過峰值 1% 的樣本，前面留 2 ms 前導
   const rate = 1000;                     // 每秒 1000 個樣本 → 2 ms = 2 個樣本
@@ -114,13 +127,20 @@ test('loading a sample stores the processed mono audio, not the raw decode', asy
   });
   const voice = bank.pcm('violin');
   assert.equal(voice.rate, 48000, 'the decoded rate is remembered for mixing');
-  const pcm = voice.notes[0].layers[0].pcm;
+  const layer = voice.notes[0].layers[0];
+  const pcm = layer.pcm;
   assert.ok(pcm.length < len, 'the silent lead-in should be gone');
   // 900 個樣本的空白（18.75 ms）減掉 2 ms 前導 = 16.75 → 17 ms
   assert.equal(Math.round((len - pcm.length) / 48000 * 1000), 17, 'the silent lead-in, minus the 2 ms preroll');
   assert.ok(Math.abs(pcm[0]) < 1e-6, 'the preroll is silence');
-  // 兩聲道取平均（0.4 + 0.2）/ 2 = 0.3，再乘上樂器的基準音量倍率
-  assert.ok(Math.abs(pcm.at(-1) - 0.3 * loaded.gain) < 1e-6, 'both channels are mixed in, then levelled');
+  // 單聲道版本是**能量較大的聲道**（0.4），不是平均（0.3），再乘上樂器的基準音量倍率
+  assert.ok(Math.abs(pcm.at(-1) - 0.4 * loaded.gain) < 1e-6, 'the louder channel, then levelled');
+  // 立體的那一份也要留著（左右都切過、對齊、並且一起被 level 過）
+  assert.ok(layer.left && layer.right, 'a stereo source must keep both channels');
+  assert.equal(layer.left.length, pcm.length);
+  assert.equal(layer.right.length, pcm.length);
+  assert.ok(Math.abs(layer.left.at(-1) - 0.4 * loaded.gain) < 1e-6);
+  assert.ok(Math.abs(layer.right.at(-1) - 0.2 * loaded.gain) < 1e-6, 'the right channel keeps its own level');
 });
 
 test('an instrument is levelled against the others, not left at its library level', () => {

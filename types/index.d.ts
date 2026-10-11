@@ -233,6 +233,16 @@ export declare function sampleVoice<T extends { midi: number }>(
   midi: number,
 ): { sample: T; semitones: number; rate: number } | null;
 /** Mix a recording into an offline render (linear interpolation, note-off fade). */
+/** Interleaved 16-bit stereo WAV from two Float32Arrays of equal length. */
+export declare function encodeWavStereo(left: Float32Array, right: Float32Array, sampleRate?: number): Uint8Array;
+/** Prepare a decoded buffer for playback: `mono` is the *louder* channel (not the
+ *  average — summing a decorrelated pair cancels part of it), `left`/`right` are
+ *  the two channels (null for a mono source), all trimmed of the silent lead-in. */
+export declare function prepareSampleChannels(buffer: unknown, opts?: { floor?: number; prerollSeconds?: number }): {
+  mono: Float32Array;
+  left: Float32Array | null;
+  right: Float32Array | null;
+};
 export declare function mixSampleInto(
   out: Float32Array,
   at: number,
@@ -419,6 +429,10 @@ export declare function parseMidi(data: ArrayBuffer | ArrayBufferView): Midi;
 /** Render a parsed MIDI file to mono PCM: chip/real voices are synthesised,
  *  `sampled:` tracks are mixed from the recordings in `opts.samples`. */
 export declare function renderMidi(midi: Midi, opts?: MidiRenderOpts): Float32Array;
+/** Same render, keeping the recordings' stereo image: `{ left, right }`.
+ *  Mono sources (everything except the bundled grand piano) land identically in
+ *  both channels, so the result is mono-compatible. */
+export declare function renderMidiStereo(midi: Midi, opts?: MidiRenderOpts): { left: Float32Array; right: Float32Array };
 
 /** A0: the lowest key of an 88-key piano. */
 export declare const PIANO_LOW: number;

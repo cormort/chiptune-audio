@@ -1,6 +1,6 @@
 // 兩個頁面共用的小工具：DOM 查詢、主題色、時間格式、WAV 下載、設定記憶。
 // 這裡不碰引擎，也不假設頁面上有哪些元素。
-import { encodeWav } from '../src/index.js';
+import { encodeWav, encodeWavStereo } from '../src/index.js';
 
 /** getElementById 的短名；找不到就回 null（呼叫端自己判斷）。 */
 export const $ = (id) => document.getElementById(id);
@@ -22,9 +22,14 @@ export const round = (v, digits = 3) => {
   return Math.round(v * f) / f;
 };
 
-/** 把一段 Float32 取樣存成 WAV 檔（瀏覽器下載）。 */
+/** 把一段取樣存成 WAV 檔（瀏覽器下載）。
+ *  `samples` 是單聲道 Float32Array，或 `{ left, right }`（立體：取樣樂器有自己的
+ *  左右聲道時走這條，例如平台鋼琴——它的左右是兩支不同視角的麥克風）。 */
 export function downloadWav(samples, filename, sampleRate) {
-  const url = URL.createObjectURL(new Blob([encodeWav(samples, sampleRate)], { type: 'audio/wav' }));
+  const bytes = samples && samples.left && samples.right
+    ? encodeWavStereo(samples.left, samples.right, sampleRate)
+    : encodeWav(samples, sampleRate);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;

@@ -139,7 +139,8 @@ function decays(x, rate, positions, targetDb = -20) {
   return out.length ? out[Math.floor(out.length / 2)] : null;
 }
 
-/** 頻譜重心與它相對基頻的位置：取樣被變速播放時，共振峰會跟著基頻一起移動。 */
+/** 基頻：**諧波求和**（f、2f、3f、4f、5f 的強度相加取最大），不是找最強的峰。
+ *  長笛有一堆 take 的基頻比第二泛音弱 7 dB，峰值法會回報高一個八度。 */
 function notePitch(x, rate, from, len) {
   const mag = (f) => {
     let re = 0, im = 0;
@@ -150,8 +151,9 @@ function notePitch(x, rate, from, len) {
     }
     return Math.hypot(re, im);
   };
+  const score = (f) => { let s = 0; for (let k = 1; k <= 5; k++) s += mag(f * k) / k; return s; };
   let best = -1, bestF = 0;
-  for (let f = 55; f <= 2500; f += 0.5) { const m = mag(f); if (m > best) { best = m; bestF = f; } }
+  for (let f = 55; f <= 2400; f += 0.5) { const m = score(f); if (m > best) { best = m; bestF = f; } }
   return bestF;
 }
 
@@ -203,28 +205,39 @@ function analyse(file, { bands = false, notes = false } = {}) {
   return r;
 }
 
-/** 兩兩比對：先用互相關對齊（±60 ms），再報相關性與頻帶差。 */
+/** 兩兩比對：先用互相關對齊（±60 ms），再報相關性與頻帶差。
+ *  對齊的窗取 **A 的中段**（不是開頭）：開頭常常是前奏或單一樂器，拿它估時間差會
+ *  偏掉，整首的相關性也會被那一段主導。相關性與差值能量則算「整段重疊」，
+ *  每 7 個取樣抽一個（4 分鐘的檔也不會慢）。 */
 function compare(aFile, bFile) {
   const a = decode(aFile, 1), b = decode(bFile, 1);
+  const probeFrom = Math.floor(a.length / 2);
+  const probeLen = Math.min(44100, a.length - probeFrom);
   let bestLag = 0, best = -Infinity;
   for (let lag = -2646; lag <= 2646; lag += 2) {
     let dot = 0, na = 0, nb = 0;
-    for (let i = 0; i < Math.min(a.length, 44100); i += 5) {
-      const j = i + lag;
+    for (let i = 0; i < probeLen; i += 5) {
+      const j = probeFrom + i + lag;
       if (j < 0 || j >= b.length) continue;
-      dot += a[i] * b[j]; na += a[i] * a[i]; nb += b[j] * b[j];
+      const x = a[probeFrom + i], y = b[j];
+      dot += x * y; na += x * x; nb += y * y;
     }
     const c = dot / Math.sqrt((na * nb) || 1e-12);
     if (c > best) { best = c; bestLag = lag; }
   }
   const from = Math.max(0, -bestLag), fromB = Math.max(0, bestLag);
   const len = Math.min(a.length - from, b.length - fromB);
-  let sa = 0, sb = 0, sd = 0;
-  for (let i = 0; i < len; i++) { const x = a[from + i], y = b[fromB + i]; sa += x * x; sb += y * y; sd += (x - y) ** 2; }
+  let sa = 0, sb = 0, sd = 0, dab = 0;
+  for (let i = 0; i < len; i += 7) {
+    const x = a[from + i], y = b[fromB + i];
+    sa += x * x; sb += y * y; sd += (x - y) ** 2; dab += x * y;
+  }
   return {
-    a: aFile, b: bFile, lag: bestLag, corr: +best.toFixed(4),
+    a: aFile, b: bFile, lag: bestLag,
+    corr: +(dab / Math.sqrt((sa * sb) || 1e-15)).toFixed(4),
     rmsA: +Math.sqrt(sa / len).toFixed(5), rmsB: +Math.sqrt(sb / len).toFixed(5),
     residualDb: +(10 * Math.log10((sd / len) / (sa / len || 1e-15))).toFixed(1),
+    levelDb: +(10 * Math.log10((sb || 1e-15) / (sa || 1e-15))).toFixed(1),
   };
 }
 
@@ -242,7 +255,7 @@ if (flags.has('--compare')) {
   for (let i = 0; i + 1 < files.length; i += 2) rows.push(compare(files[i], files[i + 1]));
   if (flags.has('--json')) console.log(JSON.stringify(rows, null, 1));
   else for (const r of rows) {
-    console.log(`${r.a}\n  vs ${r.b}\n  對齊 lag ${r.lag} 樣本 · 相關性 ${r.corr} · rms ${r.rmsA} / ${r.rmsB} · 差值能量 ${r.residualDb} dB（越低越像同一段錄音）`);
+    console.log(`${r.a}\n  vs ${r.b}\n  對齊 lag ${r.lag} 樣本 · 相關性 ${r.corr} · rms ${r.rmsA} / ${r.rmsB}（${r.levelDb >= 0 ? '+' : ''}${r.levelDb} dB）· 差值能量 ${r.residualDb} dB（越低越像同一段錄音）`);
   }
 } else {
   const rows = files.map((f) => analyse(f, { bands: flags.has('--bands'), notes: flags.has('--notes') }));

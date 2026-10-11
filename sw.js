@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v27';
+const VERSION = 'v28';
 const CACHE = `chiptune-${VERSION}`;
 // 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
 // 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -21,6 +21,7 @@ const APP = [
   'src/kalimba.js', 'src/kalimba-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
   'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/drum-library.js',
+  'src/flute-library.js',
 ];
 
 // 鼓組的擊點與鋼琴的釋音取樣進快取（都很小、幾乎每首都會用到）；有力度層的樂器
@@ -180,6 +181,30 @@ const KALIMBA = [
   'samples/kalimba/88.mp3',
 ];
 
+// 長笛（10 個音、每個音最多兩個 take，約 0.9 MB）：跟鼓組與卡林巴一樣是**內建的樂器**，
+// 打開頁面就要能吹，而且 round robin 需要兩個 take 同時在手上。清單由
+// tools/build-flute.mjs 產生，test/flute.test.js 會逐一比對目錄裡的檔案。
+const FLUTE = [
+  'samples/flute/60-a.mp3',
+  'samples/flute/60-b.mp3',
+  'samples/flute/64-a.mp3',
+  'samples/flute/64-b.mp3',
+  'samples/flute/69-a.mp3',
+  'samples/flute/69-b.mp3',
+  'samples/flute/72-a.mp3',
+  'samples/flute/72-b.mp3',
+  'samples/flute/76-a.mp3',
+  'samples/flute/76-b.mp3',
+  'samples/flute/81-a.mp3',
+  'samples/flute/81-b.mp3',
+  'samples/flute/84-a.mp3',
+  'samples/flute/84-b.mp3',
+  'samples/flute/88-a.mp3',
+  'samples/flute/88-b.mp3',
+  'samples/flute/93-a.mp3',
+  'samples/flute/93-b.mp3',
+  'samples/flute/96-a.mp3',
+];
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
@@ -192,7 +217,7 @@ self.addEventListener('install', (e) => {
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
     // 鼓組、力度層的釋音與卡林巴的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA].map(async (path) => {
+    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE].map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));

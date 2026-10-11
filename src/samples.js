@@ -16,13 +16,21 @@
 import { SAMPLE_LIBRARY as REMOTE_LIBRARY } from './sample-library.js';
 import { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 import { KALIMBA_INSTRUMENT } from './kalimba-library.js';
+import { FLUTE_INSTRUMENT } from './flute-library.js';
 
 /** 遠端單層 + repo 內建（同名或同一個名字以內建的為準；卡林巴只有內建這一份）。 */
-export const SAMPLE_LIBRARY = { ...REMOTE_LIBRARY, ...DYNAMIC_INSTRUMENTS, kalimba: KALIMBA_INSTRUMENT };
+export const SAMPLE_LIBRARY = {
+  ...REMOTE_LIBRARY,
+  ...DYNAMIC_INSTRUMENTS,
+  kalimba: KALIMBA_INSTRUMENT,
+  // 內建長笛（C4–C7、每個音兩個 take）覆蓋遠端那個（同音域但每個音只有一個 take）
+  flute: FLUTE_INSTRUMENT,
+};
 
 export { SAMPLE_CREDIT } from './sample-library.js';
 export { DYNAMIC_INSTRUMENTS } from './dynamic-library.js';
 export { KALIMBA_INSTRUMENT, KALIMBA_SOURCE } from './kalimba-library.js';
+export { FLUTE_INSTRUMENT } from './flute-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */
@@ -50,33 +58,48 @@ export const sampleSynth = (name) => (SAMPLE_LIBRARY[name] ? SAMPLE_LIBRARY[name
  *  （長笛的前 30 ms 是吹氣的漸強）不會被切掉。鼓組的檔案在產生時已經切過，
  *  這裡再跑一次是無害的（已經是開頭了）。
  */
-export function prepareSample(buffer, { floor = 0.01, prerollSeconds = 0.002 } = {}) {
+export function prepareSample(buffer, opts) {
+  return trimChannels(buffer, opts).mono;
+}
+
+/** 同上，但**保留左右聲道**：`{ mono, left, right }`（單聲道來源時 left/right 是 null）。
+ *
+ *  為什麼要留：立體來源的左右可能不是一對相干的麥克風（Salamander 鋼琴就是兩支
+ *  不同視角，各頻帶相位差 +28°～−137°），相加會抵消掉約 5 dB 而且每個音被不同地
+ *  重塑。所以 `mono` **不是平均**，而是**能量較大的那個聲道**——單聲道播放時用它，
+ *  立體播放時用 left/right 兩邊。
+ *  兩個聲道用同一個起點切（用比較大聲的那一邊找起音），才不會左右錯開。 */
+export function prepareSampleChannels(buffer, opts) {
+  return trimChannels(buffer, opts);
+}
+
+function trimChannels(buffer, { floor = 0.01, prerollSeconds = 0.002 } = {}) {
   const len = buffer.length || 0;
-  if (!len) return new Float32Array(0);
+  if (!len) return { mono: new Float32Array(0), left: null, right: null };
   const chans = buffer.numberOfChannels || 1;
-  const mono = new Float32Array(len);
-  if (chans === 1) {
-    mono.set(buffer.getChannelData(0));
-  } else {
-    for (let c = 0; c < chans; c++) {
-      const data = buffer.getChannelData(c);
-      for (let i = 0; i < len; i++) mono[i] += data[i];
-    }
-    const g = 1 / chans;
-    for (let i = 0; i < len; i++) mono[i] *= g;
-  }
+  const data = [];
+  for (let c = 0; c < chans; c++) data.push(buffer.getChannelData(c));
+  // 每個聲道的能量：單聲道播放要挑大的那一個，不是平均
+  const energy = data.map((d) => {
+    let e = 0;
+    for (let i = 0; i < len; i++) e += d[i] * d[i];
+    return e;
+  });
+  const loudest = energy.indexOf(Math.max(...energy));
   let peak = 0;
-  for (let i = 0; i < len; i++) {
-    const v = Math.abs(mono[i]);
-    if (v > peak) peak = v;
-  }
-  if (peak <= 0) return mono;             // 全靜音：留給呼叫端判斷（至少不要回空陣列）
+  for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(data[loudest][i]));
+  if (peak <= 0) return { mono: data[loudest].slice(), left: null, right: null };   // 全靜音：留給呼叫端判斷
   const floorAt = peak * floor;
   let start = 0;
-  while (start < len && Math.abs(mono[start]) < floorAt) start++;
+  while (start < len && Math.abs(data[loudest][start]) < floorAt) start++;
   const preroll = Math.round(prerollSeconds * (buffer.sampleRate || 44100));
   start = Math.max(0, start - preroll);
-  return start > 0 ? mono.slice(start) : mono;
+  // 兩個聲道用**同一個起點**切，左右才不會錯開
+  return {
+    mono: data[loudest].slice(start),
+    left: chans < 2 ? null : data[0].slice(start),
+    right: chans < 2 ? null : data[1].slice(start),
+  };
 }
 
 /** 把一個樂器的錄音整體拉到同一個基準音量。
@@ -100,8 +123,13 @@ export function normalizeInstrument(notes, target = 0.7, { min = 0.25, max = 8 }
   // 有力度層時只看「最強的那一層」：拿全部層一起算中位數的話，弱層（本來就小 15 dB）
   // 會把基準拉低，整組被放大到破音。
   const peaks = notes.map((n) => {
+    // 有 take 的音：peak 取所有 take 的最大值（take 之間在 build 時已經對齊過峰值）
+    const takes = Array.isArray(n.takes) ? n.takes : [];
     const layers = Array.isArray(n.layers) && n.layers.length ? n.layers : [n];
-    return Math.max(...layers.map((l) => peakOf(l.pcm || new Float32Array(0))));
+    return Math.max(
+      ...layers.map((l) => Math.max(peakOf(l.pcm || new Float32Array(0)), peakOf(l.left || new Float32Array(0)), peakOf(l.right || new Float32Array(0)))),
+      ...takes.map((t) => peakOf(t || new Float32Array(0))),
+    );
   }).filter((p) => p > 0);
   if (!peaks.length) return 1;
   peaks.sort((a, b) => a - b);
@@ -113,8 +141,13 @@ export function normalizeInstrument(notes, target = 0.7, { min = 0.25, max = 8 }
     const layers = Array.isArray(note.layers) && note.layers.length ? note.layers : [note];
     for (const layer of layers) {
       const pcm = layer.pcm;
-      if (!pcm) continue;
-      for (let i = 0; i < pcm.length; i++) pcm[i] *= gain;
+      if (pcm) for (let i = 0; i < pcm.length; i++) pcm[i] *= gain;
+      if (layer.left) for (let i = 0; i < layer.left.length; i++) layer.left[i] *= gain;
+      if (layer.right) for (let i = 0; i < layer.right.length; i++) layer.right[i] *= gain;
+    }
+    for (const take of Array.isArray(note.takes) ? note.takes : []) {
+      if (!take) continue;
+      for (let i = 0; i < take.length; i++) take[i] *= gain;
     }
   }
   return gain;
@@ -128,6 +161,10 @@ export function sampleUrls(nameOrSpec) {
   const out = [];
   for (const [midi, entry] of Object.entries(inst.notes)) {
     if (Array.isArray(entry)) for (const layer of entry) out.push({ midi: +midi, vel: layer.vel, url: inst.base + layer.file });
+    // 一個音有多個 take（同一個音的不同次錄音，輪流用）：
+    // { takes: ['60-a.mp3', '60-b.mp3'] }。take 不是力度層——兩次吹奏的音色幾乎一樣，
+    // 所以不能用 layerMix 交叉淡化（那會讓同一個音變成兩層疊起來）。
+    else if (entry && Array.isArray(entry.takes)) entry.takes.forEach((file, take) => out.push({ midi: +midi, vel: undefined, take, url: inst.base + file }));
     else out.push({ midi: +midi, vel: undefined, url: inst.base + entry });
   }
   // 釋音（放開鍵）的檔案也一起抓：它們跟延音樣本同進同出
@@ -169,9 +206,12 @@ export function nearestSample(notes, midi) {
  *
  *  @returns {{ pcm: Float32Array, gain: number }[]} 一到兩個要一起播的層
  */
+/** 一個層（或一個項目）身上的立體資訊：有 left/right 就一起帶出去。 */
+const stereoOf = (x) => (x && x.left && x.right ? { left: x.left, right: x.right } : null) || {};
+
 export function layerMix(entry, vel = 1, width = 0.18) {
   const layers = entry && entry.layers;
-  if (!Array.isArray(layers) || !layers.length) return entry && entry.pcm ? [{ pcm: entry.pcm, gain: 1 }] : [];
+  if (!Array.isArray(layers) || !layers.length) return entry && entry.pcm ? [{ pcm: entry.pcm, gain: 1, ...stereoOf(entry) }] : [];
   const v = Number.isFinite(vel) ? Math.min(1, Math.max(0, vel)) : 1;
   // 交界就是每一層（第 1 層以後）的起點。看 v 有沒有落在某個交界的前後半個窗口內，
   // 兩側對稱處理：剛好在交界上時兩層各 0.707（等功率），跨過窗口就是單層。
@@ -182,29 +222,34 @@ export function layerMix(entry, vel = 1, width = 0.18) {
   if (boundary < 0) {
     let i = 0;
     for (let k = 0; k < layers.length; k++) if (v >= layers[k].vel) i = k;
-    return [{ pcm: layers[i].pcm, gain: 1 }];
+    return [{ pcm: layers[i].pcm, gain: 1, ...stereoOf(layers[i]) }];
   }
   const below = layers[boundary - 1];
   const above = layers[boundary];
   const t = Math.min(1, Math.max(0, (v - (above.vel - width / 2)) / width));
   const out = [];
-  if (below.pcm) out.push({ pcm: below.pcm, gain: Math.cos((t * Math.PI) / 2) });
-  if (above.pcm) out.push({ pcm: above.pcm, gain: Math.sin((t * Math.PI) / 2) });
+  if (below.pcm) out.push({ pcm: below.pcm, gain: Math.cos((t * Math.PI) / 2), ...stereoOf(below) });
+  if (above.pcm) out.push({ pcm: above.pcm, gain: Math.sin((t * Math.PI) / 2), ...stereoOf(above) });
   return out;
 }
 
-/** 一個音要怎麼用樣本播：挑最近的樣本、挑力度層，以及要套的播放速率
- *  （半音差 → 2^(d/12)）。有力度層時 `layer` 就是選中的那一層。 */
-export function sampleVoice(notes, midi, vel = 1) {
+/** 一個音要怎麼用樣本播：挑最近的樣本、挑力度層、挑第幾個 take，以及要套的播放速率
+ *  （半音差 → 2^(d/12)）。有力度層時 `layer` 就是選中的那一層；`take` 是有多個錄音
+ *  時輪到的那一個（`round` 由呼叫端維護，同一個音連續出現才會輪替，才會「不像機器」）。 */
+export function sampleVoice(notes, midi, vel = 1, round = 0) {
   const hit = nearestSample(notes, midi);
   if (!hit) return null;
   const layer = pickLayer(hit, vel);
   const mix = layerMix(hit, vel);
+  const take = Array.isArray(hit.takes) && hit.takes.length
+    ? hit.takes[Math.abs(Math.trunc(round)) % hit.takes.length]
+    : null;
   return {
     sample: hit,
     layer,
     mix,
-    pcm: mix.length ? mix[0].pcm : (layer && layer.pcm ? layer.pcm : hit.pcm),
+    take,
+    pcm: take || (mix.length ? mix[0].pcm : (layer && layer.pcm ? layer.pcm : hit.pcm)),
     semitones: midi - hit.midi,
     rate: 2 ** ((midi - hit.midi) / 12),
   };
@@ -258,8 +303,9 @@ export class SampledInstruments {
     this._ctx = audioContextOrGetter;
     this._output = outputNodeOrGetter;
     this._buffers = new WeakMap();   // pcm -> AudioBuffer（即時播放用，做過就留著）
-    /** name -> { notes: [{ midi, layers: [{ vel, pcm }], rate }], failed, gain } */
+    /** name -> { notes: [{ midi, layers: [{ vel, pcm }], takes: [pcm], rate }], failed, gain } */
     this.instruments = new Map();
+    this._rounds = new Map();      // `${name}|${midi}` -> 下次要用第幾個 take
     this._loading = new Map();     // name -> Promise（同一個樂器只抓一次）
     this.loadedCount = 0;          // 最近一次載入已完成的樣本數
     this.total = 0;                // 最近一次載入總共要抓幾個
@@ -279,7 +325,7 @@ export class SampledInstruments {
   loaded(name) {
     const inst = this.instruments.get(name);
     if (!inst) return 0;
-    return inst.notes.reduce((n, e) => n + e.layers.length, 0);
+    return inst.notes.reduce((n, e) => n + e.layers.length + (Array.isArray(e.takes) ? e.takes.length : 0), 0);
   }
 
   /** 這個樂器一共要抓幾個樣本。 */
@@ -323,10 +369,12 @@ export class SampledInstruments {
     let releaseRate = this.instruments.get(name)?.release?.rate || 0;
     let failed = 0;
     let done = 0;
-    for (const { midi, vel, url, release: isRelease } of urls) {
+    for (const { midi, vel, url, take, release: isRelease } of urls) {
       if (isRelease && release.has(midi)) { done++; continue; }
       const had = notes.get(midi);
-      const already = !isRelease && had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel));
+      const already = !isRelease && (take === undefined
+        ? had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel))
+        : had && had.takes && had.takes[take]);
       if (already) { done++; continue; }   // 上次就抓到了（處理過的 pcm 也在），不重抓
       try {
         let res = cache ? await cache.match(url) : null;
@@ -342,7 +390,18 @@ export class SampledInstruments {
         } else if (buffer && buffer.length) {
           const entry = notes.get(midi) || { midi, layers: [], rate: buffer.sampleRate || 44100 };
           entry.rate = buffer.sampleRate || 44100;
-          entry.layers.push({ vel: vel === undefined ? 0 : vel, pcm: prepareSample(buffer) });
+          if (take === undefined) {
+            const prepared = prepareSampleChannels(buffer);
+            entry.layers.push({
+              vel: vel === undefined ? 0 : vel,
+              pcm: prepared.mono,
+              ...(prepared.left && prepared.right ? { left: prepared.left, right: prepared.right } : {}),
+            });
+          }
+          else {
+            if (!Array.isArray(entry.takes)) entry.takes = [];
+            entry.takes[take] = prepareSample(buffer);
+          }
           notes.set(midi, entry);
         } else failed++;
       } catch (err) {
@@ -353,7 +412,10 @@ export class SampledInstruments {
       if (onProgress) onProgress(done, urls.length, name);
     }
     const sorted = [...notes.values()].sort((a, b) => a.midi - b.midi);
-    for (const entry of sorted) entry.layers.sort((a, b) => a.vel - b.vel);
+    for (const entry of sorted) {
+      entry.layers.sort((a, b) => a.vel - b.vel);
+      if (Array.isArray(entry.takes)) entry.takes = entry.takes.filter(Boolean);
+    }
     // 樂器之間的基準音量：鋼琴原本比別人小 6 dB（見 normalizeInstrument）
     const gain = normalizeInstrument(sorted);
     const hit = {
@@ -382,12 +444,29 @@ export class SampledInstruments {
     return buf;
   }
 
+  /** 即時播放要用的立體 AudioBuffer（兩聲道，由處理過的 pcm 現做並快取）。 */
+  stereoBufferFor(left, right, rate) {
+    if (!left || !right || !left.length) return null;
+    const hit = this._buffers.get(left);
+    if (hit) return hit;
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const len = Math.min(left.length, right.length);
+    const buf = ctx.createBuffer(2, len, rate || 44100);
+    buf.copyToChannel(left.subarray(0, len), 0);
+    buf.copyToChannel(right.subarray(0, len), 1);
+    this._buffers.set(left, buf);
+    return buf;
+  }
+
   /** 挑最近的樣本（沒載入或沒樣本時 null）。 */
   findBest(name, midi) {
     const inst = this.instruments.get(name);
     if (!inst || !inst.notes.length) return null;
     const v = sampleVoice(inst.notes, midi);
-    return { midi: v.sample.midi, buffer: this.bufferFor(v.sample) };
+    const pair = v.take ? null : (v.mix.find((m) => m.left && m.right) || null);
+    const buffer = pair ? this.stereoBufferFor(pair.left, pair.right, inst.notes[0].rate) : this.bufferFor(v.pcm, inst.notes[0].rate);
+    return { midi: v.sample.midi, buffer: buffer || null };
   }
 
   /** 播一個音。樣本還沒到時回傳 null，讓呼叫端自己決定要用哪個合成音色代替。 */
@@ -396,8 +475,18 @@ export class SampledInstruments {
     if (!ctx) return null;
     const inst = this.instruments.get(name);
     if (!inst || !inst.notes.length) return null;
-    const v = sampleVoice(inst.notes, note, opts.vel === undefined ? 0.85 : opts.vel);
-    const buffer = this.bufferFor(v.pcm, inst.notes[0].rate);
+    // 同一個音連續按（或 MIDI 裡同一個音連續出現）時輪流用不同的 take：
+    // 每次都播同一段波形是「這是取樣」最明顯的破綻。
+    const key = `${name}|${note}`;
+    const round = this._rounds.get(key) || 0;
+    this._rounds.set(key, round + 1);
+    const v = sampleVoice(inst.notes, note, opts.vel === undefined ? 0.85 : opts.vel, round);
+    // 立體樣本（鋼琴）用兩聲道播：它的左右是兩支不同視角的麥克風，混成單聲道就是
+    // 丟掉半個錄音，而且會抵消。
+    const pair = v.take ? null : (v.mix.find((m) => m.left && m.right) || null);
+    const buffer = pair
+      ? this.stereoBufferFor(pair.left, pair.right, inst.notes[0].rate)
+      : this.bufferFor(v.pcm, inst.notes[0].rate);
     if (!buffer) return null;
     if (ctx.state === 'suspended') ctx.resume();
 
@@ -432,7 +521,7 @@ export class SampledInstruments {
     if (!inst || !inst.notes.length) return null;
     return {
       rate: inst.notes[0].rate || 44100,
-      notes: inst.notes.map((n) => ({ midi: n.midi, layers: n.layers })),
+      notes: inst.notes.map((n) => ({ midi: n.midi, layers: n.layers, ...(n.takes ? { takes: n.takes } : {}) })),
       ...(inst.release
         ? { release: { rate: inst.release.rate, kit: Object.fromEntries(inst.release.notes.map((n) => [n.midi, [{ vel: 0, gain: 1, pcm: [n.pcm] }]])) } }
         : {}),

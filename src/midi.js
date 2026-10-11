@@ -309,7 +309,20 @@ function drumParams(note, vel, seed) {
  *  ({ 'sampled:violin': { rate, notes: [{ midi, pcm }] } }, see SampledInstruments.voices):
  *  a track using one is mixed from the recording instead of synthesised.
  *  The result is scaled down to a 0.9 peak instead of clipping. */
+/** 立體版：回傳 `{ left, right }`。
+ *
+ *  立體來源的取樣（目前是平台鋼琴）走自己的左右聲道；單聲道來源（其他每一個樂器、
+ *  合成音、鼓）在兩邊放一樣的訊號，所以結果是「單聲道相容的立體」。
+ *  `renderMidi()` 仍然回傳單聲道（用每個樣本裡能量較大的那個聲道），行為不變。 */
+export function renderMidiStereo(midi, opts = {}) {
+  return renderMidiCore(midi, opts, true);
+}
+
 export function renderMidi(midi, opts = {}) {
+  return renderMidiCore(midi, opts, false);
+}
+
+function renderMidiCore(midi, opts = {}, stereo = false) {
   if (!midi || !Array.isArray(midi.tracks)) throw new TypeError('renderMidi expects the result of parseMidi()');
   const sampleRate = opts.sampleRate > 0 ? opts.sampleRate : SAMPLE_RATE;
   const speedIn = Number(opts.speed);
@@ -318,8 +331,24 @@ export function renderMidi(midi, opts = {}) {
   const samples = opts.samples || null;
 
   const end = Math.min(MAX_MIDI_SECONDS, (Number(midi.duration) || 0) / speed + TAIL_SECONDS);
-  const out = new Float32Array(Math.ceil(end * sampleRate));
+  const frames = Math.ceil(end * sampleRate);
+  const out = stereo ? { l: new Float32Array(frames), r: new Float32Array(frames) } : new Float32Array(frames);
   const limit = MAX_MIDI_SECONDS;
+  // 單聲道來源：兩邊混一樣的（立體時），單聲道時就是原本那條路
+  const add = (at, pcm, ratio, gain, mixOpts) => {
+    if (stereo) {
+      mixSampleInto(out.l, at, pcm, ratio, gain, mixOpts);
+      mixSampleInto(out.r, at, pcm, ratio, gain, mixOpts);
+    } else mixSampleInto(out, at, pcm, ratio, gain, mixOpts);
+  };
+  const addStereo = (at, left, right, ratio, gain, mixOpts) => {
+    mixSampleInto(out.l, at, left, ratio, gain, mixOpts);
+    mixSampleInto(out.r, at, right, ratio, gain, mixOpts);
+  };
+  const sfx = (at, params, rate) => {
+    if (stereo) { renderSfxInto(out.l, at, params, rate); renderSfxInto(out.r, at, params, rate); }
+    else renderSfxInto(out, at, params, rate);
+  };
 
   midi.tracks.forEach((track, i) => {
     const s = settings[i] || {};
@@ -352,29 +381,36 @@ export function renderMidi(midi, opts = {}) {
         if (played) {
           rounds.set(note, (rounds.get(note) || 0) + 1);
           const ratio = (voice.rate / sampleRate);
-          mixSampleInto(out, at, played.pcm, ratio, KIT_VOICE_GAIN * played.gain * vel);
+          add(at, played.pcm, ratio, KIT_VOICE_GAIN * played.gain * vel);
         } else {
-          renderSfxInto(out, at, drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0), sampleRate);
+          sfx(at, drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0), sampleRate);
         }
         continue;
       }
       if (voice) {
         // 取樣：挑最近的錄音，用播放速率補半音；音長到 note-off 之後淡出，
         // 錄音本身放完就結束（樣本沒有循環，長音不會無限延長）。
-        const pick = sampleVoice(voice.notes, note, vel);
-        if (pick && pick.mix.length) {
+        // 同一個音高連續出現時輪流用不同的 take（同一個音的不同次錄音）——
+        // 每次都混同一段波形，是「這是取樣」最明顯的破綻。
+        const round = rounds.get(note) || 0;
+        const pick = sampleVoice(voice.notes, note, vel, round);
+        // 有 take 就用那個 take；沒有才用力度層（通常一層，交界附近兩層等功率淡化）
+        const parts = pick && (pick.take ? [{ pcm: pick.take, gain: 1 }] : pick.mix);
+        if (parts && parts.length) {
+          rounds.set(note, round + 1);
           const ratio = (voice.rate / sampleRate) * pick.rate;
-          // 落在力度交界附近時會有兩層（等功率交叉淡化），兩層一起混進去
-          for (const part of pick.mix) {
-            mixSampleInto(out, at, part.pcm, ratio, SAMPLE_VOICE_GAIN * vel * part.gain, {
-              hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate,
-            });
+          for (const part of parts) {
+            const mixOpts = { hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate };
+            const gain = SAMPLE_VOICE_GAIN * vel * part.gain;
+            // 立體樣本：左右各自混進去。單聲道時左右一樣，等於原本的行為。
+            if (stereo && part.left && part.right) addStereo(at, part.left, part.right, ratio, gain, mixOpts);
+            else add(at, part.pcm, ratio, gain, mixOpts);
           }
           // 放開鍵：鋼琴的「制音器」聲音。延音樣本在這裡被切掉，改由這個收尾。
           const rel = voice.release && pickHit(voice.release.kit[note], vel, 0);
           if (rel) {
             const relAt = at + Math.round((n.dur / speed) * sampleRate);
-            mixSampleInto(out, relAt, rel.pcm, (voice.release.rate / sampleRate) * pick.rate, SAMPLE_RELEASE_GAIN * vel);
+            add(relAt, rel.pcm, (voice.release.rate / sampleRate) * pick.rate, SAMPLE_RELEASE_GAIN * vel);
           }
         }
         continue;
@@ -382,18 +418,26 @@ export function renderMidi(midi, opts = {}) {
       const p = instrument === 'drums'
         ? drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0)
         : instrumentNote(instrument, note, { seconds: n.dur / speed, vel });
-      renderSfxInto(out, at, p, sampleRate);
+      sfx(at, p, sampleRate);
     }
   });
 
   let peak = 0;
-  for (let i = 0; i < out.length; i++) {
-    const a = Math.abs(out[i]);
-    if (a > peak) peak = a;
+  if (stereo) {
+    for (let i = 0; i < frames; i++) peak = Math.max(peak, Math.abs(out.l[i]), Math.abs(out.r[i]));
+  } else {
+    for (let i = 0; i < out.length; i++) {
+      const a = Math.abs(out[i]);
+      if (a > peak) peak = a;
+    }
   }
   if (peak > 0.9) {
     const g = 0.9 / peak;
-    for (let i = 0; i < out.length; i++) out[i] *= g;
+    if (stereo) {
+      for (let i = 0; i < frames; i++) { out.l[i] *= g; out.r[i] *= g; }
+    } else {
+      for (let i = 0; i < out.length; i++) out[i] *= g;
+    }
   }
-  return out;
+  return stereo ? { left: out.l, right: out.r } : out;
 }

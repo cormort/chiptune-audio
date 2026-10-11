@@ -72,6 +72,8 @@ const clarinet = (notes) => Object.fromEntries(notes.map((n) => [n,
 /** 鋼琴：4 個力度層，外加放開鍵的釋音取樣（rel16..rel76，一個音一個檔）。 */
 const piano = {
   label: '平台鋼琴',
+  // 立體：兩支不同視角的麥克風，是這台琴「在一個空間裡」的那一半（見 STEREO_INSTRUMENTS）
+  stereo: true,
   credit: 'Salamander Grand Piano V3 — Alexander Holm（CC-BY 3.0）',
   synth: 'real:piano',
   seconds: 5,
@@ -241,6 +243,29 @@ function fetchSource(base, path) {
 /** 解碼的統計：每一種來源最後選了哪個聲道（跑完會印出來）。 */
 const channelChoice = { left: 0, right: 0, mid: 0, mono: 0 };
 
+/** 保留立體聲的樂器（`INSTRUMENTS[name].stereo`）。
+ *
+ *  只有鋼琴：它的兩個聲道是**兩支不同視角的麥克風**（各頻帶相位差 +28°～−137°、
+ *  lag-0 相關 −0.29～−0.79），取單聲道等於丟掉半個錄音，而丟掉的那一半正是「這台琴
+ *  在一個空間裡」的感覺。VSCO 的弦樂／管樂是相干的一對（相加只差 0.6–2.3 dB），
+ *  留單聲道就夠，而且可以讓力度層那 15 MB 不要變成 27 MB。
+ *
+ *  立體來源的檔案比較大（128 kbps 立體 vs 96 kbps 單聲道，約 2 倍），所以只用在
+ *  鋼琴這一個樂器上。 */
+const STEREO_INSTRUMENTS = new Set(Object.entries(INSTRUMENTS).filter(([, i]) => i.stereo).map(([n]) => n));
+const stereoStats = { kept: 0, mono: 0 };
+
+function decodeChannels(file, seconds) {
+  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '2', '-ar', String(RATE), '-t', String(seconds + 0.4), '-']);
+  const copy = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const st = new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
+  const frames = st.length >> 1;
+  const left = new Float32Array(frames);
+  const right = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) { left[i] = st[2 * i]; right[i] = st[2 * i + 1]; }
+  return { left, right };
+}
+
 /** FLAC/WAV → 單聲道 f32 44.1 kHz（只解到需要的長度）。
  *
  *  **立體來源不能直接 `(L+R)/2`。** Salamander 的兩個聲道是兩支不同視角的麥克風
@@ -253,20 +278,16 @@ const channelChoice = { left: 0, right: 0, mid: 0, mono: 0 };
  *  所以這裡解成兩聲道，量左、右、相加三個候選的能量，取最大的那個；單聲道來源
  *  （卡林巴、tonejs 那批）三個候選一樣，行為跟以前相同。ffmpeg 的 `-ac 1` 就是
  *  上面那個抵消的相加，不能再用。 */
-function decode(file, seconds) {
-  const buf = sh('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '2', '-ar', String(RATE), '-t', String(seconds + 0.4), '-']);
-  const copy = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  const st = new Float32Array(copy, 0, Math.floor(copy.byteLength / 4));
-  const frames = st.length >> 1;
-  const left = new Float32Array(frames);
-  const right = new Float32Array(frames);
+function decode(file, seconds, stereo = false) {
+  const { left, right } = decodeChannels(file, seconds);
+  if (stereo) { stereoStats.kept++; return { stereo: true, left, right }; }
+  stereoStats.mono++;
+  const frames = left.length;
   const mid = new Float32Array(frames);
   const energy = [0, 0, 0];
   for (let i = 0; i < frames; i++) {
-    const l = st[2 * i];
-    const r = st[2 * i + 1];
-    left[i] = l;
-    right[i] = r;
+    const l = left[i];
+    const r = right[i];
     mid[i] = (l + r) / 2;
     energy[0] += l * l;
     energy[1] += r * r;
@@ -281,6 +302,27 @@ function decode(file, seconds) {
 
 /** 去掉開頭靜音、切長度、尾端淡出。不正規化（p 與 f 的音量差要留著）。 */
 function shape(pcm, seconds) {
+  if (pcm && pcm.stereo) {
+    // 立體：兩個聲道一起切（同一段起點與長度），淡出也一起
+    const len = Math.min(pcm.left.length, Math.round(seconds * RATE));
+    let peak = 0;
+    for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(pcm.left[i]), Math.abs(pcm.right[i]));
+    if (peak <= 0) throw new Error('silent sample');
+    const floor = peak * ONSET_FLOOR;
+    let start = 0;
+    while (start < len && Math.abs(pcm.left[start]) < floor && Math.abs(pcm.right[start]) < floor) start++;
+    start = Math.max(0, start - Math.round(PREROLL * RATE));
+    const n = Math.min(len - start, Math.round(seconds * RATE));
+    const outL = new Float32Array(n);
+    const outR = new Float32Array(n);
+    const fadeLen = Math.min(Math.round(FADE * RATE), n);
+    for (let i = 0; i < n; i++) {
+      const g = i >= n - fadeLen ? (n - i) / fadeLen : 1;
+      outL[i] = pcm.left[start + i] * g;
+      outR[i] = pcm.right[start + i] * g;
+    }
+    return { stereo: true, left: outL, right: outR };
+  }
   let peak = 0;
   for (const v of pcm) peak = Math.max(peak, Math.abs(v));
   if (peak <= 0) throw new Error('silent sample');
@@ -297,12 +339,28 @@ function shape(pcm, seconds) {
 
 function encode(pcm, dest) {
   const raw = join(SRC_CACHE, 'tmp.raw');
-  writeFileSync(raw, Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength));
-  sh('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '96k', dest]);
+  if (pcm && pcm.stereo) {
+    const inter = new Float32Array(pcm.left.length * 2);
+    for (let i = 0; i < pcm.left.length; i++) { inter[2 * i] = pcm.left[i]; inter[2 * i + 1] = pcm.right[i]; }
+    writeFileSync(raw, Buffer.from(inter.buffer, inter.byteOffset, inter.byteLength));
+    sh('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(RATE), '-ac', '2', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '128k', dest]);
+  } else {
+    writeFileSync(raw, Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+    sh('ffmpeg', ['-v', 'error', '-y', '-f', 'f32le', '-ar', String(RATE), '-ac', '1', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '96k', dest]);
+  }
   rmSync(raw, { force: true });
 }
 
-const peakOf = (pcm) => { let p = 0; for (const v of pcm) p = Math.max(p, Math.abs(v)); return p; };
+const peakOf = (pcm) => {
+  if (pcm && pcm.stereo) {
+    let p = 0;
+    for (let i = 0; i < pcm.left.length; i++) p = Math.max(p, Math.abs(pcm.left[i]), Math.abs(pcm.right[i]));
+    return p;
+  }
+  let p = 0;
+  for (const v of pcm) p = Math.max(p, Math.abs(v));
+  return p;
+};
 
 function main() {
   mkdirSync(OUT_DIR, { recursive: true });
@@ -330,8 +388,8 @@ function main() {
       ]);
       for (const [layerName, vel, file] of ordered) {
         const dest = join(dir, `${midi}-${layerName}.mp3`);
-        const source = decode(fetchSource(inst.src || SRC, inst.dir ? `${inst.dir}/${file}` : file), inst.seconds);
-        (peaksByLayer[layerName] ||= []).push(peakOf(shape(source.slice(), inst.seconds)));
+        const source = decode(fetchSource(inst.src || SRC, inst.dir ? `${inst.dir}/${file}` : file), inst.seconds, !!inst.stereo);
+        (peaksByLayer[layerName] ||= []).push(peakOf(shape(source, inst.seconds)));
         if (!existsSync(dest) || FORCE) {
           converted.set(dest, { pcm: shape(source, inst.seconds), layer: layerName });
           made++;
@@ -353,7 +411,11 @@ function main() {
     }
     for (const [dest, { pcm, layer }] of converted) {
       const g = gainByLayer[layer] || 1;
-      for (let i = 0; i < pcm.length; i++) pcm[i] *= g;
+      if (pcm && pcm.stereo) {
+        for (let i = 0; i < pcm.left.length; i++) { pcm.left[i] *= g; pcm.right[i] *= g; }
+      } else {
+        for (let i = 0; i < pcm.length; i++) pcm[i] *= g;
+      }
       encode(pcm, dest);
     }
     // 放開鍵的釋音取樣（目前只有鋼琴）：一個音一個檔，很短，所以整組一個資料夾
@@ -367,7 +429,7 @@ function main() {
       for (const [noteName, file] of Object.entries(inst.release.files)) {
         const midi = midiOf(noteName);
         const dest = join(rdir, `${midi}.mp3`);
-        const pcm = shape(decode(fetchSource(inst.src || SRC, inst.release.dir ? `${inst.release.dir}/${file}` : file), inst.release.seconds || 1.5), inst.release.seconds || 1.5);
+        const pcm = shape(decode(fetchSource(inst.src || SRC, inst.release.dir ? `${inst.release.dir}/${file}` : file), inst.release.seconds || 1.5, !!inst.stereo), inst.release.seconds || 1.5);
         peaks.push(peakOf(pcm));
         pending.push([dest, pcm]);
         notes[midi] = `${midi}.mp3`;
@@ -447,6 +509,7 @@ ${Object.entries(inst.release.notes).map(([midi, file]) => `        ${midi}: '${
   }
   console.log(`\n寫入 ${Object.keys(library).length} 個樂器、${made} 個新檔案（沿用 ${reused}），檔案共 ${kb(bytes)}`);
   console.log(`立體來源的聲道選擇：左 ${channelChoice.left}、右 ${channelChoice.right}、相加 ${channelChoice.mid}，單聲道 ${channelChoice.mono}`);
+  console.log(`保留立體聲的來源：${stereoStats.kept} 個（${[...STEREO_INSTRUMENTS].join('、') || '無'}）；轉成單聲道的：${stereoStats.mono} 個`);
 }
 
 main();
