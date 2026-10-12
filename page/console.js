@@ -14,11 +14,12 @@ import {
   autoInstruments, SampledKit, SAMPLE_KIT,
 } from '../src/index.js';
 import { DRUM_KIT } from './drum-library.js';
-import { $, collapsibleSections, downloadWav, fmtTime, prefs, registerServiceWorker, round } from './ui.js';
+import { $, collapsibleSections, downloadWav, fmtTime, installApp, prefs, registerServiceWorker, round } from './ui.js';
 import { createMixer } from './mixer.js';
 import { createPianoView } from './pianoview.js';
 
 registerServiceWorker();
+installApp();
 
 // 三個工作區塊預設收合（主控不收：它最短，也是所有聲音的出口）。
 // 匯入檔案時會自動展開 MIDI 區，不然拖進去的東西會「掉進收起來的抽屜」。

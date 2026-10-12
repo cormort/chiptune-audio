@@ -360,13 +360,42 @@ links and installed shortcuts keep working. The PWA's `start_url` is `./`.
   layout, plays `sampled:kalimba`, and records a performance into a WAV through
   `renderMidi` (so the file is the same engine and the same recordings you heard)
 - `page/pianoview.js` — the canvas falling-notes display (`src/pianoroll.js` does the geometry)
+- `page/score.js` — the sheet-music page (score.html): PDF → `/omr` → MusicXML, a measure
+  editor, and playback through the two piano voices
 - `page/mixer.js` — bus strips and part strips, including marking the part faders inactive
   while a MIDI owns the music bus
 - `page/ui.js` — `$`, theme colours, time formatting, WAV download, `prefs` (localStorage),
-  and `collapsibleSections()`: any `<section data-collapse>` gets a heading that toggles it
-  (the console's three working sections start collapsed, the choice is remembered, an in-page
-  link to a collapsed section expands it, and importing a file expands the MIDI section)
+  `registerServiceWorker()` and `installApp()`, and `collapsibleSections()`: any
+  `<section data-collapse>` gets a heading that toggles it (the console's three working
+  sections start collapsed, the choice is remembered, an in-page link to a collapsed section
+  expands it, and importing a file expands the MIDI section)
 - `page/theme.css` — the shared design tokens the pages load
+
+### Installing it (and why every page carries the plumbing)
+
+Chrome decides installability **per document**, so a page without a manifest link has no
+install entry point at all — `score.html` used to be exactly that (`Page.getInstallabilityErrors`
+reported `no-manifest`), which is what "can't install the PWA" looked like from the outside.
+Every page therefore needs the manifest link, the icons, the apple meta tags, and a module
+that calls `registerServiceWorker()` + `installApp()`; `test/pages.test.js` pins that.
+
+- `installApp()` (page/ui.js) turns `beforeinstallprompt` into a visible **⬇ 安裝 App** button,
+  hides itself when the app is already running standalone or after `appinstalled`, and on
+  browsers that never fire the event (iOS Safari, Firefox, in-app browsers) prints where to
+  press instead of leaving the user guessing. Never call `prompt()` on load — the button is
+  the user's gesture.
+- The manifest carries a stable `"id": "./"`. Without it the app id is derived from
+  `start_url`, and this app's start page has moved three times — each move looked like a
+  *different* app to the browser, so an installed icon never updated in place.
+- The 11 MB of audio is **not** downloaded in the service worker's `install` event: 369 files
+  take a minute or two on a phone, and a worker that is still `installing` means no install
+  prompt and no offline shell yet. `install` fetches the shell (in batches, tolerating
+  failures — one bad fetch must never abort the install), activates, and the page then asks
+  for the audio with `postMessage({ type: 'prefetch-media' })`; the worker fills
+  `chiptune-media-<hash>` with six connections at a time and writes a `media-complete` entry
+  only when everything arrived, so a partial cache is resumed rather than repeated. Do not
+  move that back into `install`, and do not let one rejected `fetch` reject the batch:
+  `test/sw.test.js` runs the worker against a flaky fake network and checks both.
 
 A kalimba tine rings until it runs out of energy, so note-off does not stop it: the page lets
 the voice ring out (like the piano) and offers an explicit 止音 (damp) button instead. Do not

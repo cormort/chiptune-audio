@@ -3,6 +3,7 @@
   "short_name": "Chiptune",
   "description": "打開就能彈：電子琴（24 種真實取樣樂器）、卡林巴琴、8-bit 音效與 MIDI 重混",
   "lang": "zh-Hant",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

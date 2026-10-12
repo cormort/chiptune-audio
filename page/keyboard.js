@@ -6,9 +6,10 @@ import {
   ChiptuneAudio, INSTRUMENT_BANKS, INSTRUMENT_LABELS, instrumentNote, instrumentRelease, noteFreq,
   SampledInstruments, SAMPLE_LIBRARY, SAMPLE_CREDIT, sampleNames, sampleLabel, sampleSynth,
 } from '../src/index.js';
-import { $, prefs, registerServiceWorker } from './ui.js';
+import { $, installApp, prefs, registerServiceWorker } from './ui.js';
 
 registerServiceWorker();
+installApp();
 
 const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);

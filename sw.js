@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v34';
+const VERSION = 'v35';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
@@ -26,7 +26,7 @@ const APP = [
   'src/samples.js', 'src/sample-library.js', 'src/dynamic-library.js', 'src/gm.js', 'src/drums.js',
   'src/kalimba.js', 'src/kalimba-library.js',
   'page/theme.css', 'page/ui.js', 'page/mixer.js', 'page/pianoview.js',
-  'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/drum-library.js',
+  'page/console.js', 'page/keyboard.js', 'page/kalimba.js', 'page/score.js', 'page/drum-library.js',
   'src/flute-library.js', 'src/flute-vib-library.js', 'src/strings-library.js', 'src/guitar-library.js',
 ];
 
@@ -430,38 +430,97 @@ const GUITARS = [
   'samples/guitar-jazz/86-v2.mp3',
   'samples/guitar-jazz/86-v3.mp3',
 ];
+const MEDIA = [...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB, ...GUITARS];
+/** 抓完一輪才寫進音檔快取的記號。有這個記號＝整個 MEDIA 都在，之後載入直接跳過；
+ *  沒有＝還沒抓完（或抓過一半），只補缺的那幾個。 */
+const MEDIA_MARK = 'media-complete';
+/** 同時幾個連線。369 個全開會讓手機整批失敗（連線數與記憶體都用完了），
+ *  而且那時 `Promise.all` 會因為第一個 reject 而放棄整批。 */
+const FILL_WORKERS = 6;
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(APP_CACHE).then(async (cache) => {
-    // addAll() would go through the HTTP cache; fetch each file explicitly instead.
-    await Promise.all(APP.map(async (path) => {
-      const res = await fetch(path, bypassHttpCache(path));
-      if (res.ok || res.type === 'opaque') await cache.put(path, res);
-    }));
-    // 音檔那一批（三百多個小檔案）：**已經有同一個雜湊的快取就不抓**——
-    // 這是「程式更新不重抓 9.5 MB」的關鍵。
-    if (!(await caches.has(MEDIA_CACHE))) {
-      const media = await caches.open(MEDIA_CACHE);
-      await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB, ...GUITARS].map(async (path) => {
+/** 把 paths 抓進 cache，最多 workers 條連線同時跑。
+ *
+ *  **單一檔案失敗不算失敗**：回傳沒抓到的清單讓呼叫端決定要不要重試。這點在
+ *  install 裡是關鍵——原本 369 個 fetch 用一個 `Promise.all` 包起來，手機上任何
+ *  一個 reject 都會讓整個 install 失敗，service worker 變 redundant、沒有 fetch
+ *  handler，**瀏覽器就不會給安裝提示**，而且使用者只看到「裝不起來」。 */
+async function fillCache(cache, paths, workers = FILL_WORKERS) {
+  const todo = [...paths];
+  const missed = [];
+  const run = async () => {
+    for (;;) {
+      const path = todo.shift();
+      if (path === undefined) return;
+      try {
         const res = await fetch(path, bypassHttpCache(path));
-        if (res.ok || res.type === 'opaque') await media.put(path, res);
-      }));
+        if (res.ok || res.type === 'opaque') await cache.put(path, res);
+        else missed.push(path);
+      } catch {
+        missed.push(path);
+      }
     }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(workers, todo.length)) }, run));
+  return missed;
+}
+
+/** 音檔那一批（三百多個小檔案、約 11 MB）。
+ *
+ *  為什麼不在 install 裡抓：369 個檔案在手機上要一兩分鐘，卡在 install 會讓 worker
+ *  一直停在 installing，這段時間**安裝提示不會出現、離線也還沒生效**。改成 activate
+ *  之後由頁面在閒置時叫它（見底下的 message），先能安裝、先能離線開外殼，音檔在背景補齊。
+ *  **已經有同一個雜湊的快取又抓完過就不抓**——這是「程式更新不重抓 11 MB」的關鍵。 */
+let filling = null;
+function prefetchMedia() {
+  if (filling) return filling;
+  filling = (async () => {
+    const cache = await caches.open(MEDIA_CACHE);
+    if (await cache.match(MEDIA_MARK)) return { skipped: true, done: MEDIA.length, total: MEDIA.length, missed: 0 };
+    const have = new Set((await cache.keys()).map((r) => new URL(r.url).pathname.replace(/^.*\/chiptune-audio\//, '')));
+    const missed = await fillCache(cache, MEDIA.filter((p) => !have.has(p)));
+    if (!missed.length) await cache.put(MEDIA_MARK, new Response('ok'));
+    return { skipped: false, done: MEDIA.length - missed.length, total: MEDIA.length, missed: missed.length };
+  })().finally(() => { filling = null; });
+  return filling;
+}
+
+self.addEventListener('install', (e) => {
+  e.waitUntil((async () => {
+    const cache = await caches.open(APP_CACHE);
+    // addAll() would go through the HTTP cache; fetch each file explicitly instead.
+    // 外殼缺一個模組整個 app 就壞，所以抓不到的重試一輪（但**不讓 install 失敗**：
+    // 失敗的話連 fetch handler 都沒有，使用者連線上都開不了）。
+    const missed = await fillCache(cache, APP, 8);
+    if (missed.length) await fillCache(cache, missed, 4);
     await self.skipWaiting();
-  }));
+  })());
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys
-        .filter((k) => (k.startsWith(APP_PREFIX) && k !== APP_CACHE) || (k.startsWith(MEDIA_PREFIX) && k !== MEDIA_CACHE))
-        .map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
-  );
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter((k) => (k.startsWith(APP_PREFIX) && k !== APP_CACHE) || (k.startsWith(MEDIA_PREFIX) && k !== MEDIA_CACHE))
+      .map((k) => caches.delete(k)));
+    await self.clients.claim();
+    // 先起步（不 waitUntil：這條只是搶時間，真正保證跑完的是頁面送來的 message）
+    void prefetchMedia();
+  })());
+});
+
+/** 頁面閒置時叫我們把音檔抓齊。用 message 而不是 install：waitUntil 綁在這個事件上，
+ *  service worker 會為了它活到抓完，而安裝流程完全不受影響。抓完回報進度給所有分頁。 */
+self.addEventListener('message', (e) => {
+  if (!e.data || e.data.type !== 'prefetch-media') return;
+  e.waitUntil((async () => {
+    const result = await prefetchMedia();
+    for (const client of await self.clients.matchAll({ includeUncontrolled: true })) {
+      client.postMessage({ type: 'media-status', ...result });
+    }
+  })());
 });
 
 // Same-origin files plus the Google Fonts stylesheet and font files.

@@ -11,9 +11,10 @@ import {
   KALIMBA_TUNINGS, KALIMBA_DEMOS, tinePositions, tineNote, tineForKey, tineNumber,
   velocityAt, demoSeconds,
 } from '../src/index.js';
-import { $, prefs, downloadWav, registerServiceWorker } from './ui.js';
+import { $, downloadWav, installApp, prefs, registerServiceWorker } from './ui.js';
 
 registerServiceWorker();
+installApp();
 
 const NAME = 'kalimba';
 /** 匯出時一個音讓它響多久（秒）：簧片自然衰減，這裡只是給引擎一個 note-off 時間。 */

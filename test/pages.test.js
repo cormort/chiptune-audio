@@ -8,10 +8,13 @@ import { readFileSync } from 'node:fs';
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 
 const PAGES = [
-  { html: 'console.html', scripts: ['page/console.js', 'page/mixer.js', 'page/pianoview.js', 'page/ui.js'] },
+  { html: 'console.html', scripts: ['page/console.js', 'page/mixer.js', 'page/pianoview.js', 'page/ui.js'], inPageNav: true },
   // 首頁現在是樂器 app（電子琴），控制台搬到 console.html
-  { html: 'index.html', scripts: ['page/keyboard.js', 'page/ui.js'] },
-  { html: 'kalimba.html', scripts: ['page/kalimba.js', 'page/ui.js'] },
+  { html: 'index.html', scripts: ['page/keyboard.js', 'page/ui.js'], inPageNav: true },
+  { html: 'kalimba.html', scripts: ['page/kalimba.js', 'page/ui.js'], inPageNav: true },
+  // 琴譜頁原本自成一格：沒有 manifest、沒有 service worker，所以在那一頁**完全沒辦法
+  // 安裝 PWA**（Chrome 的安裝判定看的是當前文件，回報 `no-manifest`）。現在跟其他頁一樣。
+  { html: 'score.html', scripts: ['page/score.js', 'page/ui.js'], inPageNav: false },
 ];
 
 test('page modules only look up ids the page markup defines', () => {
@@ -31,11 +34,31 @@ test('every in-page link points at a section the page has', () => {
   for (const page of PAGES) {
     const markup = read(page.html);
     const anchors = [...markup.matchAll(/href="#([^"]+)"/g)].map((m) => m[1]);
-    assert.ok(anchors.length > 0, `${page.html} has no in-page navigation`);
+    if (page.inPageNav) assert.ok(anchors.length > 0, `${page.html} has no in-page navigation`);
     for (const a of anchors) {
       assert.ok(markup.includes(`id="${a}"`), `${page.html} links to #${a}, which it does not define`);
     }
   }
+});
+
+// 「怎麼安裝」不該是猜謎題，而安裝判定是**看當前文件**的：任何一頁少了 manifest／
+// service worker，使用者在那一頁就完全沒有安裝入口（score.html 就是這樣壞掉的）。
+test('every page can be installed: manifest, icons, and the service worker', () => {
+  for (const page of PAGES) {
+    const markup = read(page.html);
+    assert.ok(markup.includes('href="manifest.webmanifest"'), `${page.html} has no manifest link: Chrome reports no-manifest`);
+    assert.ok(markup.includes('rel="apple-touch-icon"'), `${page.html} has no apple-touch-icon (iOS uses it for the home-screen icon)`);
+    assert.ok(markup.includes('apple-mobile-web-app-capable'), `${page.html} would open with Safari chrome on iOS`);
+    const mod = page.scripts.find((f) => f !== 'page/ui.js' && f !== 'page/mixer.js' && f !== 'page/pianoview.js');
+    const src = read(mod);
+    assert.match(src, /registerServiceWorker\(\)/, `${mod} never registers the service worker`);
+    assert.match(src, /installApp\(\)/, `${mod} never shows the install button`);
+  }
+  // 身分（id）要寫死在 manifest 裡。start_url 換過三次，而沒有 id 時瀏覽器是拿
+  // start_url 當身分——等於每次改首頁都變成「另一個 app」，已安裝的舊圖示不會跟著更新。
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  assert.ok(manifest.id, 'the manifest has no id: changing start_url forks the installed app');
+  assert.equal(manifest.start_url, './', 'the app must start on the instrument page');
 });
 
 test('importing MIDI keeps every file of a batch, not just one of them', () => {
