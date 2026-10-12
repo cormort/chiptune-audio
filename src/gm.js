@@ -29,9 +29,10 @@ const FAMILIES = [
   // 古典吉他、VSCO 沒有撥弦類、Iowa MIS 的吉他頁已 404，現有那份 Freesound 尼龍是單層）。
   // 所以自動配音用鋼弦的 Shinyguitar 木吉他：三層真實力度、音域 C#2–C6，代價是鋼弦音色。
   // `sampled:guitar-nylon` 仍然留在取樣庫裡，想聽尼龍的人可以自己選。
-  { from: 24, to: 24, family: '古典吉他', sampled: 'guitar-acoustic' },
-  { from: 25, to: 27, family: '木吉他', sampled: 'guitar-acoustic' },
-  { from: 28, to: 31, family: '電吉他', sampled: 'guitar-electric' },
+  { from: 24, to: 25, family: '吉他（尼龍／鋼弦）', sampled: 'guitar-acoustic' },
+  // 26 是爵士電吉他：Karoryfer 的 Emily（半空心、flatwound 弦，三層力度）
+  { from: 26, to: 26, family: '電吉他（爵士）', sampled: 'guitar-jazz' },
+  { from: 27, to: 31, family: '電吉他', sampled: 'guitar-electric' },
   { from: 32, to: 32, family: '低音提琴', sampled: 'contrabass' },
   { from: 33, to: 39, family: '貝斯', sampled: 'bass-electric' },
   { from: 40, to: 41, family: '小提琴／中提琴', sampled: 'violin' },

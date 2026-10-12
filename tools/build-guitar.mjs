@@ -23,22 +23,38 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = '/tmp/chiptune-guitar';
-const REPO = 'sfzinstruments/karoryfer.shinyguitar';
+// `--jazz` 換成另一把 CC0 吉他：Karoryfer 的 Emily（Epiphone 半空心、flatwound 弦），
+// 4 層力度 × 3 round robin、24 個音高（MIDI 37–96）。它的 SFZ 跟 Shinyguitar 不一樣：
+// 力度寫在**檔名**（`notes/a2_mf_rr1.wav` 的 mf）而不是 group 的 lovel／hivel，
+// 而且同一張表裡還有 noises（手指摩擦）與 release（放開弦）的取樣，要濾掉。
+
 // jsDelivr 是 GitHub 的 CDN 鏡像：raw.githubusercontent 在連續抓上百個檔之後會開始
 // 回 429／HTML 錯誤頁（那會讓 SFZ 解析成 0 個 region，而 curl 還是回 200）。
-const RAW = `https://cdn.jsdelivr.net/gh/${REPO}@master/`;
-const API = `https://api.github.com/repos/${REPO}/git/trees/HEAD?recursive=1`;
-const CREDIT = 'Sharur Shinyguitar — Karoryfer Samples（CC0 1.0）';
+
+
+
 const FORCE = process.argv.includes('--force');
 const SECONDS = 3.2;
 const REFERENCE = 0.7;
 const LAYERS = 3;
 
 /** 兩把吉他：SFZ 程式、輸出資料夾、資料表鍵名、中文名、代理合成音色。 */
-const GUITARS = [
-  { key: 'guitar-acoustic', sfz: 'Programs/acoustic_five.sfz', dir: 'samples/guitar-acoustic', label: '木吉他', synth: 'real:guitar' },
-  { key: 'guitar-electric', sfz: 'Programs/electric_five.sfz', dir: 'samples/guitar-electric', label: '電吉他', synth: 'real:guitar' },
+const JAZZ = process.argv.includes('--jazz');
+/** 兩套來源：Shinyguitar（木吉他＝鋼弦、電吉他）與 Emily（半空心、flatwound 弦，當爵士吉他）。 */
+const SOURCES = {
+  shiny: { repo: 'sfzinstruments/karoryfer.shinyguitar', credit: 'Sharur Shinyguitar — Karoryfer Samples（CC0 1.0）', layers: 'hivel' },
+  emily: { repo: 'sfzinstruments/karoryfer.emilyguitar', credit: 'Emily the Strange guitar — Karoryfer Samples（CC0 1.0）', layers: 'name' },
+};
+const ALL_GUITARS = [
+  { key: 'guitar-acoustic', src: 'shiny', sfz: 'Programs/acoustic_five.sfz', dir: 'samples/guitar-acoustic', label: '木吉他', synth: 'real:guitar' },
+  { key: 'guitar-electric', src: 'shiny', sfz: 'Programs/electric_five.sfz', dir: 'samples/guitar-electric', label: '電吉他', synth: 'real:guitar' },
+  { key: 'guitar-jazz', src: 'emily', sfz: 'emily_clean.sfz', dir: 'samples/guitar-jazz', label: '爵士吉他', synth: 'real:guitar' },
 ];
+// 一次跑就重建**全部**（快取讓它很快）：這個資料表是整份寫出的，只跑一部分會把其他把
+// 吉他的項目洗掉。`--jazz` 只是保留給「只想看爵士那把」的除錯用，不會只寫一部分。
+const GUITARS = ALL_GUITARS;
+const RAW_OF = (src) => `https://cdn.jsdelivr.net/gh/${SOURCES[src].repo}@master/`;
+const API_OF = (src) => `https://api.github.com/repos/${SOURCES[src].repo}/git/trees/HEAD?recursive=1`;
 
 /** 抓文字檔（SFZ、GitHub 的檔案樹）：失敗要**大聲**，不要靜靜地回空字串——
  *  那會讓整把樂器變成 0 個 region 而沒有錯誤訊息。 */
@@ -54,20 +70,20 @@ function fetchText(url, tries = 4) {
 }
 
 /** SFZ 文字：抓一次就快取在 /tmp（來源不會變，而且 GitHub 會限流）。 */
-function readSfz(path) {
-  const cached = join(CACHE, path.replace(/[^\w.-]/g, '_'));
+function readSfz(src, path) {
+  const cached = join(CACHE, `${src}-${path.replace(/[^\w.-]/g, '_')}`);
   if (exists(cached)) return readFileSync(cached, 'utf8');
-  const text = fetchText(RAW + path);
+  const text = fetchText(RAW_OF(src) + path);
   mkdirSync(CACHE, { recursive: true });
   writeFile(cached, text);
   return text;
 }
 
 /** 檔名 → 在 repo 裡的路徑（SFZ 用的是 Windows 反斜線，資料夾名也不一定一樣）。 */
-function sampleIndex() {
-  const cached = join(CACHE, 'tree.json');
+function sampleIndex(src) {
+  const cached = join(CACHE, `tree-${src}.json`);
   if (exists(cached)) return new Map(JSON.parse(readFileSync(cached, 'utf8')));
-  const tree = JSON.parse(fetchText(API));
+  const tree = JSON.parse(fetchText(API_OF(src)));
   const map = new Map();
   for (const t of tree.tree) {
     if (!/\.(wav|flac)$/i.test(t.path)) continue;
@@ -85,8 +101,8 @@ function sampleIndex() {
  *  在每一塊裡找 keycenter，結果抓到的是**下一個 group** 的值（所以量出來會是
  *  「keycenter C#2 卻是 G#3」這種鬼數字）。所以要照順序走，維護「目前的 group 狀態」。
  */
-function parseSfz(path) {
-  const lines = readSfz(path).split(/\r?\n/);
+function parseSfz(src, path) {
+  const lines = readSfz(src, path).split(/\r?\n/);
   let group = {};
   let cur = null;
   const out = [];
@@ -109,29 +125,38 @@ function parseSfz(path) {
   return out.filter((r) => r.pitch_keycenter && r.sample).map((r) => {
     const file = basename(String(r.sample).trim().replace(/\\/g, '/'));
     // 力度層：用這一群的 hivel／lovel 判（hivel 32/64/127 = 弱／中／強）
+    const raw0 = String(r.sample).trim().replace(/\\/g, '/');
+    if (SOURCES[src].layers === 'name') {
+      // 只收 notes/ 底下的（noises／release 是同一個程式裡的效果音，不是音高）
+      if (!/^notes\//i.test(raw0)) return null;
+      const dyn = file.match(/_(pp|mf|ff|p|f)_rr\d/i);
+      const layer = !dyn ? 1 : (dyn[1].toLowerCase() === 'pp' || dyn[1].toLowerCase() === 'p') ? 0
+        : (dyn[1].toLowerCase() === 'mf') ? 1 : 2;
+      return { keycenter: +r.pitch_keycenter, layer, file, lo: 0, hi: 127 };
+    }
     const hi = Number(r.hivel ?? 127);
     const lo = Number(r.lovel ?? 0);
     const mid = (hi + lo) / 2;
     const layer = mid <= 40 ? 0 : mid <= 80 ? 1 : 2;
     return { keycenter: +r.pitch_keycenter, layer, file, lo, hi };
   // `vl4`／`rr4` 不是音：這套來源把敲擊、摩擦、放開弦的雜音也放在同一張表裡
-  }).filter((r) => !/vl4|rr4/i.test(r.file));
+  }).filter((r) => r && !/vl4|rr4/i.test(r.file));
 }
 
-function local(file) {
+function local(src, file) {
   const p = join(CACHE, file);
   if (exists(p) && !FORCE) return p;
   mkdirSync(CACHE, { recursive: true });
-  const path = sampleIndexCache.get(file.toLowerCase());
+  const path = sampleIndexCache[src].get(file.toLowerCase());
   if (!path) throw new Error(`來源裡找不到 ${file}`);
-  sh('curl', ['-sfL', RAW + path.split('/').map(encodeURIComponent).join('/'), '-o', p]);
+  sh('curl', ['-sfL', RAW_OF(src) + path.split('/').map(encodeURIComponent).join('/'), '-o', p]);
   return p;
 }
 
-let sampleIndexCache = null;
+const sampleIndexCache = {};
 
 function main() {
-  sampleIndexCache = sampleIndex();
+  for (const src of new Set(ALL_GUITARS.map((g) => g.src))) sampleIndexCache[src] = sampleIndex(src);
   const library = {};
   let made = 0;
   let reused = 0;
@@ -139,7 +164,7 @@ function main() {
   for (const g of GUITARS) {
     const outDir = join(ROOT, g.dir);
     mkdirSync(outDir, { recursive: true });
-    const regions = parseSfz(g.sfz);
+    const regions = parseSfz(g.src, g.sfz);
     if (regions.length < 24) throw new Error(`${g.key} 只解析到 ${regions.length} 個 region`);
     // 依 (音高, 層) 分組，取第一個 region 當代表（同一個位置有多個 round robin，
     // 這次只取一個：層數是這次的重點，round robin 留給下一輪）
@@ -155,7 +180,7 @@ function main() {
     const rows = [];
     for (const [k, file] of [...byPitch.entries()].sort()) {
       const [keycenter, layer] = k.split('|').map(Number);
-      const pcm = shape(pickChannel(local(file), SECONDS), SECONDS);
+      const pcm = shape(pickChannel(local(g.src, file), SECONDS), SECONDS);
       peaksByLayer[layer].push(peakOf(pcm));
       rows.push({ keycenter, layer, file, pcm });
     }
@@ -196,7 +221,7 @@ function main() {
     const body = midis.map((m) => `    ${m}: [${notes[m].map((l) => `{ vel: ${l.vel}, file: '${l.file}' }`).join(', ')}],`).join('\n');
     library[g.key] = `  '${g.key}': {
     label: '${g.label}',
-    credit: '${CREDIT}',
+    credit: '${SOURCES[g.src].credit}',
     synth: '${g.synth}',
     base: '${g.dir}/',
     gap: ${Math.max(...gaps)},
@@ -212,7 +237,8 @@ ${body}
 
   writeFile(join(ROOT, 'src', 'guitar-library.js'), `// 木吉他與電吉他的取樣表（產生的，不是手寫的）：音號 → 力度層 → 檔名。
 //
-// 來源：${CREDIT}
+// 來源：
+//   ${[...new Set(ALL_GUITARS.map((g) => SOURCES[g.src].credit))].join('\n//   ')}
 // 對應表（SFZ）與量測結果見 tools/build-guitar.mjs。
 // 每一層正規化到同一個基準：**層負責音色、力度負責音量**（跟 samples/velocity/ 同一個規則）。
 // 檔案在 repo 裡，跟鼓組、卡林巴、長笛、弦樂群一樣進 service worker 預快取。

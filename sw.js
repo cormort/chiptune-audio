@@ -7,12 +7,12 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v31';
+const VERSION = 'v32';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
  *  只有樣本清單真的變了才會換名字，所以純程式更新時這 9.5 MB 一個位元組都不會重抓。 */
-const MEDIA_VERSION = 'mb8410fc2';
+const MEDIA_VERSION = 'm59ce7e63';
 const MEDIA_CACHE = `chiptune-media-${MEDIA_VERSION}`;
 // 清理只刪自己這兩個前綴的舊版。樣本快取叫 chiptune-samples-v1（引擎在用的隨選快取），
 // 不在這兩個前綴裡——它裝的是使用者抓下來的十幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -378,8 +378,58 @@ const GUITARS = [
   'samples/guitar-electric/84-v1.mp3',
   'samples/guitar-electric/84-v2.mp3',
   'samples/guitar-electric/84-v3.mp3',
+  'samples/guitar-jazz/37-v1.mp3',
+  'samples/guitar-jazz/37-v2.mp3',
+  'samples/guitar-jazz/37-v3.mp3',
+  'samples/guitar-jazz/40-v1.mp3',
+  'samples/guitar-jazz/40-v2.mp3',
+  'samples/guitar-jazz/40-v3.mp3',
+  'samples/guitar-jazz/42-v1.mp3',
+  'samples/guitar-jazz/42-v2.mp3',
+  'samples/guitar-jazz/42-v3.mp3',
+  'samples/guitar-jazz/45-v1.mp3',
+  'samples/guitar-jazz/45-v2.mp3',
+  'samples/guitar-jazz/45-v3.mp3',
+  'samples/guitar-jazz/48-v1.mp3',
+  'samples/guitar-jazz/48-v2.mp3',
+  'samples/guitar-jazz/48-v3.mp3',
+  'samples/guitar-jazz/51-v1.mp3',
+  'samples/guitar-jazz/51-v2.mp3',
+  'samples/guitar-jazz/51-v3.mp3',
+  'samples/guitar-jazz/54-v1.mp3',
+  'samples/guitar-jazz/54-v2.mp3',
+  'samples/guitar-jazz/54-v3.mp3',
+  'samples/guitar-jazz/57-v1.mp3',
+  'samples/guitar-jazz/57-v2.mp3',
+  'samples/guitar-jazz/57-v3.mp3',
+  'samples/guitar-jazz/63-v1.mp3',
+  'samples/guitar-jazz/63-v2.mp3',
+  'samples/guitar-jazz/63-v3.mp3',
+  'samples/guitar-jazz/66-v1.mp3',
+  'samples/guitar-jazz/66-v2.mp3',
+  'samples/guitar-jazz/66-v3.mp3',
+  'samples/guitar-jazz/69-v1.mp3',
+  'samples/guitar-jazz/69-v2.mp3',
+  'samples/guitar-jazz/69-v3.mp3',
+  'samples/guitar-jazz/72-v1.mp3',
+  'samples/guitar-jazz/72-v2.mp3',
+  'samples/guitar-jazz/72-v3.mp3',
+  'samples/guitar-jazz/75-v1.mp3',
+  'samples/guitar-jazz/75-v2.mp3',
+  'samples/guitar-jazz/75-v3.mp3',
+  'samples/guitar-jazz/78-v1.mp3',
+  'samples/guitar-jazz/78-v2.mp3',
+  'samples/guitar-jazz/78-v3.mp3',
+  'samples/guitar-jazz/81-v1.mp3',
+  'samples/guitar-jazz/81-v2.mp3',
+  'samples/guitar-jazz/81-v3.mp3',
+  'samples/guitar-jazz/84-v1.mp3',
+  'samples/guitar-jazz/84-v2.mp3',
+  'samples/guitar-jazz/84-v3.mp3',
+  'samples/guitar-jazz/86-v1.mp3',
+  'samples/guitar-jazz/86-v2.mp3',
+  'samples/guitar-jazz/86-v3.mp3',
 ];
-
 const bypassHttpCache = (url) => (new URL(url, location.href).origin === location.origin
   ? { cache: 'reload' }
   : undefined);
