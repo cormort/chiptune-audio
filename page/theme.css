@@ -63,3 +63,11 @@ label.inline { display: inline-flex; gap: 6px; align-items: center; }
 .nav { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 14px; }
 .nav a { text-decoration: none; }
 .nav a:hover { text-decoration: underline; }
+
+/* 樂器入口：一整塊可點的大按鈕（比一排小按鈕好按，手機上也看得懂） */
+.biglink { display: flex; flex-direction: column; gap: 2px; flex: 1 1 12rem; min-width: 10rem;
+           padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+           background: var(--panel); color: var(--text); text-decoration: none; font-weight: 600;
+           font-size: 15px; line-height: 1.35; }
+.biglink span { font-weight: 400; font-size: 12px; color: var(--muted); }
+.biglink:hover { border-color: var(--accent); color: var(--accent); }

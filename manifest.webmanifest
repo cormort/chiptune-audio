@@ -1,20 +1,63 @@
 {
-  "name": "chiptune-audio 控制台",
+  "name": "Chiptune 樂器",
   "short_name": "Chiptune",
-  "description": "8-bit 音效、音樂、MIDI 重新混音、電子琴與卡林巴琴",
+  "description": "打開就能彈：電子琴（24 種真實取樣樂器）、卡林巴琴、8-bit 音效與 MIDI 重混",
   "lang": "zh-Hant",
-  "start_url": "./index.html",
+  "start_url": "./keyboard.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121420",
   "theme_color": "#121420",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "電子琴", "url": "./keyboard.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "卡林巴琴", "url": "./kalimba.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+    {
+      "name": "電子琴",
+      "url": "./keyboard.html",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "卡林巴琴",
+      "url": "./kalimba.html",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "控制台",
+      "url": "./index.html",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

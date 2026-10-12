@@ -86,6 +86,7 @@
   <header>
     <h1>chiptune-audio 控制台</h1>
     <nav class="nav" aria-label="區塊">
+      <a href="#playEntry">開始彈</a>
       <a href="#master">主控</a>
       <a href="#sfx">音效</a>
       <a href="#music">音樂</a>
@@ -94,6 +95,17 @@
       <a href="kalimba.html">卡林巴琴 →</a>
     </nav>
   </header>
+
+  <!-- 樂器入口：這一頁是進階工具，先讓想彈樂器的人一眼看到入口 -->
+  <section id="playEntry">
+    <h2>開始彈</h2>
+    <div class="row" role="group" aria-label="樂器">
+      <a class="biglink" href="keyboard.html">🎹 電子琴<span>24 種真實取樣樂器＋三套合成音色，可用電腦鍵盤彈</span></a>
+      <a class="biglink" href="kalimba.html">🪕 卡林巴琴<span>17 根簧片的實體排列，點、刮、多指都可以</span></a>
+      <a class="biglink" href="score.html">🎼 樂譜播放<span>上傳 PDF／MusicXML，跟著彈</span></a>
+    </div>
+    <p class="muted" style="margin:-.2rem 0 0">下面才是控制台：音效、音樂產生器與 MIDI 重混。</p>
+  </section>
 
   <!-- 主控：所有聲音都會經過的輸出層 -->
   <section id="master">
