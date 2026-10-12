@@ -15,7 +15,7 @@ test('sw.js precaches every module in src/ and page/, and every page', () => {
     for (const f of modules) assert.ok(listed.has(`${dir}/${f}`), `${dir}/${f} is not in the sw.js precache list`);
   }
   assert.ok(listed.has('page/theme.css'), 'page/theme.css is not in the sw.js precache list');
-  for (const f of ['index.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest']) {
+  for (const f of ['index.html', 'console.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest']) {
     assert.ok(listed.has(f), f);
   }
 });

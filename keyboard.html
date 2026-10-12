@@ -1,85 +1,9 @@
 <!doctype html>
 <html lang="zh-Hant">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>chiptune-audio 電子琴</title>
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121420" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Chiptune">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
-<!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
-<link rel="stylesheet" href="page/theme.css">
-<style>
-  /* 電子琴版面：樂器 → 設定 → 琴鍵；按住發聲、放開停止，可多指和弦 */
-  .instruments { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 8px; }
-  #held { font: 13px var(--font-mono); color: var(--muted); min-height: 1.2em; }
-
-  /* 琴鍵：白鍵平均分寬，黑鍵以百分比絕對定位在兩個白鍵之間 */
-  .keys { position: relative; display: flex; height: 180px; margin: 12px 0 8px; user-select: none; touch-action: none; }
-  .key { position: relative; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 0 0 6px;
-         display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-         font: 11px/1.2 var(--font-mono); cursor: pointer; }
-  .key.white { flex: 1; min-width: 0; background: var(--key-white); color: var(--key-white-text); margin-right: -1px; }
-  .key.black { position: absolute; top: 0; height: 60%; z-index: 1; background: var(--key-black);
-               color: var(--key-black-text); border-color: var(--key-black); }
-  .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  .key b { font-weight: 700; color: inherit; }
-  .key i { font-style: normal; line-height: .6; }
-</style>
-
-<main>
-  <header>
-    <h1>chiptune-audio 電子琴</h1>
-    <nav class="nav" aria-label="頁面">
-      <a href="#instrumentsSection">樂器</a>
-      <a href="#keysSection">琴鍵</a>
-      <a href="kalimba.html">卡林巴琴</a>
-      <a href="index.html">← 控制台</a>
-    </nav>
-  </header>
-
-  <!-- 樂器：四套音色庫，切換後從下面挑一個位置 -->
-  <section id="instrumentsSection">
-    <h2>樂器</h2>
-    <p class="muted" style="margin:-.35rem 0 .6rem">① 先挑一套音色庫 → ② 再挑裡面的音色 → ③ 到下面彈。</p>
-    <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
-      <button id="bankChip" class="on" aria-pressed="true" data-bank="chip">晶片音色</button>
-      <button id="bankReal" aria-pressed="false" data-bank="real">寫實合成</button>
-      <button id="bankSample" aria-pressed="false" data-bank="sample">真實錄音取樣</button>
-      <span class="muted" id="bankHint"></span>
-    </div>
-    <div class="instruments" id="instruments"></div>
-    <div class="row" style="margin-top:10px">
-      <button id="prefetchAll">⬇ 下載全部音色（離線用）</button>
-      <span class="muted" id="prefetchInfo">只預載了內建的鼓組與幾把樂器；按這裡可以把 20 多種錄音全部抓下來，之後離線都能用。</span>
-    </div>
-  </section>
-
-  <section id="keysSection">
-    <div class="row">
-      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:8rem"></label>
-      <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
-      <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
-    </div>
-    <div class="keys" id="keys"></div>
-    <div id="held" aria-live="polite"></div>
-    <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。<br>
-      • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
-      • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
-      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴四層力度＋釋音、弦樂群、木吉他／電吉他三層力度、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
-      木吉他、豎琴、木琴…共 20 種）。第一次選到那個樂器才開始抓樣本，抓過存進瀏覽器快取，之後離線也能彈；
-      樣本還沒到（第一次按、或離線）會先用對應的合成音色代替，按鍵不會沒聲音。<br>
-      電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
-      上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。
-      音量、八度、標示與選用的音色會存在瀏覽器裡，下次開啟直接接上。</p>
-  </section>
-</main>
-
-<script type="module" src="page/keyboard.js"></script>
+<!-- 電子琴現在是網站的門口（index.html）；這支留著讓舊連結與舊的 PWA 捷徑仍然可用 -->
+<meta http-equiv="refresh" content="0; url=index.html">
+<link rel="canonical" href="index.html">
+<body><p>電子琴已經搬到 <a href="index.html">首頁</a>。</p></body>
 </html>

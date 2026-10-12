@@ -343,15 +343,19 @@ audio.setMix({ music: 0.5, sfx: 1 });
 Types are in `types/index.d.ts`. Pages using ES modules must be served over
 HTTP (`npx serve .`), not opened as `file://`.
 
-## The demo pages (`index.html`, `keyboard.html`, `kalimba.html`)
+## The demo pages (`index.html` = 電子琴, `console.html`, `kalimba.html`, `score.html`)
 
 The pages demo this library; they are not part of the npm package. Their HTML holds
 only markup and the page's own CSS — all script lives in `page/`:
 
-- `page/console.js` — the control panel, wired top-to-bottom in the order the page is
+`index.html` is the front door and it is the instrument (`page/keyboard.js`); the control
+panel lives in `console.html`, and `keyboard.html` is a redirect to `index.html` so old
+links and installed shortcuts keep working. The PWA's `start_url` is `./`.
+
+- `page/console.js` — the control panel (console.html), wired top-to-bottom in the order the page is
   laid out: 主控 (bus levels) → 音效 → 音樂 (part faders) → MIDI (import one or many
   files into a playlist → tracks → piano view → transport + seek bar)
-- `page/keyboard.js` — the on-screen keyboard and its four voice banks
+- `page/keyboard.js` — the on-screen keyboard (index.html) and its three voice banks
 - `page/kalimba.js` — the 17-tine kalimba simulator: it draws `src/kalimba.js`'s tine
   layout, plays `sampled:kalimba`, and records a performance into a WAV through
   `renderMidi` (so the file is the same engine and the same recordings you heard)

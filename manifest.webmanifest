@@ -3,7 +3,7 @@
   "short_name": "Chiptune",
   "description": "打開就能彈：電子琴（24 種真實取樣樂器）、卡林巴琴、8-bit 音效與 MIDI 重混",
   "lang": "zh-Hant",
-  "start_url": "./keyboard.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121420",
@@ -31,7 +31,7 @@
   "shortcuts": [
     {
       "name": "電子琴",
-      "url": "./keyboard.html",
+      "url": "./",
       "icons": [
         {
           "src": "icons/icon-192.png",
@@ -50,8 +50,18 @@
       ]
     },
     {
+      "name": "樂譜播放",
+      "url": "./score.html",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "控制台",
-      "url": "./index.html",
+      "url": "./console.html",
       "icons": [
         {
           "src": "icons/icon-192.png",

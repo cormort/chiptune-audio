@@ -8,8 +8,9 @@ import { readFileSync } from 'node:fs';
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 
 const PAGES = [
-  { html: 'index.html', scripts: ['page/console.js', 'page/mixer.js', 'page/pianoview.js', 'page/ui.js'] },
-  { html: 'keyboard.html', scripts: ['page/keyboard.js', 'page/ui.js'] },
+  { html: 'console.html', scripts: ['page/console.js', 'page/mixer.js', 'page/pianoview.js', 'page/ui.js'] },
+  // 首頁現在是樂器 app（電子琴），控制台搬到 console.html
+  { html: 'index.html', scripts: ['page/keyboard.js', 'page/ui.js'] },
   { html: 'kalimba.html', scripts: ['page/kalimba.js', 'page/ui.js'] },
 ];
 
@@ -38,7 +39,7 @@ test('every in-page link points at a section the page has', () => {
 });
 
 test('importing MIDI keeps every file of a batch, not just one of them', () => {
-  const markup = read('index.html');
+  const markup = read('console.html');
   const input = markup.match(/<input id="midiFile"[^>]*>/);
   assert.ok(input, 'index.html has no #midiFile');
   assert.match(input[0], /\bmultiple\b/, '#midiFile cannot pick more than one file');
@@ -62,7 +63,7 @@ test('the performance view starts zoomed, not with the whole range squeezed in',
   assert.ok(fallback, 'page/console.js no longer picks a default key count');
   const value = /^\d+$/.test(fallback[1]) ? Number(fallback[1]) : Number(src.match(new RegExp(`const ${fallback[1]} = (\\d+)`))?.[1]);
   assert.ok(value >= 16, `the default key window is ${value} white keys: too zoomed out to see a performance`);
-  const markup = read('index.html');
+  const markup = read('console.html');
   assert.ok(markup.includes(`<option value="${value}">`), `index.html has no option for the default ${value}`);
 });
 
@@ -70,7 +71,7 @@ test('the console sections start collapsed, and the nav still opens them', () =>
   // 手機上四個區塊疊起來要好幾次捲動；三個工作區塊預設收合，只留標題。
   // 這種事在測試裡看不出來，所以釘住三件會壞掉的地方：哪幾區該收、主控不該收、
   // 以及「導覽連結指到收合的區塊要自動展開」（不然點了看起來像沒反應）。
-  const markup = read('index.html');
+  const markup = read('console.html');
   const collapsed = [...markup.matchAll(/<section id="([^"]+)"[^>]*data-collapse/g)].map((m) => m[1]);
   assert.deepEqual(collapsed, ['sfx', 'music', 'midiSection'], 'the three working sections should collapse');
   assert.ok(!collapsed.includes('master'), '主控是最短的區塊，也是所有聲音的出口，不該收起來');

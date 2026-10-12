@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>chiptune-audio 控制台</title>
+<title>chiptune-audio 電子琴</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121420" media="(prefers-color-scheme: dark)">
@@ -16,222 +16,70 @@
 <!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
 <link rel="stylesheet" href="page/theme.css">
 <style>
-  /* 控制台版面。順序照使用流程：主控（輸出）→ 音效 → 音樂 → MIDI。
-     音效、音樂、MIDI 三區各自是「設定 → 產生 → 播放 → 匯出」。 */
-  p.flow { margin: -.35rem 0 .75rem; }
-  .mixer { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
-  .strip { flex: 1 1 5.5rem; max-width: 8rem; display: flex; flex-direction: column; align-items: center; gap: 6px;
-           padding: 10px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-  .strip.bus { border-color: var(--accent); }
-  .strip .name { font-size: 13px; }
-  .strip .val { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  .strip input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 2rem; height: 9rem; }
-  .strip .row { gap: 4px; justify-content: center; }
-  .strip button { min-height: 1.9rem; padding: .2rem .55rem; font: 12px var(--font-mono); }
-  .strip button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
-  .strip.silent input[type=range] { opacity: .4; }
-  /* 推桿現在沒作用（例如 MIDI 擁有音樂匯流排時的聲部） */
-  .strip.inactive { opacity: .45; }
+  /* 電子琴版面：樂器 → 設定 → 琴鍵；按住發聲、放開停止，可多指和弦 */
+  .instruments { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 8px; }
+  #held { font: 13px var(--font-mono); color: var(--muted); min-height: 1.2em; }
 
-  .params { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 6px 20px; margin: 12px 0; }
-  .param { display: grid; grid-template-columns: 6.5rem 1fr 3.5rem; gap: 8px; align-items: center; }
-  .param span:last-child { text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  canvas { width: 100%; height: 90px; display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
-  pre { margin: 8px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
-        overflow-x: auto; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
-
-  /* MIDI 軌道：名稱｜樂器｜音量｜靜音，窄螢幕時名稱獨佔一行 */
-  .track { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7rem 4.5rem; gap: 8px; align-items: center;
-           padding: 8px 0; border-top: 1px solid var(--line); }
-  .track:first-child { border-top: 0; }
-  .track .tname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .track .tname small { display: block; color: var(--muted); font: 12px var(--font-mono); }
-  .track.muted-track .tname { opacity: .5; }
-  @media (max-width: 560px) {
-    .track { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
-    .track .tname { grid-column: 1 / -1; }
-  }
-  #midiTracks { margin: 12px 0; }
-  /* 播放清單：一次匯入多個檔案時，列在軌道設定的上面；點一列換那首，✕ 移除 */
-  #midiList { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
-  #midiList[hidden] { display: none; }
-  .plHead { display: flex; flex-wrap: wrap; gap: 2px 12px; justify-content: space-between;
-            padding: 7px 10px; background: var(--bg); font: 12px var(--font-mono); color: var(--muted); }
-  .plItem { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) 2rem; gap: 6px; align-items: center;
-            padding: 3px 10px; border-top: 1px solid var(--line); }
-  .plItem.on { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); }
-  .plItem.on .plNo { color: var(--accent); }
-  .plItem.on .plName { font-weight: 600; }
-  .plPick { display: grid; gap: 2px; min-width: 0; padding: 5px 0; background: none; border: 0;
-            color: inherit; font: inherit; text-align: start; cursor: pointer; }
-  .plNo { font: 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  .plName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .plMeta { font: 11px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-  .plX { padding: 2px; background: none; border: 0; color: var(--muted); font-size: 13px; cursor: pointer; }
-  .plX:hover { color: var(--accent); }
-  /* 匯入：整個 MIDI 區塊都是拖放目標，檔案拖進來時整塊亮起來 */
-  #midiSection.dropping { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
-  #midiSection.dropping #midiInfo { color: var(--accent); }
-
-  /* 鋼琴演奏：落下的音符與發聲的琴鍵畫在同一張 canvas 上 */
-  #pianoRoll { height: 300px; cursor: pointer; touch-action: manipulation; }
-  @media (max-width: 560px) { #pianoRoll { height: 216px; } }
-  #rollBar { margin: 8px 0 0; }
-  /* 進度條佔滿剩下的寬度，時間讀數固定在最右邊 */
-  #midiSeek { flex: 1 1 12rem; min-width: 8rem; }
-  #rollInfo { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  /* 琴鍵：白鍵平均分寬，黑鍵以百分比絕對定位在兩個白鍵之間 */
+  .keys { position: relative; display: flex; height: 180px; margin: 12px 0 8px; user-select: none; touch-action: none; }
+  .key { position: relative; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 0 0 6px;
+         display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+         font: 11px/1.2 var(--font-mono); cursor: pointer; }
+  .key.white { flex: 1; min-width: 0; background: var(--key-white); color: var(--key-white-text); margin-right: -1px; }
+  .key.black { position: absolute; top: 0; height: 60%; z-index: 1; background: var(--key-black);
+               color: var(--key-black-text); border-color: var(--key-black); }
+  .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .key b { font-weight: 700; color: inherit; }
+  .key i { font-style: normal; line-height: .6; }
 </style>
 
 <main>
   <header>
-    <h1>chiptune-audio 控制台</h1>
-    <nav class="nav" aria-label="區塊">
-      <a href="#playEntry">開始彈</a>
-      <a href="#master">主控</a>
-      <a href="#sfx">音效</a>
-      <a href="#music">音樂</a>
-      <a href="#midiSection">MIDI</a>
-      <a href="keyboard.html">電子琴 →</a>
-      <a href="kalimba.html">卡林巴琴 →</a>
+    <h1>chiptune-audio 電子琴</h1>
+    <nav class="nav" aria-label="頁面">
+      <a href="#instrumentsSection">樂器</a>
+      <a href="#keysSection">琴鍵</a>
+      <a href="kalimba.html">卡林巴琴</a>
+      <a href="console.html">控制台</a>
     </nav>
   </header>
 
-  <!-- 樂器入口：這一頁是進階工具，先讓想彈樂器的人一眼看到入口 -->
-  <section id="playEntry">
-    <h2>開始彈</h2>
-    <div class="row" role="group" aria-label="樂器">
-      <a class="biglink" href="keyboard.html">🎹 電子琴<span>24 種真實取樣樂器＋三套合成音色，可用電腦鍵盤彈</span></a>
-      <a class="biglink" href="kalimba.html">🪕 卡林巴琴<span>17 根簧片的實體排列，點、刮、多指都可以</span></a>
-      <a class="biglink" href="score.html">🎼 樂譜播放<span>上傳 PDF／MusicXML，跟著彈</span></a>
+  <!-- 樂器：四套音色庫，切換後從下面挑一個位置 -->
+  <section id="instrumentsSection">
+    <h2>樂器</h2>
+    <p class="muted" style="margin:-.35rem 0 .6rem">① 先挑一套音色庫 → ② 再挑裡面的音色 → ③ 到下面彈。</p>
+    <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
+      <button id="bankChip" class="on" aria-pressed="true" data-bank="chip">晶片音色</button>
+      <button id="bankReal" aria-pressed="false" data-bank="real">寫實合成</button>
+      <button id="bankSample" aria-pressed="false" data-bank="sample">真實錄音取樣</button>
+      <span class="muted" id="bankHint"></span>
     </div>
-    <p class="muted" style="margin:-.2rem 0 0">下面才是控制台：音效、音樂產生器與 MIDI 重混。</p>
-  </section>
-
-  <!-- 主控：所有聲音都會經過的輸出層 -->
-  <section id="master">
-    <h2>主控</h2>
-    <p class="muted flow">輸出音量與兩條匯流排；下面的音效、音樂、MIDI 都從這裡出去。</p>
-    <div class="row">
-      <label class="inline">總音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:10rem"></label>
-      <label class="inline"><input id="mute" type="checkbox"> 靜音</label>
-      <button id="stopAll">■ 停止全部音效</button>
-    </div>
-    <div class="mixer" id="busMixer"></div>
-    <div class="row">
-      <button id="resetMix">重設混音</button>
-      <span class="muted">匯流排立即生效；「重設混音」會把音樂的三條聲部推桿一起還原</span>
+    <div class="instruments" id="instruments"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="prefetchAll">⬇ 下載全部音色（離線用）</button>
+      <span class="muted" id="prefetchInfo">只預載了內建的鼓組與幾把樂器；按這裡可以把 20 多種錄音全部抓下來，之後離線都能用。</span>
     </div>
   </section>
 
-  <!-- 音效：挑預設 → 調參數 → 看波形 → 試聽／匯出（預設收合，點標題展開） -->
-  <section id="sfx" data-collapse>
-    <h2>音效</h2>
-    <p class="muted flow">① 挑一個預設 → ② 拉滑桿調參數（放開就聽得到）→ ③ 播放、複製 JSON 或下載 WAV。</p>
-    <div class="row" id="presets"></div>
-    <div class="params" id="params">
-      <label class="param"><span>波形</span><select id="waveSel"></select><span></span></label>
-    </div>
-    <canvas id="wave" width="900" height="90" aria-label="音效波形"></canvas>
-    <div class="row" style="margin-top:12px">
-      <button class="primary" id="playSfx">▶ 播放</button>
-      <button id="randomSfx">隨機</button>
-      <button id="copySfx">複製參數</button>
-      <button id="wavSfx">⤓ WAV</button>
-      <span class="muted" id="sfxInfo"></span>
-    </div>
-    <pre id="sfxJson" tabindex="0"></pre>
-    <p class="muted">複製的參數可直接傳給 <code>audio.playSfx({...})</code>，或加進 <code>SFX_PRESETS</code>。
-      「雜訊種子」只在波形為 NOISE 時有作用，換個數字即得到不同質地的雜訊。</p>
-  </section>
-
-  <!-- 音樂：產生參數 → 播放 → 三條聲部推桿（只有這一區產生的音樂吃得到）（預設收合，點標題展開） -->
-  <section id="music" data-collapse>
-    <h2>音樂</h2>
-    <p class="muted flow">① 選情緒、種子、小節 → ② 播放（可先「預先算好」避免第一拍卡頓）→ ③ 用聲部推桿調主旋律／貝斯／鼓組。</p>
+  <section id="keysSection">
     <div class="row">
-      <label class="inline">情緒 <select id="mood"></select></label>
-      <label class="inline">種子 <input id="seed" type="number" value="1" min="1" style="width:6rem"></label>
-      <button id="dice" title="隨機種子">🎲</button>
-      <label class="inline">小節 <select id="bars"><option>4</option><option selected>8</option><option>16</option></select></label>
+      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:8rem"></label>
+      <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+      <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
     </div>
-    <div class="row" style="margin-top:12px">
-      <button class="primary" id="playMusic">▶ 播放音樂</button>
-      <button id="preloadMusic" title="先算好並快取，播放時就不會卡頓">⤓ 預先算好</button>
-      <button id="stopMusic">■ 停止</button>
-      <button id="wavMusic" title="下載一個循環（套用聲部推桿）">⤓ WAV</button>
-      <span class="muted" id="musicInfo"></span>
-    </div>
-    <div class="mixer" id="partMixer"></div>
-    <div class="row"><span class="muted" id="mixInfo"></span><span class="muted" id="partHint"></span></div>
-    <p class="muted">聲部推桿放開時才重新合成音樂，並從原位置接著播；M 靜音、S 獨奏（只作用於音樂聲部）。
-      聲部是烘進音樂裡的，所以播放 MIDI 時它們不影響 MIDI。</p>
-  </section>
-
-  <!-- MIDI：匯入 → 軌道音色 → 鋼琴演奏顯示 → 播放（預設收合，點標題展開） -->
-  <section id="midiSection" data-collapse>
-    <h2>MIDI 重新混音</h2>
-    <p class="muted flow">① 匯入檔（可一次多選，或把整批拖進這一區；多檔會排成播放清單）→ ② 逐軌挑樂器、調音量 → ③ 看鋼琴演奏顯示 → ④ 播放、拖進度條、匯出 WAV。</p>
-    <div class="row">
-      <input id="midiFile" type="file" multiple accept=".mid,.midi,.smf,.kar,.rmi,audio/midi,audio/x-midi,application/x-midi">
-      <label class="inline"><input id="midiAutoPlay" type="checkbox" checked> 載入後自動播放</label>
-      <label class="inline" title="依每個聲部的 GM 樂器編號與實際音域，自動挑最接近的真實樂器（錄音取樣優先）"><input id="midiAuto" type="checkbox" checked> 自動配真實樂器</label>
-      <label class="inline"><input id="midiChain" type="checkbox" checked> 連續播放清單</label>
-      <button id="midiClear" disabled title="把清單裡的曲目全部移除">清空清單</button>
-      <span class="muted" id="midiInfo">匯入 .mid / .smf 檔，可以一次多選或整批拖進這一區（.rmi、gzip 壓縮或前面帶標籤的檔案也可以）</span>
-    </div>
-    <div id="midiList" hidden>
-      <div class="plHead"><span id="midiListInfo"></span><span>點一列切換曲目，✕ 從清單移除</span></div>
-      <div id="midiItems"></div>
-    </div>
-    <div id="midiTracks"></div>
-
-    <canvas id="pianoRoll" width="900" height="300" aria-label="鋼琴演奏顯示（落下的音符與發聲的琴鍵）"></canvas>
-    <div class="row" id="rollBar">
-      <label class="inline"><input id="rollOn" type="checkbox" checked> 顯示鋼琴演奏</label>
-      <label class="inline">視窗 <select id="rollWindow">
-        <option value="2">2 秒</option><option value="4" selected>4 秒</option><option value="8">8 秒</option></select></label>
-      <label class="inline">琴鍵 <select id="rollKeys" title="同時顯示幾個白鍵；琴鍵放大時畫面會跟著音樂左右移動">
-        <option value="0">整首塞進去</option>
-        <option value="8">8 白鍵</option>
-        <option value="12">12 白鍵</option>
-        <option value="16">16 白鍵</option>
-        <option value="22">22 白鍵</option></select></label>
-      <input id="midiSeek" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="播放位置">
-      <span id="rollInfo" aria-live="off">匯入 MIDI 後，這裡會跟著音樂顯示落下的音符與發聲的琴鍵</span>
-    </div>
-
-    <div class="row">
-      <label class="inline">速度 <select id="midiSpeed">
-        <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
-        <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
-      <label class="inline"><input id="midiLoop" type="checkbox"> 循環</label>
-      <button class="primary" id="playMidi" disabled>▶ 播放 MIDI</button>
-      <button id="stopMidi" disabled>■ 停止</button>
-      <button id="midiAutoNow" disabled title="依每個聲部的 GM 樂器編號與音域，換成最接近的真實樂器（錄音取樣優先）">🎻 重新配音色</button>
-      <button id="wavMidi" disabled title="用目前的樂器、音量與速度下載">⤓ WAV</button>
-      <span class="muted" id="midiStatus"></span>
-    </div>
-    <p class="muted">支援 .mid 與 .smf（Standard MIDI File，格式 0／1）——兩者格式相同，只是副檔名不同，
-      檔名不符也能靠檔頭辨認。一次可以匯入多個檔案：它們排成上面的播放清單，每一首各自記住自己的樂器、
-      音量與靜音設定；點一列就換那首，按「✕」移除，「清空清單」一次清掉全部。開著「連續播放清單」時，
-      一首播完會自動接著播下一首（清單最後一首播完就停，要一直重播請用「循環」）。
-      播放中換樂器、音量或速度，會重新合成並從原位置接著播。MIDI 走「音樂」匯流排，
-      混音台的主旋律／貝斯／鼓組推桿只作用於上方產生的音樂。第 10 聲道（打擊樂）預設為鼓組。
-      每一軌的樂器選單分三組：<b>晶片（快）</b>是單一振盪器的 8-bit 音色；<b>寫實合成（慢）</b>是疊泛音、
-      微走音與起音雜訊的合成（小提琴、大提琴、小號、薩克斯風、單簧管、大鍵琴、顫音琴、二胡、
-      手風琴、音樂盒…），比較像真樂器，但每個音都要完整算完尾巴，長曲子會明顯變慢；
-      <b>真實錄音取樣</b>是真的樂器錄音（平台鋼琴、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
-      木吉他、豎琴、木琴…共 20 種），第一次用到那個樂器要先下載樣本（抓過就進瀏覽器快取，離線可用），
-      之後就跟其他音色一樣即時合成整首。取樣抓不到時會自動退回該樂器的合成音色，不會變成沒聲音。
-      <b>鼓</b>也有真實取樣：大鼓、小鼓（中心／框邊／鼓框）、hi-hat（閉／半開／開／踏板）、tom、
-      crash、ride，以及鈴鼓、牛鈴、三角鐵、claves、shaker、康加、邦哥、agogo 等 GM 打擊樂
-      （第 10 聲道自動用它；檔案在 repo 裡，隨按即響、離線也打得到）。這套鼓沒錄到的音
-      （例如定音鼓）會退回合成鼓，不會變靜音。
-      鋼琴演奏跟著播放位置移動：音符落到鍵盤線時發聲，琴鍵亮起代表正在響（顏色對應軌道，
-      第 10 聲道的鼓另有一條節奏帶）；點琴鍵可試聽，點鍵盤線以上、或拖進度條，都可以從該處開始播。
-      設定（音量、混音、情緒、種子、小節、MIDI 顯示與連續播放）會存在瀏覽器裡，下次開啟不用重調。</p>
+    <div class="keys" id="keys"></div>
+    <div id="held" aria-live="polite"></div>
+    <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。<br>
+      • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
+      • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
+      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴四層力度＋釋音、弦樂群、木吉他／電吉他三層力度、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
+      木吉他、豎琴、木琴…共 20 種）。第一次選到那個樂器才開始抓樣本，抓過存進瀏覽器快取，之後離線也能彈；
+      樣本還沒到（第一次按、或離線）會先用對應的合成音色代替，按鍵不會沒聲音。<br>
+      電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
+      上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。
+      音量、八度、標示與選用的音色會存在瀏覽器裡，下次開啟直接接上。</p>
   </section>
 </main>
 
-<script type="module" src="page/console.js"></script>
+<script type="module" src="page/keyboard.js"></script>
 </html>

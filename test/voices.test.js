@@ -189,10 +189,10 @@ test('a MIDI file that retriggers a pitch without note-offs cannot stack voices'
 
 test('the keyboard page wires the bank switch to the shared banks', () => {
   // 琴鍵與音色庫的程式在 page/keyboard.js，markup 只留按鈕；兩邊都要看。
-  const html = readFileSync(new URL('../keyboard.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const script = readFileSync(new URL('../page/keyboard.js', import.meta.url), 'utf8');
   for (const id of ['bankChip', 'bankReal', 'instruments', 'bankHint']) {
-    assert.ok(html.includes(`id="${id}"`), `keyboard.html has no #${id}`);
+    assert.ok(html.includes(`id="${id}"`), `index.html has no #${id}`);
   }
   assert.ok(script.includes('INSTRUMENT_BANKS'), 'page/keyboard.js does not use the shared banks');
   assert.ok(script.includes('INSTRUMENT_LABELS'), 'page/keyboard.js keeps its own label table');

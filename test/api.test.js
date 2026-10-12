@@ -6,7 +6,7 @@ import * as api from '../src/index.js';
 // 頁面的程式現在都在 page/，HTML 只留標記與樣式；所以「demo 只能用真的 API」
 // 這條線要在兩邊一起看：匯入／呼叫在 page/，控制項 id 在 HTML。
 const read = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
-const html = read('index.html');
+const html = read('console.html');
 const pageFiles = readdirSync(new URL('../page/', import.meta.url)).filter((f) => f.endsWith('.js')).sort();
 const pageSrc = pageFiles.map((f) => read(`page/${f}`)).join('\n');
 const imports = [...pageSrc.matchAll(/import \{([^}]+)\} from '\.\.\/src\/index\.js'/g)];
@@ -40,9 +40,9 @@ test('the demo console accepts .mid and .smf files for MIDI remix', () => {
 });
 
 test('the pages load their module instead of an inline script', () => {
-  assert.match(html, /<script type="module" src="page\/console\.js">/, 'index.html no longer loads page/console.js');
-  const keyboard = read('keyboard.html');
-  assert.match(keyboard, /<script type="module" src="page\/keyboard\.js">/, 'keyboard.html no longer loads page/keyboard.js');
+  assert.match(html, /<script type="module" src="page\/console\.js">/, 'console.html no longer loads page/console.js');
+  const keyboard = read('index.html');
+  assert.match(keyboard, /<script type="module" src="page\/keyboard\.js">/, 'index.html no longer loads page/keyboard.js');
 });
 
 test('every page module parses', async () => {
