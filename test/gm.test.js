@@ -32,7 +32,7 @@ test('the familiar programs map to the obvious instrument', () => {
   const at = (p, note) => gmInstrument(p, { notes: note === undefined ? null : [{ note }] }).instrument;
   assert.equal(at(0), 'sampled:grand', 'acoustic grand piano');
   assert.equal(at(16), 'sampled:organ');
-  assert.equal(at(24), 'sampled:guitar-nylon');
+  assert.equal(at(24), 'sampled:guitar-acoustic', 'no multi-layer CC0 nylon exists, so the steel-string acoustic takes the slot');
   assert.equal(at(25), 'sampled:guitar-acoustic');
   assert.equal(at(30), 'sampled:guitar-electric');
   assert.equal(at(32), 'sampled:contrabass', 'GM 32 is an acoustic bass');

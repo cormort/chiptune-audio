@@ -25,7 +25,11 @@ const FAMILIES = [
   { from: 15, to: 15, family: '揚琴', synth: 'real:harpsichord' },
   { from: 16, to: 20, family: '管風琴', sampled: 'organ' },
   { from: 21, to: 23, family: '簧風琴', synth: 'real:accordion' },
-  { from: 24, to: 24, family: '古典吉他', sampled: 'guitar-nylon' },
+  // 古典吉他（GM 24）：**沒有可用的 CC0 多層尼龍吉他**（sfzinstruments 整個組織沒有尼龍／
+  // 古典吉他、VSCO 沒有撥弦類、Iowa MIS 的吉他頁已 404，現有那份 Freesound 尼龍是單層）。
+  // 所以自動配音用鋼弦的 Shinyguitar 木吉他：三層真實力度、音域 C#2–C6，代價是鋼弦音色。
+  // `sampled:guitar-nylon` 仍然留在取樣庫裡，想聽尼龍的人可以自己選。
+  { from: 24, to: 24, family: '古典吉他', sampled: 'guitar-acoustic' },
   { from: 25, to: 27, family: '木吉他', sampled: 'guitar-acoustic' },
   { from: 28, to: 31, family: '電吉他', sampled: 'guitar-electric' },
   { from: 32, to: 32, family: '低音提琴', sampled: 'contrabass' },
