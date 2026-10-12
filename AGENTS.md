@@ -379,11 +379,13 @@ reported `no-manifest`), which is what "can't install the PWA" looked like from 
 Every page therefore needs the manifest link, the icons, the apple meta tags, and a module
 that calls `registerServiceWorker()` + `installApp()`; `test/pages.test.js` pins that.
 
-- `installApp()` (page/ui.js) turns `beforeinstallprompt` into a visible **⬇ 安裝 App** button,
-  hides itself when the app is already running standalone or after `appinstalled`, and on
-  browsers that never fire the event (iOS Safari, Firefox, in-app browsers) prints where to
-  press instead of leaving the user guessing. Never call `prompt()` on load — the button is
-  the user's gesture.
+- `installApp()` (page/ui.js) puts an always-visible **⬇ 下載 App** link in the header nav.
+  It must not wait for `beforeinstallprompt` to appear: iOS Safari never fires it, Firefox
+  does not support install, in-app browsers usually swallow it, and Chrome goes quiet for a
+  while after a dismissal — waiting means those users see no entry point at all. With the
+  event, clicking calls `prompt()` (never on load — the click is the user's gesture); without
+  it, clicking prints where to press for that platform. It disappears in standalone and
+  becomes ✓ 已安裝 after `appinstalled`.
 - The manifest carries a stable `"id": "./"`. Without it the app id is derived from
   `start_url`, and this app's start page has moved three times — each move looked like a
   *different* app to the browser, so an installed icon never updated in place.

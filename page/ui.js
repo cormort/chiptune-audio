@@ -53,82 +53,84 @@ export function registerServiceWorker() {
     .catch(() => {});
 }
 
-/** 「安裝 App」按鈕：把瀏覽器的安裝提示變成一顆看得見的按鈕，並且在不支援的瀏覽器上
- *  **直接寫出要按哪裡**——「怎麼安裝」不該是一道猜謎題。
+/** 「下載 App」連結：一個**永遠看得見**的安裝入口，掛在頁首導覽上。
  *
- *  - Chrome／Edge／Android：`beforeinstallprompt` 先攔下來（不攔的話瀏覽器自己會顯示，
- *    時機不受控），使用者按下按鈕才 `prompt()`。
- *  - iOS Safari：永遠不會有那個事件，改顯示「分享 → 加入主畫面」。
- *  - 已經安裝（standalone 開啟）或安裝完成：整條收起來。
- *  - 事件一直沒來（Firefox、App 內建瀏覽器、已經裝過）：顯示對應的說明。
+ *  為什麼是連結而不是等瀏覽器自己跳提示：`beforeinstallprompt` 不一定會來（iOS Safari
+ *  從來不給、Firefox 不支援、App 內建瀏覽器多半擋掉、之前按過取消的話 Chrome 也會安靜
+ *  一陣子），只靠那個事件等於「有支援的瀏覽器才有入口」。所以連結一律顯示，按下去的
+ *  行為分三種：
  *
- *  回傳 { el, prompt } 方便測試與手動觸發。 */
-export function installApp({ into, label = '⬇ 安裝 App' } = {}) {
+ *  - 有攔到 `beforeinstallprompt`：`prompt()` 開瀏覽器原生的安裝對話框。
+ *  - 沒有（iOS、Firefox、內建瀏覽器…）：直接把「去哪裡按」寫在旁邊，不讓使用者猜。
+ *  - 已經安裝（standalone 開啟）或安裝完成：連結消失／變成「✓ 已安裝」。
+ *
+ *  回傳 { el, link, click } 方便測試與手動觸發。 */
+export function installApp({ into, label = '⬇ 下載 App' } = {}) {
   const standalone = matchMedia('(display-mode: standalone)').matches
     || matchMedia('(display-mode: minimal-ui)').matches
     || navigator.standalone === true;
   const host = into || document.querySelector('nav.nav') || document.querySelector('main') || document.body;
   const bar = document.createElement('div');
   bar.className = 'install-bar';
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'install-btn';
-  button.textContent = label;
-  button.hidden = true;
+  // 長得像導覽連結（跟旁邊的「樂器／琴鍵」同一排），但用 button 才有正確的鍵盤與無障礙行為
+  const link = document.createElement('button');
+  link.type = 'button';
+  link.className = 'install-link';
+  link.textContent = label;
   const note = document.createElement('span');
   note.className = 'muted install-note';
-  bar.append(button, note);
+  bar.append(link, note);
   if (!standalone) host.append(bar);
 
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const android = /Android/.test(navigator.userAgent);
   const chromium = /Chrome|Chromium|Edg\//.test(navigator.userAgent) && !/Firefox/.test(navigator.userAgent);
-  /** 事件沒來時要講清楚「去哪裡按」。iOS 只有 Safari 能加主畫面；Chromium 平常會自己
-   *  顯示安裝圖示，事件沒來通常是之前按過取消（瀏覽器會安靜一陣子）或已經裝過。 */
+  /** 講清楚「去哪裡按」。iOS 只有 Safari 能加主畫面；Chromium 平常會自己顯示安裝圖示，
+   *  事件沒來通常是之前按過取消（瀏覽器會安靜一陣子）或已經裝過。 */
   const whereToInstall = () => {
     if (ios) return '在 Safari：分享 → 加入主畫面（要用 Safari；Chrome 或 App 內建瀏覽器不行）。';
-    if (chromium && android) return '沒看到提示的話：瀏覽器選單 ⋮ → 安裝應用程式／加到主畫面（要用 Chrome，App 內建瀏覽器不行）。';
-    if (chromium) return '沒看到提示的話：網址列右側的安裝圖示，或 ⋮ → 儲存並分享 → 安裝應用程式。';
+    if (chromium && android) return '這個瀏覽器沒給安裝提示：改用 Chrome 開，或 ⋮ → 安裝應用程式／加到主畫面。';
+    if (chromium) return '這個瀏覽器沒給安裝提示：用網址列右側的安裝圖示，或 ⋮ → 儲存並分享 → 安裝應用程式。';
     return '這個瀏覽器不支援安裝：改用 Chrome／Edge（電腦、Android）或 Safari（iPhone、iPad）。';
   };
   const say = (text) => { note.textContent = text; };
   let deferred = null;
-  let done = false;
-
-  const finish = (text) => {
-    done = true;
-    button.hidden = true;
-    say(text);
-  };
+  let installed = false;
 
   addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();          // 自己決定什麼時候問
+    e.preventDefault();          // 自己決定什麼時候問：由使用者按下這個連結
     deferred = e;
-    button.hidden = false;
     say('裝到桌面／開始功能表，之後離線也能開。');
-    clearTimeout(timer);
   });
 
-  addEventListener('appinstalled', () => finish('✓ 已安裝，可以從桌面圖示開啟。'));
+  addEventListener('appinstalled', () => {
+    installed = true;
+    link.textContent = '✓ 已安裝';
+    link.disabled = true;
+    say('已經裝好了，可以從桌面圖示開啟。');
+  });
 
-  button.onclick = async () => {
-    if (!deferred) return;
-    button.disabled = true;
+  link.onclick = async () => {
+    if (installed) return;
+    if (!deferred) { say(whereToInstall()); return; }   // 沒有原生提示：直接說去哪裡按
+    link.disabled = true;
     deferred.prompt();
     const { outcome } = await deferred.userChoice.catch(() => ({ outcome: 'dismissed' }));
     deferred = null;
-    button.disabled = false;
-    if (outcome === 'accepted') finish('✓ 安裝中…完成後桌面會多一個圖示。');
-    else { button.hidden = false; say('已取消。想安裝再按一次。'); }
+    link.disabled = false;
+    if (outcome === 'accepted') {
+      installed = true;
+      link.textContent = '✓ 安裝中…';
+      say('完成後桌面／開始功能表會多一個圖示。');
+    } else {
+      say('已取消。想安裝再按一次。');
+    }
   };
 
-  // 事件沒來就自己說明（iOS 永遠不會有那個事件）。
-  const timer = standalone ? 0 : setTimeout(() => {
-    if (done || deferred) return;
-    say(whereToInstall());
-  }, 3000);
+  // iOS 沒有那個事件，先把說明放著，不然使用者只會看到一個按了沒反應的連結。
+  if (!standalone && ios) say(whereToInstall());
 
-  return { el: bar, prompt: () => button.click(), get hasPrompt() { return !!deferred; } };
+  return { el: bar, link, get hasPrompt() { return !!deferred; }, click: () => link.click() };
 }
 
 /** 設定記憶：把 UI 狀態存在 localStorage，重新載入不用再調一次。

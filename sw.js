@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v35';
+const VERSION = 'v36';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：

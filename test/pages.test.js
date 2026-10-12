@@ -52,8 +52,16 @@ test('every page can be installed: manifest, icons, and the service worker', () 
     const mod = page.scripts.find((f) => f !== 'page/ui.js' && f !== 'page/mixer.js' && f !== 'page/pianoview.js');
     const src = read(mod);
     assert.match(src, /registerServiceWorker\(\)/, `${mod} never registers the service worker`);
-    assert.match(src, /installApp\(\)/, `${mod} never shows the install button`);
+    assert.match(src, /installApp\(\)/, `${mod} never shows the install link`);
   }
+  // 下載連結要**一開始就看得到**。等 `beforeinstallprompt` 才顯示等於：iOS Safari、
+  // Firefox、App 內建瀏覽器，還有「之前按過取消」的 Chrome，全都看不到入口。
+  const ui = read('page/ui.js');
+  assert.match(ui, /className = 'install-link'/, 'the install entry is not a link');
+  assert.match(ui, /下載 App/, 'the link should say what it does');
+  assert.ok(!/link\.hidden\s*=\s*true/.test(ui), 'the link must not start hidden');
+  // 沒攔到事件時按下連結要說去哪裡按，不能靜靜地什麼都不做
+  assert.match(ui, /if \(!deferred\) \{ say\(whereToInstall\(\)\)/, 'clicking without a prompt does nothing');
   // 身分（id）要寫死在 manifest 裡。start_url 換過三次，而沒有 id 時瀏覽器是拿
   // start_url 當身分——等於每次改首頁都變成「另一個 app」，已安裝的舊圖示不會跟著更新。
   const manifest = JSON.parse(read('manifest.webmanifest'));
