@@ -520,3 +520,6 @@ ${Object.entries(inst.release.notes).map(([midi, file]) => `        ${midi}: '${
 }
 
 main();
+
+// 樣本換了就要換媒體快取的名字（否則使用者會一直拿到舊音檔）；見 tools/bump-media.mjs。
+await import('./bump-media.mjs');

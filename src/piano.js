@@ -8,12 +8,13 @@
 
 import { noteFreq } from './instruments.js';
 import { SampledInstruments, startAt } from './samples.js';
-import { SAMPLE_LIBRARY } from './sample-library.js';
+// **合併後**的取樣庫（內建的平台鋼琴覆蓋遠端那份；遠端表裡的 grand 已經移除）
+import { SAMPLE_LIBRARY } from './samples.js';
 
-// 平台鋼琴的樣本清單（Salamander Grand Piano）。檔名與音高的對照在 sample-library.js，
-// 這裡只是把它整理成舊介面的樣子。
+// 平台鋼琴的樣本清單（Salamander Grand Piano，內建的四層力度）。檔名與音高的對照在
+// src/dynamic-library.js，這裡只是把它整理成舊介面的樣子。
 export const PIANO_SAMPLES = Object.entries(SAMPLE_LIBRARY.grand.notes)
-  .map(([midi, file]) => ({ midi: +midi, name: file.replace(/\.mp3$/, '') }))
+  .map(([midi, layers]) => ({ midi: +midi, name: Array.isArray(layers) ? layers[layers.length - 1].file.replace(/\.mp3$/, '') : String(layers).replace(/\.mp3$/, '') }))
   .sort((a, b) => a.midi - b.midi);
 
 /**

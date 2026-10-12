@@ -12,7 +12,7 @@ const VERSION = 'v31';
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
  *  只有樣本清單真的變了才會換名字，所以純程式更新時這 9.5 MB 一個位元組都不會重抓。 */
-const MEDIA_VERSION = 'm1-d988e5db';
+const MEDIA_VERSION = 'mb8410fc2';
 const MEDIA_CACHE = `chiptune-media-${MEDIA_VERSION}`;
 // 清理只刪自己這兩個前綴的舊版。樣本快取叫 chiptune-samples-v1（引擎在用的隨選快取），
 // 不在這兩個前綴裡——它裝的是使用者抓下來的十幾 MB 樂器錄音，不該因為換一版就重抓。

@@ -51,7 +51,6 @@
     <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
       <button id="bankChip" class="on" aria-pressed="true" data-bank="chip">晶片音色</button>
       <button id="bankReal" aria-pressed="false" data-bank="real">寫實合成</button>
-      <button id="bankAcoustic" aria-pressed="false" data-bank="acoustic">鋼琴（真實取樣）</button>
       <button id="bankSample" aria-pressed="false" data-bank="sample">真實錄音取樣</button>
       <span class="muted" id="bankHint"></span>
     </div>
@@ -73,9 +72,7 @@
     <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。<br>
       • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
       • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
-      • <b>鋼琴</b>：真實取樣的平台鋼琴（Salamander，四層力度＋放開鍵的釋音，內建所以離線可用）。
-      柔和／標準／明亮是<b>觸鍵力度</b>——輕觸真的會用到比較暗的弱層。<br>
-      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
+      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴四層力度＋釋音、弦樂群、木吉他／電吉他三層力度、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
       木吉他、豎琴、木琴…共 20 種）。第一次選到那個樂器才開始抓樣本，抓過存進瀏覽器快取，之後離線也能彈；
       樣本還沒到（第一次按、或離線）會先用對應的合成音色代替，按鍵不會沒聲音。<br>
       電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，

@@ -32,7 +32,8 @@
     "bench:baseline": "node test/bench.js baseline",
     "probe": "node test/defects.probe.js src",
     "serve": "npx serve .",
-    "analyze": "node tools/analyze.mjs"
+    "analyze": "node tools/analyze.mjs",
+    "media": "node tools/bump-media.mjs"
   },
   "keywords": [
     "chiptune",

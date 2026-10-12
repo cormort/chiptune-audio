@@ -23,6 +23,8 @@ import { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
 /** 遠端單層 + repo 內建（同名或同一個名字以內建的為準；卡林巴只有內建這一份）。 */
 export const SAMPLE_LIBRARY = {
+  // 平台鋼琴放最前面（UI 的順序照這張表；遠端表裡的 grand 已移除，所以要在這裡指定）
+  grand: DYNAMIC_INSTRUMENTS.grand,
   ...REMOTE_LIBRARY,
   ...DYNAMIC_INSTRUMENTS,
   kalimba: KALIMBA_INSTRUMENT,
