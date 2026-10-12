@@ -46,7 +46,7 @@ test('the familiar programs map to the obvious instrument', () => {
   assert.equal(at(58), 'sampled:tuba');
   assert.equal(at(60), 'sampled:french-horn');
   assert.equal(at(64), 'sampled:saxophone');
-  assert.equal(at(70), 'sampled:bassoon');
+  assert.equal(at(70), 'real:clarinet', 'the bassoon is a single-layer recording we dropped');
   assert.equal(at(71), 'sampled:clarinet');
   assert.equal(at(73), 'sampled:flute');
   assert.equal(at(12), 'sampled:xylophone');

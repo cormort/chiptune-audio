@@ -159,7 +159,7 @@ with chip voices). Use it for short pieces or accept the wait.
 The third family is neither bank: real instruments played from recordings, addressed as
 `sampled:<name>` — `grand` (Salamander piano) plus `violin cello contrabass harp
 guitar-acoustic guitar-nylon guitar-electric bass-electric flute clarinet saxophone trumpet
-trombone french-horn tuba bassoon organ harmonium xylophone`, and the bundled `kalimba` (see
+trombone french-horn tuba organ xylophone`, and the bundled `kalimba` (see
 below). The file lists live in
 `src/sample-library.js` (generated; samples CC-BY 3.0 from `nbrosowsky/tonejs-instruments`,
 i.e. VSCO 2 CE / University of Iowa MIS / Karoryfer / Freesound — keep `credit` per

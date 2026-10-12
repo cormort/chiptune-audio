@@ -97,7 +97,7 @@ cannot.
 Nothing above is a recording. The third family is: 20 real instruments played from
 recordings — the Salamander grand piano plus `violin cello contrabass harp guitar-acoustic
 guitar-nylon guitar-electric bass-electric flute clarinet saxophone trumpet trombone
-french-horn tuba bassoon organ harmonium xylophone`, all from the CC-BY
+french-horn tuba organ xylophone`, all from the CC-BY
 `nbrosowsky/tonejs-instruments` library (VSCO 2 CE, University of Iowa MIS, Karoryfer,
 Freesound). They are fetched on demand, never bundled:
 

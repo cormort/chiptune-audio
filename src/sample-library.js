@@ -1,5 +1,9 @@
 // 取樣樂器庫的資料表：每個樂器有哪些錄音樣本（檔名與音高）。
 //
+// **整併過**：`bassoon`（低音管）與 `harmonium`（簧風琴）也移除了——兩者都只有一層、
+// 而且各自的合成代理音色（`real:clarinet`／`real:accordion`）就在旁邊，GM 70（低音管）
+// 與 GM 21-23（簧風琴）現在直接用合成那條路，不再多一份單層錄音。
+//
 // **內建版本優先**：grand／violin／cello／flute／clarinet／trumpet／trombone／tuba／
 // guitar-acoustic／guitar-electric 這些名字已經由 repo 內建的取樣（samples/velocity、
 // samples/flute、samples/guitar-*）覆蓋，所以它們的遠端項目已經移除——留著只會讓人以為
@@ -169,25 +173,6 @@ export const SAMPLE_LIBRARY = {
       77: 'F5.mp3',
     },
   },
-  'bassoon': {
-    label: '低音管',
-    credit: 'VSCO 2 CE',
-    synth: 'real:clarinet',
-    gap: 7,
-    base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/bassoon/',
-    notes: {
-      43: 'G2.mp3',
-      45: 'A2.mp3',
-      48: 'C3.mp3',
-      55: 'G3.mp3',
-      57: 'A3.mp3',
-      60: 'C4.mp3',
-      64: 'E4.mp3',
-      67: 'G4.mp3',
-      69: 'A4.mp3',
-      72: 'C5.mp3',
-    },
-  },
   'organ': {
     label: '管風琴',
     credit: 'VSCO 2 CE',
@@ -213,33 +198,6 @@ export const SAMPLE_LIBRARY = {
       78: 'Fs5.mp3',
       81: 'A5.mp3',
       84: 'C6.mp3',
-    },
-  },
-  'harmonium': {
-    label: '簧風琴',
-    credit: 'Freesound（donyaquick）',
-    synth: 'real:accordion',
-    gap: 3,
-    base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/harmonium/',
-    notes: {
-      36: 'C2.mp3',
-      38: 'D2.mp3',
-      40: 'E2.mp3',
-      42: 'Fs2.mp3',
-      44: 'Gs2.mp3',
-      46: 'As2.mp3',
-      49: 'Cs3.mp3',
-      51: 'Ds3.mp3',
-      53: 'F3.mp3',
-      55: 'G3.mp3',
-      57: 'A3.mp3',
-      60: 'C4.mp3',
-      62: 'D4.mp3',
-      64: 'E4.mp3',
-      67: 'G4.mp3',
-      69: 'A4.mp3',
-      72: 'C5.mp3',
-      74: 'D5.mp3',
     },
   },
   'xylophone': {

@@ -48,7 +48,8 @@ const FAMILIES = [
   { from: 61, to: 63, family: '銅管群', byRange: 'brass', fallback: 'real:brass' },
   { from: 64, to: 67, family: '薩克斯風', sampled: 'saxophone' },
   { from: 68, to: 69, family: '雙簧管', synth: 'real:sax' },
-  { from: 70, to: 70, family: '低音管', sampled: 'bassoon' },
+  // 低音管的錄音只有一層（取樣庫並整併掉了），用它的合成代理音色
+  { from: 70, to: 70, family: '低音管', synth: 'real:clarinet' },
   { from: 71, to: 71, family: '單簧管', sampled: 'clarinet' },
   { from: 72, to: 79, family: '長笛家族', sampled: 'flute' },
   // 合成音色本來就不是真樂器：留給合成庫，不要硬套一個錄音上去。
