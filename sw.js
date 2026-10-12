@@ -7,11 +7,17 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v30';
-const CACHE = `chiptune-${VERSION}`;
-// 清理舊版只針對外殼快取（chiptune-v*）。樣本快取叫 chiptune-samples-v1，
-// 不在這個前綴裡——它裝的是使用者抓下來的幾 MB 樂器錄音，不該因為換一版就重抓。
-const SHELL_PREFIX = 'chiptune-v';
+const VERSION = 'v31';
+/** 外殼（HTML／JS／CSS）每次部署都換。 */
+const APP_CACHE = `chiptune-app-${VERSION}`;
+/** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
+ *  只有樣本清單真的變了才會換名字，所以純程式更新時這 9.5 MB 一個位元組都不會重抓。 */
+const MEDIA_VERSION = 'm1-d988e5db';
+const MEDIA_CACHE = `chiptune-media-${MEDIA_VERSION}`;
+// 清理只刪自己這兩個前綴的舊版。樣本快取叫 chiptune-samples-v1（引擎在用的隨選快取），
+// 不在這兩個前綴裡——它裝的是使用者抓下來的十幾 MB 樂器錄音，不該因為換一版就重抓。
+const APP_PREFIX = 'chiptune-app-';
+const MEDIA_PREFIX = 'chiptune-media-';
 const APP = [
   './', 'index.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
@@ -379,17 +385,21 @@ const bypassHttpCache = (url) => (new URL(url, location.href).origin === locatio
   : undefined);
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(async (cache) => {
+  e.waitUntil(caches.open(APP_CACHE).then(async (cache) => {
     // addAll() would go through the HTTP cache; fetch each file explicitly instead.
     await Promise.all(APP.map(async (path) => {
       const res = await fetch(path, bypassHttpCache(path));
       if (res.ok || res.type === 'opaque') await cache.put(path, res);
     }));
-    // 鼓組、力度層的釋音與卡林巴的取樣檔（一百多個小檔案）：一起抓，但不要跟上面那批搶
-    await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB, ...GUITARS].map(async (path) => {
-      const res = await fetch(path, bypassHttpCache(path));
-      if (res.ok || res.type === 'opaque') await cache.put(path, res);
-    }));
+    // 音檔那一批（三百多個小檔案）：**已經有同一個雜湊的快取就不抓**——
+    // 這是「程式更新不重抓 9.5 MB」的關鍵。
+    if (!(await caches.has(MEDIA_CACHE))) {
+      const media = await caches.open(MEDIA_CACHE);
+      await Promise.all([...DRUMS, ...RELEASES, ...KALIMBA, ...FLUTE, ...STRINGS_AND_VIB, ...GUITARS].map(async (path) => {
+        const res = await fetch(path, bypassHttpCache(path));
+        if (res.ok || res.type === 'opaque') await media.put(path, res);
+      }));
+    }
     await self.skipWaiting();
   }));
 });
@@ -397,7 +407,9 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(SHELL_PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys
+        .filter((k) => (k.startsWith(APP_PREFIX) && k !== APP_CACHE) || (k.startsWith(MEDIA_PREFIX) && k !== MEDIA_CACHE))
+        .map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -409,8 +421,15 @@ const cacheable = (url) => url.origin === location.origin
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || !cacheable(new URL(req.url))) return;
-  e.respondWith(caches.open(CACHE).then(async (cache) => {
-    const hit = await cache.match(req, { ignoreSearch: true });
+  e.respondWith((async () => {
+    const app = await caches.open(APP_CACHE);
+    let hit = await app.match(req, { ignoreSearch: true });
+    let cache = app;
+    if (!hit) {
+      const media = await caches.open(MEDIA_CACHE);
+      hit = await media.match(req, { ignoreSearch: true });
+      cache = media;
+    }
     const refresh = fetch(req, bypassHttpCache(req.url)).then((res) => {
       // Opaque (cross-origin no-cors) font responses report status 0 but are fine to keep.
       if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
@@ -421,5 +440,5 @@ self.addEventListener('fetch', (e) => {
       return hit;
     }
     return refresh;
-  }));
+  })());
 });

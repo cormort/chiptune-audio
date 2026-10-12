@@ -26,14 +26,25 @@ test('sw.js precaches every module in src/ and page/, and every page', () => {
 test('a version bump cannot delete the cached instrument samples', () => {
   const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
   const version = sw.match(/const VERSION = '([^']+)'/)?.[1];
-  const prefix = sw.match(/const SHELL_PREFIX = '([^']+)'/)?.[1];
-  assert.ok(version, 'sw.js has no VERSION');
-  assert.ok(prefix, 'sw.js has no SHELL_PREFIX to scope the cleanup with');
-  const shell = `chiptune-${version}`;
+  const appCache = sw.match(/const APP_CACHE = `([^`]+)`/)?.[1].replace('${VERSION}', version);
+  const appPrefix = sw.match(/const APP_PREFIX = '([^']+)'/)?.[1];
+  const mediaPrefix = sw.match(/const MEDIA_PREFIX = '([^']+)'/)?.[1];
+  assert.ok(version && appCache && appPrefix && mediaPrefix, 'sw.js must name and prefix both caches');
+  const mediaCache = sw.match(/const MEDIA_CACHE = `chiptune-media-\$\{MEDIA_VERSION\}`/);
+  assert.ok(mediaCache, 'the audio belongs in its own cache');
+  // 外殼快取要落在自己的前綴裡（不然永遠不會被清），兩個前綴都不可以碰到樣本快取
+  assert.ok(appCache.startsWith(appPrefix), `${appCache} would never be cleaned up`);
   const samples = new SampledInstruments(null).cacheName;
-  assert.ok(shell.startsWith(prefix), `the current shell cache ${shell} would never be cleaned up`);
-  assert.ok(!samples.startsWith(prefix), `the cleanup prefix ${prefix} would delete ${samples}`);
-  // 清理邏輯必須用那個前綴，不能再用寬鬆的 'chiptune-'
+  assert.ok(!samples.startsWith(appPrefix), `the cleanup prefix ${appPrefix} would delete ${samples}`);
+  assert.ok(!samples.startsWith(mediaPrefix), `the cleanup prefix ${mediaPrefix} would delete ${samples}`);
+  // 清理邏輯要用這兩個前綴
   const activate = sw.slice(sw.indexOf("addEventListener('activate'"));
-  assert.ok(activate.includes('SHELL_PREFIX'), 'the activate handler ignores SHELL_PREFIX');
+  assert.ok(activate.includes('APP_PREFIX'), 'the activate handler ignores APP_PREFIX');
+  assert.ok(activate.includes('MEDIA_PREFIX'), 'the activate handler ignores MEDIA_PREFIX');
+  // 音檔只在「這個雜湊的快取還不存在」時才抓：這就是純程式更新不重抓 9.5 MB 的原因
+  const install = sw.slice(sw.indexOf("addEventListener('install'"), sw.indexOf("addEventListener('activate'"));
+  assert.match(install, /caches\.has\(MEDIA_CACHE\)/, 'install must skip the audio when its cache already exists');
+  // 讀取時兩個快取都要找
+  const fetchHandler = sw.slice(sw.indexOf("addEventListener('fetch'"));
+  assert.ok(fetchHandler.includes('APP_CACHE') && fetchHandler.includes('MEDIA_CACHE'), 'fetch must look in both caches');
 });

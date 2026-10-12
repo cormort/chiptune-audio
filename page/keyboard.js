@@ -293,6 +293,32 @@ addEventListener('blur', () => {
   byPointer.clear();
 });
 
+// 先把所有取樣樂器抓下來（使用者按了才做）：內建的那幾把已經在 service worker 預快取裡，
+// 這顆按鈕主要是把「用到才抓」的力度層（平台鋼琴、小提琴、大提琴…約 16 MB）也抓齊，
+// 之後完全離線可用。抓過的樂器不會重抓（引擎自己會記），所以再按一次會很快。
+let prefetching = false;
+$('prefetchAll').onclick = async () => {
+  if (prefetching) return;
+  prefetching = true;
+  $('prefetchAll').disabled = true;
+  const names = SAMPLE_NAMES;
+  const files = names.reduce((n, name) => n + sampled.wanted(name), 0);
+  let done = 0;
+  let got = 0;
+  for (const [i, name] of names.entries()) {
+    $('prefetchInfo').textContent = `下載中 ${i + 1}/${names.length}：${sampleLabel(name)}（已抓 ${got}/${files} 個檔）`;
+    const hit = await sampled.load(name, {
+      onProgress: (d) => { $('prefetchInfo').textContent = `下載中 ${i + 1}/${names.length}：${sampleLabel(name)}（已抓 ${got + d}/${files} 個檔）`; },
+    });
+    done++;
+    got += hit ? hit.notes.reduce((n, e) => n + e.layers.length, 0) : 0;
+  }
+  $('prefetchInfo').textContent = `全部就緒：${done} 種樂器、${got} 個檔案，之後離線都能彈。`;
+  $('prefetchAll').disabled = false;
+  $('prefetchAll').textContent = '✓ 已下載（再按一次可檢查）';
+  prefetching = false;
+};
+
 // 設定：音量、八度、標示都留著（音色在上面一起存）。
 $('volume').value = audio.volume;
 $('octave').value = String(prefs.get('octave', 4));
