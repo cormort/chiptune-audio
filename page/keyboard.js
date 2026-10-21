@@ -286,7 +286,8 @@ $('prefetchAll').onclick = async () => {
 // 設定：音量、八度、標示都留著（音色在上面一起存）。
 $('volume').value = audio.volume;
 $('octave').value = String(prefs.get('octave', 4));
-$('keyLabel').value = prefs.get('keyLabel', 'key');
+// 手機（沒有滑鼠游標的觸控裝置）沒有實體鍵盤，預設標音名而不是 Z X C…
+$('keyLabel').value = prefs.get('keyLabel', matchMedia('(hover: none)').matches ? 'name' : 'key');
 $('octave').onchange = () => { prefs.set('octave', +$('octave').value); labelKeys(); };
 $('keyLabel').onchange = () => { prefs.set('keyLabel', $('keyLabel').value); labelKeys(); };
 $('volume').oninput = (e) => { audio.setVolume(+e.target.value); prefs.set('volume', +e.target.value); };

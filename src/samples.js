@@ -48,6 +48,8 @@ export { STRINGS_INSTRUMENT } from './strings-library.js';
 export { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
 const CACHE_NAME = 'chiptune-samples-v1';
+/** 載入一個樂器時同時幾條連線（跟 sw.js 的 FILL_WORKERS 一樣：再多手機會整批失敗）。 */
+const LOAD_WORKERS = 6;
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */
 export const SAMPLE_PREFIX = 'sampled:';
 
@@ -384,13 +386,16 @@ export class SampledInstruments {
     let releaseRate = this.instruments.get(name)?.release?.rate || 0;
     let failed = 0;
     let done = 0;
-    for (const { midi, vel, url, take, release: isRelease } of urls) {
-      if (isRelease && release.has(midi)) { done++; continue; }
+    // 同時抓幾個檔：一個一個抓的話，平台鋼琴 105 個檔在手機上每個都要等一趟來回，
+    // 光等就要十幾秒。每個檔的結果都寫進以 midi／take 為鍵的位置、最後再排序，所以順序無所謂。
+    const todo = [...urls];
+    const one = async ({ midi, vel, url, take, release: isRelease }) => {
+      if (isRelease && release.has(midi)) { done++; return; }
       const had = notes.get(midi);
       const already = !isRelease && (take === undefined
         ? had && had.layers.some((l) => l.vel === (vel === undefined ? 0 : vel))
         : had && had.takes && had.takes[take]);
-      if (already) { done++; continue; }   // 上次就抓到了（處理過的 pcm 也在），不重抓
+      if (already) { done++; return; }   // 上次就抓到了（處理過的 pcm 也在），不重抓
       try {
         let res = cache ? await cache.match(url) : null;
         if (!res) {
@@ -425,7 +430,9 @@ export class SampledInstruments {
       }
       done++;
       if (onProgress) onProgress(done, urls.length, name);
-    }
+    };
+    const worker = async () => { while (todo.length) await one(todo.shift()); };
+    await Promise.all(Array.from({ length: Math.min(LOAD_WORKERS, todo.length) }, worker));
     const sorted = [...notes.values()].sort((a, b) => a.midi - b.midi);
     for (const entry of sorted) {
       entry.layers.sort((a, b) => a.vel - b.vel);

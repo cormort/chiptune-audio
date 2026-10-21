@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v36';
+const VERSION = 'v37';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
@@ -538,6 +538,9 @@ self.addEventListener('fetch', (e) => {
       const media = await caches.open(MEDIA_CACHE);
       hit = await media.match(req, { ignoreSearch: true });
       cache = media;
+      // 音檔快取以清單雜湊命名，內容換了名字就換：命中就直接給，不背景重抓。
+      // 不然每播一個樂器，它的幾十個 mp3 都會在背景再下載一次（手機流量白白燒掉）。
+      if (hit) return hit;
     }
     const refresh = fetch(req, bypassHttpCache(req.url)).then((res) => {
       // Opaque (cross-origin no-cors) font responses report status 0 but are fine to keep.

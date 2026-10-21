@@ -12,7 +12,9 @@
 <meta name="apple-mobile-web-app-title" content="Chiptune">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap">
+<!-- 字型不擋首次繪製：先用系統字，網路字型到了再換（手機慢網路差最多） -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Silkscreen&display=swap"></noscript>
 <!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
 <link rel="stylesheet" href="page/theme.css">
 <style>
