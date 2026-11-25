@@ -12,48 +12,35 @@
 <meta name="apple-mobile-web-app-title" content="Chiptune">
 <link rel="stylesheet" href="page/theme.css">
 <style>
-  :root {
-    --bg: #f3f4f7; --panel: #ffffff; --text: #1b1d24; --muted: #62677a;
-    --line: #d9dce5; --accent: #3558d6; --accent-text: #ffffff; --warn: #c2410c;
+  :root { --warn: #fb923c; }
+  #page img { max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .measures { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .m {
+    border: 1px solid #32384a; border-radius: 10px; padding: 8px; min-width: 164px;
+    background: linear-gradient(180deg, #181b24 0%, #12151c 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 3px 8px rgba(0, 0, 0, 0.4);
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #121420; --panel: #1b1e2c; --text: #e8eaf2; --muted: #9ba1b7;
-      --line: #313548; --accent: #7d9bff; --accent-text: #0e1020; --warn: #fb923c;
-      color-scheme: dark;
-    }
+  .m.bad { border-color: var(--warn); box-shadow: 0 0 10px rgba(251, 146, 60, 0.25); }
+  .m header {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    font-size: 12.5px; margin-bottom: 6px; padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.35); border-radius: 6px; border: 0; box-shadow: none;
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Noto Sans TC", sans-serif; }
-  main { max-width: 960px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 20px; margin: 0 0 12px; }
-  h2 { font-size: 15px; margin: 16px 0 8px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-  .muted { color: var(--muted); font-size: 13px; }
-  button, select, input { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  #page img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
-  .measures { display: flex; flex-wrap: wrap; gap: 8px; }
-  .m { border: 1px solid var(--line); border-radius: 6px; padding: 6px; min-width: 150px; }
-  .m.bad { border-color: var(--warn); }
-  .m header { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: 13px; margin-bottom: 4px; }
-  .m.bad .len { color: var(--warn); font-weight: 600; }
-  .ev { display: flex; gap: 4px; margin-bottom: 4px; }
-  .ev input { width: 80px; }
-  .ev select { width: 70px; }
+  .m.bad .len { color: var(--warn); font-weight: 700; }
+  .ev { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }
+  .ev input { width: 84px; font-family: var(--font-mono); font-size: 12.5px; padding: 3px 6px; min-height: 1.85rem; }
+  .ev select { width: 74px; font-size: 12.5px; padding: 3px 4px; min-height: 1.85rem; }
   .ev input.err { border-color: var(--warn); }
-  .m button { padding: 2px 6px; }
+  .m button { padding: 2px 7px; min-height: 1.7rem; font-size: 12px; }
 </style>
 <main>
   <header>
     <h1>chiptune-audio 琴譜播放</h1>
     <nav class="nav" aria-label="頁面">
-      <a href="index.html">電子琴</a>
-      <a href="kalimba.html">卡林巴琴</a>
-      <a href="console.html">控制台</a>
+      <a href="index.html">🎹 電子琴</a>
+      <a href="kalimba.html">🪕 卡林巴琴</a>
+      <a href="score.html" aria-current="page">🎼 琴譜</a>
+      <a href="console.html">🎛 控制台</a>
     </nav>
   </header>
 

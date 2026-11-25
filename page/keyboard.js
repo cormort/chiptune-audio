@@ -4,6 +4,7 @@
 // 樣本還沒到時先用對應的合成音色代替。
 import {
   ChiptuneAudio, INSTRUMENT_BANKS, INSTRUMENT_LABELS, instrumentNote, instrumentRelease, noteFreq,
+  PITCH_NAMES, pitchName,
   SampledInstruments, SAMPLE_LIBRARY, SAMPLE_CREDIT, sampleNames, sampleLabel, sampleSynth,
 } from '../src/index.js';
 import { $, installApp, prefs, registerServiceWorker } from './ui.js';
@@ -126,7 +127,6 @@ if (bankKeys(bank).includes(prefs.get('instrument'))) {
   if (bank === 'sample') loadSample();   // setBank 先抓的是第一個，改回上次用的那一個
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 // Tracker layout; index = semitones above the keyboard's lowest C.
 const KEYMAP = ['z', 's', 'x', 'd', 'c', 'v', 'g', 'b', 'h', 'n', 'j', 'm',
                 'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i'];
@@ -135,12 +135,11 @@ const NUMBERS = ['1', '#1', '2', '#2', '3', '4', '#4', '5', '#5', '6', '#6', '7'
 const OCTAVE_DOTS = ['', '·', '··'];
 const keyEls = [];
 const baseMidi = () => 12 * (+$('octave').value + 1);   // C4 = midi 60
-const noteName = (n) => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 {
   const WHITES = 15;   // two octaves plus the top C
   let white = 0;
   for (let i = 0; i < KEYMAP.length; i++) {
-    const black = NOTE_NAMES[i % 12].includes('#');
+    const black = PITCH_NAMES[i % 12].includes('#');
     const el = document.createElement('div');
     el.className = `key ${black ? 'black' : 'white'}`;
     if (black) {
@@ -157,14 +156,14 @@ const noteName = (n) => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 }
 function keyLabel(i) {
   switch ($('keyLabel').value) {
-    case 'name': return NOTE_NAMES[i % 12];
+    case 'name': return PITCH_NAMES[i % 12];
     case 'num': return NUMBERS[i % 12];
     default: return KEYMAP[i].toUpperCase();
   }
 }
 function labelKeys() {
   keyEls.forEach((el, i) => {
-    el.firstChild.textContent = i % 12 === 0 ? noteName(baseMidi() + i) : '';
+    el.firstChild.textContent = i % 12 === 0 ? pitchName(baseMidi() + i) : '';
     el.children[1].textContent = $('keyLabel').value === 'num' ? OCTAVE_DOTS[Math.floor(i / 12)] : '';
     el.lastChild.textContent = keyLabel(i);
   });
@@ -209,7 +208,7 @@ function paintHeld() {
   const down = new Set([...held].map((h) => h.i));
   keyEls.forEach((el, i) => el.classList.toggle('down', down.has(i)));
   const notes = [...held].sort((a, b) => a.n - b.n);
-  $('held').textContent = notes.map((h) => `${noteName(h.n)} ${noteFreq(h.n).toFixed(1)} Hz`).join(' · ');
+  $('held').textContent = notes.map((h) => `${pitchName(h.n)} ${noteFreq(h.n).toFixed(1)} Hz`).join(' · ');
 }
 
 // Pointer: one note per finger/mouse; dragging to another key moves the note.

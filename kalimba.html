@@ -18,110 +18,161 @@
 <!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
 <link rel="stylesheet" href="page/theme.css">
 <style>
-  /* 卡林巴琴：一塊木頭 + 17 根鋼簧。簧片由木橋往下伸，長度 ∝ 1/√f（自由棒的頻率與
-     長度平方成反比），所以最低的中央簧最長、兩邊最短，尾端排成一個 V 字。 */
-  .kalimba { position: relative; height: 330px; margin: 14px 0 10px; border-radius: 16px;
-             background: linear-gradient(#a9713f, #7d4f28 55%, #5f3a1c);
-             box-shadow: inset 0 2px 0 rgba(255, 255, 255, .22), inset 0 -14px 24px rgba(0, 0, 0, .28),
-                         0 10px 22px rgba(0, 0, 0, .22);
-             user-select: none; touch-action: none; overflow: hidden; }
-  .field { position: absolute; left: 0; right: 0; top: 34px; bottom: 46px; }
-  /* 木橋壓在簧片上面：簧片穿過橋下，看得見的才是會振動的長度 */
-  .bridge { position: absolute; left: 4%; right: 4%; top: 0; height: 13px; z-index: 3;
-            background: linear-gradient(#f0dcb4, #c9a86a 60%, #8f6f3c); border-radius: 3px;
-            box-shadow: 0 2px 3px rgba(0, 0, 0, .45); }
-  .tine { position: absolute; top: 0; width: 3%; transform: translateX(-50%); transform-origin: top center;
-          border-radius: 1px 1px 3px 3px;
-          background: linear-gradient(90deg, #6d747d, #cfd6de 38%, #f4f7fa 50%, #aab2bb 62%, #5f666e);
-          box-shadow: 0 1px 3px rgba(0, 0, 0, .5); cursor: pointer; }
-  .tine .label { position: absolute; left: 50%; bottom: -1.9em; transform: translateX(-50%);
-                 font: 11px/1.35 var(--font-mono); color: #ffeccd; text-align: center; white-space: nowrap;
-                 text-shadow: 0 1px 3px rgba(0, 0, 0, .8); pointer-events: none; }
-  .tine .label b { display: block; font-weight: 600; font-size: 12px; }
-  .tine .label .key { display: block; font-size: 10px; color: #bcd8ff; }
-  .tine:hover { background: linear-gradient(90deg, #8b939d, #eef4fa 40%, #ffffff 52%, #c6ced8 64%, #7b838d); }
-  .tine.down { background: linear-gradient(90deg, #c08a2a, #ffe6a8 40%, #fff8e6 52%, #f0c05c 64%, #a9761d);
-               box-shadow: 0 0 12px 2px rgba(255, 214, 130, .75); }
-  .tine.down { animation: pluck .45s cubic-bezier(.2, .8, .3, 1); }
+  /* GarageBand 世界樂器卡林巴琴：桃花心木／胡桃木共鳴箱 + 中央鑲邊音孔 + 金屬壓橋 + 17 根鍛造鋼簧 */
+  .kalimba {
+    position: relative;
+    height: 356px;
+    margin: 14px 0 10px;
+    border-radius: 20px;
+    border: 2px solid #3c2210;
+    background:
+      radial-gradient(ellipse at 50% 62%, rgba(255, 195, 128, 0.14) 0%, transparent 60%),
+      repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.04) 0px, rgba(0, 0, 0, 0.04) 3px, transparent 3px, transparent 9px),
+      linear-gradient(180deg, #8c5327 0%, #6e3d19 48%, #4d290f 85%, #381d0a 100%);
+    box-shadow:
+      inset 0 2px 1px rgba(255, 224, 180, 0.28),
+      inset 0 -18px 32px rgba(0, 0, 0, 0.65),
+      inset 0 0 40px rgba(20, 8, 0, 0.55),
+      0 14px 30px rgba(0, 0, 0, 0.65);
+    user-select: none;
+    touch-action: none;
+    overflow: hidden;
+  }
+  .field { position: absolute; left: 0; right: 0; top: 28px; bottom: 62px; }
+  /* 真實共鳴音孔（Soundhole & Wooden Rosette Ring） */
+  .field::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 68%;
+    width: 118px; height: 118px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #090503 0%, #140a04 54%, #2a1508 58%, #d4a359 61%, #573114 64%, #c8964e 67%, transparent 70%);
+    box-shadow: inset 0 6px 14px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(255, 215, 150, 0.25);
+    pointer-events: none;
+  }
+  /* 木枕與不鏽鋼拉絲壓桿（Saddle & Metal Tension Bar） */
+  .bridge {
+    position: absolute; left: 3.5%; right: 3.5%; top: 0; height: 16px; z-index: 3;
+    background:
+      radial-gradient(circle at 3% 50%, #f8fafc 0%, #64748b 4px, transparent 5px),
+      radial-gradient(circle at 50% 50%, #f8fafc 0%, #64748b 4px, transparent 5px),
+      radial-gradient(circle at 97% 50%, #f8fafc 0%, #64748b 4px, transparent 5px),
+      linear-gradient(180deg, #4b2a12 0%, #2b1607 25%, #e2e8f0 28%, #94a3b8 55%, #cbd5e1 72%, #475569 78%, #8f6b3e 80%, #5c3f1e 100%);
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.65);
+  }
+  /* 17 根鍛造鋼簧片：尾端圓弧打磨與金屬高光 */
+  .tine {
+    position: absolute; top: 0; width: 3.15%;
+    transform: translateX(-50%); transform-origin: top center;
+    border-radius: 2px 2px 99px 99px;
+    background: linear-gradient(90deg, #525861 0%, #c8d0da 32%, #f8fafc 48%, #9aa3ae 68%, #474d56 100%);
+    border: 1px solid rgba(25, 28, 34, 0.55);
+    box-shadow:
+      inset 0 -6px 4px rgba(255, 255, 255, 0.45),
+      0 6px 10px rgba(0, 0, 0, 0.65);
+    cursor: pointer;
+    z-index: 2;
+  }
+  .tine .label {
+    position: absolute; left: 50%; bottom: -2.65em; transform: translateX(-50%);
+    font: 11px/1.25 var(--font-mono); color: #fde68a; text-align: center; white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95); pointer-events: none;
+  }
+  .tine .label b { display: block; font-weight: 700; font-size: 12px; }
+  .tine .label .key { display: block; font-size: 10px; color: #93c5fd; opacity: .9; }
+  .tine:hover {
+    background: linear-gradient(90deg, #747c87 0%, #eef2f7 36%, #ffffff 50%, #bac3cf 68%, #656d78 100%);
+  }
+  .tine.down {
+    background: linear-gradient(90deg, #b45309 0%, #fde68a 38%, #fffbeb 50%, #f59e0b 68%, #92400e 100%);
+    box-shadow: 0 0 16px 3px rgba(251, 191, 36, 0.8), 0 6px 10px rgba(0, 0, 0, 0.65);
+    animation: pluck .45s cubic-bezier(.2, .8, .3, 1);
+  }
   @keyframes pluck {
-    0% { transform: translateX(-50%) scaleX(1.9); }
-    35% { transform: translateX(-50%) scaleX(.75); }
+    0% { transform: translateX(-50%) scaleX(1.85); }
+    35% { transform: translateX(-50%) scaleX(.76); }
     100% { transform: translateX(-50%) scaleX(1); }
   }
   @media (prefers-reduced-motion: reduce) { .tine.down { animation: none; } }
-  #held { font: 13px var(--font-mono); color: var(--muted); min-height: 1.2em; }
-  .keys-hint kbd { font: 11px var(--font-mono); background: var(--bg); border: 1px solid var(--line);
-                   border-radius: 4px; padding: 0 3px; }
+
+  /* LCD 讀數窗與 GarageBand 紅色圓形錄音鍵 */
+  #held, #recInfo {
+    font: 12.5px/1.4 var(--font-mono);
+    background: var(--lcd-bg);
+    color: var(--lcd-text);
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid #2d3548;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.85);
+  }
+  #held {
+    min-height: 2.1rem; display: flex; align-items: center;
+    color: var(--lcd-sub);
+  }
+  #held:empty::before {
+    content: "READY · 點按或滑過簧片刮奏（Glissando），按鍵 1–9 / Q–I";
+    color: #546079;
+  }
+  #record {
+    border-color: #7f1d1d;
+    color: #fca5a5;
+    background: linear-gradient(180deg, #451215 0%, #2a0a0c 100%);
+  }
+  #record.on {
+    background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    color: #fff;
+    border-color: #fca5a5;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.75);
+  }
 </style>
 
 <main>
   <header>
     <h1>chiptune-audio 卡林巴琴</h1>
     <nav class="nav" aria-label="頁面">
+      <a href="index.html">🎹 電子琴</a>
+      <a href="kalimba.html" aria-current="page">🪕 卡林巴琴</a>
+      <a href="score.html">🎼 琴譜</a>
+      <a href="console.html">🎛 控制台</a>
+      <span class="sep" aria-hidden="true">|</span>
       <a href="#boardSection">琴鍵</a>
       <a href="#setupSection">設定</a>
       <a href="#recordSection">錄音與示範</a>
-      <a href="index.html">電子琴</a>
-      <a href="console.html">← 控制台</a>
     </nav>
   </header>
 
-  <!-- 琴鍵：17 根簧片的實體排列，直接撥（可以滑過去刮奏） -->
+  <!-- 整併後的卡林巴面板：設定工具列 → 17 根簧片琴身 → 錄音與示範曲控制列 -->
   <section id="boardSection">
-    <h2>琴鍵</h2>
-    <p class="muted" style="margin:-.35rem 0 .6rem">
-      點簧片就撥一下；按住拖過去是刮奏（Glissando），手機可以多指同時撥。
-      <b>最長的最低音在正中間</b>，往兩邊交替升高——左邊 8 根、右邊 8 根，兩隻拇指各一邊。
-    </p>
+    <div class="row" id="setupSection" style="margin-bottom:10px">
+      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7" style="width:7rem"></label>
+      <label class="inline">調性 <select id="tuning"></select></label>
+      <label class="inline">標示 <select id="label"></select></label>
+      <label class="inline">力度 <input id="velocity" type="range" min="0.3" max="1" step="0.01" value="0.85" style="width:6.5rem"></label>
+      <label class="inline" title="撥簧片尾端較大聲、靠琴橋較小聲"><input id="autoVelocity" type="checkbox" checked> 位置力度</label>
+      <button id="damp" title="把還在響的簧片全部悶掉">止音</button>
+    </div>
+
     <div class="kalimba" id="board" role="group" aria-label="卡林巴琴的 17 根簧片">
       <div class="field"><div class="bridge"></div></div>
     </div>
     <div id="held" aria-live="polite"></div>
-    <p class="muted" id="sampleHint">正在準備簧片的錄音…</p>
-  </section>
 
-  <!-- 設定：音量、調性、標示、力度 -->
-  <section id="setupSection">
-    <h2>設定</h2>
-    <div class="row">
-      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7" style="width:8rem"></label>
-      <label class="inline">調性 <select id="tuning"></select></label>
-      <label class="inline">標示 <select id="label"></select></label>
-      <label class="inline">力度 <input id="velocity" type="range" min="0.3" max="1" step="0.01" value="0.85" style="width:7rem"></label>
-      <label class="inline"><input id="autoVelocity" type="checkbox" checked> 依撥的位置決定力度</label>
-      <button id="damp">止音</button>
-    </div>
-    <p class="muted">簧片是鋼的，撥了會一直響到沒能量為止（跟鋼琴一樣，放開不會停）——要停就按「止音」。
-      「依撥的位置決定力度」打開時，撥簧片尾端比較大聲、靠琴橋比較小聲，跟真的拇指一樣。</p>
-  </section>
-
-  <!-- 錄音與示範 -->
-  <section id="recordSection">
-    <h2>錄音與示範</h2>
-    <div class="row">
+    <div class="row" id="recordSection" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line)">
       <button id="record">● 開始錄音</button>
       <button id="exportWav">⬇ 匯出 WAV</button>
       <span class="muted" id="recInfo">還沒錄任何東西</span>
-    </div>
-    <div class="row" style="margin-top:8px">
+      <span class="sep" aria-hidden="true" style="margin-left:auto">|</span>
       <label class="inline">示範曲 <select id="demo"></select></label>
       <button id="playDemo">▶ 播放</button>
       <button id="stopDemo">■ 停止</button>
     </div>
-    <p class="muted">
-      錄音記下你撥了哪一根、什麼時候、多大力，匯出時用同一個引擎重新算成 WAV——
-      所以檔案裡的每一個音都跟這把琴的錄音一致，不是另外合成的。
-    </p>
-  </section>
 
-  <section id="aboutSection">
-    <h2>關於這把琴</h2>
-    <p class="muted">
-      17 音卡林巴（Moozica），音域 C4–E6，17 根簧片各有一個真實錄音。
-      簧片的排列、長度比與按鍵對應寫在 <code>src/kalimba.js</code>，取樣與校正過程在
-      <code>samples/kalimba/README.md</code>。<br>
-      電腦鍵盤：數字排 <kbd>1</kbd>–<kbd>9</kbd> 是左邊到中央的 9 根簧片，
-      <kbd>Q</kbd>–<kbd>I</kbd> 是中央右邊的 8 根——跟畫面上左右手的分工一樣。
+    <p class="muted" id="sampleHint" style="margin:.6rem 0 .2rem">正在準備簧片的錄音…</p>
+    <p class="muted" style="margin:0">
+      點按或拖曳刮奏（Glissando）；中央最低音往兩側交替升高。電腦鍵盤：<kbd>1</kbd>–<kbd>9</kbd>（左至中央）、<kbd>Q</kbd>–<kbd>I</kbd>（右側）。
     </p>
   </section>
 </main>

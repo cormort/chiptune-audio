@@ -59,3 +59,13 @@ test('every page module parses', async () => {
     }
   }
 });
+
+test('types/index.d.ts declares every runtime export of src/index.js', () => {
+  const dts = read('types/index.d.ts');
+  const declared = new Set(
+    [...dts.matchAll(/export declare (?:const|function|class) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]),
+  );
+  for (const name of Object.keys(api)) {
+    assert.ok(declared.has(name), `src/index.js exports "${name}", which is missing from types/index.d.ts`);
+  }
+});

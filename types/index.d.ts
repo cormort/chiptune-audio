@@ -212,29 +212,72 @@ export type SampledInstrumentName = `sampled:${string}`;
 
 /** Every sampled instrument: { label, credit, synth, base, notes }.
  *  `synth` is the bank voice to fall back on before the samples arrive. */
+export type SampleNoteEntry = string | { vel: number; file: string }[] | { takes: string[] };
+
 export interface SampleInstrument {
+  name?: string;
   label: string;
   credit: string;
   synth: AnyInstrumentName;
   base: string;
-  notes: Record<number, string>;
+  gap?: number;
+  layers?: number;
+  takes?: number;
+  stereo?: boolean;
+  notes: Record<number, SampleNoteEntry>;
+  release?: {
+    base: string;
+    notes: Record<number, string>;
+  };
 }
 export declare const SAMPLE_LIBRARY: Record<string, SampleInstrument>;
 export declare const SAMPLE_CREDIT: string;
 export declare const SAMPLE_PREFIX = 'sampled:';
+export declare const DYNAMIC_INSTRUMENTS: Record<string, SampleInstrument>;
+export declare const FLUTE_INSTRUMENT: SampleInstrument;
+export declare const FLUTE_VIB_INSTRUMENT: SampleInstrument;
+export declare const STRINGS_INSTRUMENT: SampleInstrument;
+export declare const GUITAR_INSTRUMENTS: Record<string, SampleInstrument>;
 export declare function sampleName(name: string): SampledInstrumentName;
 export declare function sampleNames(): string[];
 export declare function sampleLabel(name: string): string;
 export declare function sampleSynth(name: string): AnyInstrumentName | null;
-export declare function sampleUrls(name: string): { midi: number; url: string }[];
+export declare function sampleUrls(nameOrSpec: string | SampleInstrument): {
+  midi: number;
+  vel?: number;
+  take?: number;
+  release?: boolean;
+  url: string;
+}[];
 export declare function nearestSample<T extends { midi: number }>(notes: T[], midi: number): T | null;
-export declare function sampleVoice<T extends { midi: number }>(
+export declare function pickLayer<T extends { layers?: { vel: number; pcm?: Float32Array }[] }>(
+  entry: T,
+  vel?: number,
+): { vel?: number; pcm?: Float32Array; left?: Float32Array; right?: Float32Array } | T;
+export declare function layerMix(
+  entry: { pcm?: Float32Array; left?: Float32Array; right?: Float32Array; layers?: { vel: number; pcm: Float32Array; left?: Float32Array; right?: Float32Array }[] } | null | undefined,
+  vel?: number,
+  width?: number,
+): { pcm: Float32Array; gain: number; left?: Float32Array; right?: Float32Array }[];
+export declare function sampleVoice<T extends { midi: number; pcm?: Float32Array; layers?: { vel: number; pcm: Float32Array; left?: Float32Array; right?: Float32Array }[]; takes?: Float32Array[] }>(
   notes: T[],
   midi: number,
-): { sample: T; semitones: number; rate: number } | null;
+  vel?: number,
+  round?: number,
+): {
+  sample: T;
+  layer: unknown;
+  mix: { pcm: Float32Array; gain: number; left?: Float32Array; right?: Float32Array }[];
+  take: Float32Array | null;
+  pcm: Float32Array;
+  semitones: number;
+  rate: number;
+} | null;
 /** Mix a recording into an offline render (linear interpolation, note-off fade). */
 /** Interleaved 16-bit stereo WAV from two Float32Arrays of equal length. */
+export declare function encodeWav(samples: Float32Array | number[], sampleRate?: number): Uint8Array;
 export declare function encodeWavStereo(left: Float32Array, right: Float32Array, sampleRate?: number): Uint8Array;
+export declare function prepareSample(buffer: unknown, opts?: { floor?: number; prerollSeconds?: number }): Float32Array;
 /** Prepare a decoded buffer for playback: `mono` is the *louder* channel (not the
  *  average — summing a decorrelated pair cancels part of it), `left`/`right` are
  *  the two channels (null for a mono source), all trimmed of the silent lead-in. */
@@ -243,6 +286,11 @@ export declare function prepareSampleChannels(buffer: unknown, opts?: { floor?: 
   left: Float32Array | null;
   right: Float32Array | null;
 };
+export declare function normalizeInstrument(
+  notes: { midi?: number; pcm?: Float32Array; layers?: { vel: number; pcm?: Float32Array; left?: Float32Array; right?: Float32Array }[]; takes?: Float32Array[] }[],
+  target?: number,
+  opts?: { min?: number; max?: number },
+): number;
 export declare function mixSampleInto(
   out: Float32Array,
   at: number,
@@ -255,7 +303,32 @@ export declare function mixSampleInto(
 /** One decoded recording: `pcm` is mono at `rate` (an AudioContext rate). */
 export interface SamplePcm {
   rate: number;
-  notes: { midi: number; pcm: Float32Array }[];
+  notes?: {
+    midi: number;
+    pcm?: Float32Array;
+    layers?: { vel: number; pcm: Float32Array; left?: Float32Array; right?: Float32Array }[];
+    takes?: Float32Array[];
+  }[];
+  kit?: Record<number, { vel: number; gain: number; pcm: Float32Array[] }[]>;
+  release?: {
+    rate: number;
+    kit: Record<number, { vel: number; gain: number; pcm: Float32Array[] }[]>;
+  };
+}
+
+export interface LoadedSampleInstrument {
+  notes: {
+    midi: number;
+    rate: number;
+    layers: { vel: number; pcm: Float32Array; left?: Float32Array; right?: Float32Array }[];
+    takes?: Float32Array[];
+  }[];
+  failed: number;
+  gain: number;
+  release?: {
+    rate: number;
+    notes: { midi: number; pcm: Float32Array }[];
+  };
 }
 
 /** Fetches, decodes and plays recordings; one instance can hold many instruments. */
@@ -263,29 +336,107 @@ export declare class SampledInstruments {
   constructor(audioContextOrGetter: unknown, outputNodeOrGetter?: unknown);
   readonly ctx: AudioContext | null;
   readonly targetNode: AudioNode | null;
-  instruments: Map<string, { notes: { midi: number; buffer: AudioBuffer }[]; failed: number }>;
+  instruments: Map<string, LoadedSampleInstrument>;
   loadedCount: number;
   total: number;
   cacheName: string;
   loaded(name: string): number;
-  wanted(name: string): number;
+  wanted(name: string | SampleInstrument): number;
   loading(name: string): boolean;
   load(
-    name: string,
+    nameOrSpec: string | SampleInstrument,
     opts?: {
       onProgress?: (done: number, total: number, name: string) => void;
       fetchImpl?: (url: string) => Promise<Response>;
       decode?: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
     },
-  ): Promise<{ notes: { midi: number; buffer: AudioBuffer }[]; failed: number } | null>;
-  findBest(name: string, midi: number): { midi: number; buffer: AudioBuffer } | null;
+  ): Promise<LoadedSampleInstrument | null>;
+  bufferFor(pcm: Float32Array, rate?: number): AudioBuffer | null;
+  stereoBufferFor(left: Float32Array, right: Float32Array, rate?: number): AudioBuffer | null;
+  findBest(name: string, midi: number): { midi: number; buffer: AudioBuffer | null } | null;
   playNote(
     name: string,
     note: number,
-    opts?: { vel?: number; gain?: number },
-  ): { source: AudioBufferSourceNode; release: (fade?: number) => void } | null;
+    opts?: { vel?: number; gain?: number; when?: number; dur?: number },
+  ): { source: AudioBufferSourceNode; sources: AudioBufferSourceNode[]; release: (fade?: number) => void } | null;
   pcm(name: string): SamplePcm | null;
   voices(names?: string[]): Record<string, SamplePcm>;
+}
+
+export declare const SAMPLE_KIT = 'sampled:kit';
+
+export interface DrumKitSpec {
+  name?: string;
+  label?: string;
+  credit?: string;
+  base?: string;
+  missing?: number[];
+  notes: Record<number, { vel: number; gain: number; files: string[] }[]>;
+}
+
+export declare function pickHit<T>(
+  layers: { vel: number; gain: number; pcm: T[] }[] | null | undefined,
+  vel: number,
+  counter?: number,
+): { pcm: T; gain: number } | null;
+export declare function kitNotes(kit: DrumKitSpec): number[];
+export declare function kitHas(kit: DrumKitSpec, note: number): boolean;
+
+export declare class SampledKit {
+  constructor(audioContextOrGetter: unknown, outputNodeOrGetter?: unknown);
+  readonly ctx: AudioContext | null;
+  readonly targetNode: AudioNode | null;
+  kits: Map<string, { rate: number; notes: Record<number, { vel: number; gain: number; pcm: Float32Array[] }[]>; failed: number }>;
+  loadedCount: number;
+  total: number;
+  cacheName: string;
+  loaded(kit?: string): number;
+  wanted(kit: DrumKitSpec): number;
+  loading(name?: string): boolean;
+  load(
+    kit: DrumKitSpec,
+    opts?: {
+      onProgress?: (done: number, total: number, name: string) => void;
+      fetchImpl?: (url: string) => Promise<Response>;
+      decode?: (bytes: ArrayBuffer) => Promise<AudioBuffer>;
+    },
+  ): Promise<{ rate: number; notes: Record<number, { vel: number; gain: number; pcm: Float32Array[] }[]>; failed: number }>;
+  voices(instrument?: string, name?: string): Record<string, SamplePcm> | null;
+}
+
+export declare const PIANO_SAMPLES: { midi: number; name: string }[];
+export declare function renderAcousticPiano(
+  note: number,
+  sampleRate?: number,
+  seconds?: number,
+  preset?: 'standard' | 'mellow' | 'bright',
+): Float32Array;
+
+export declare class AcousticPiano {
+  constructor(audioContextOrGetter: unknown, outputNodeOrGetter?: unknown);
+  readonly ctx: AudioContext | null;
+  readonly targetNode: AudioNode | null;
+  cache: Map<string, AudioBuffer>;
+  getBuffer(note: number, preset?: 'standard' | 'mellow' | 'bright'): AudioBuffer | undefined;
+  playNote(
+    note: number,
+    opts?: { vel?: number; preset?: 'standard' | 'mellow' | 'bright'; when?: number; dur?: number },
+  ): NoteHandle | null;
+}
+
+export declare class SampledPiano {
+  constructor(audioContextOrGetter: unknown, outputNodeOrGetter?: unknown);
+  bank: SampledInstruments;
+  acousticFallback: AcousticPiano;
+  name: string;
+  readonly ctx: AudioContext | null;
+  readonly targetNode: AudioNode | null;
+  readonly buffers: Map<number, AudioBuffer>;
+  readonly isLoading: boolean;
+  readonly loadedCount: number;
+  findBestSample(targetMidi: number): { midi: number; buffer: AudioBuffer | null } | null;
+  preload(onProgress?: (done: number, total: number) => void): Promise<void>;
+  playNote(note: number, opts?: { vel?: number; gain?: number; when?: number; dur?: number }): NoteHandle | null;
 }
 /** Sustain rendered for a keyboard note whose length is not known yet. */
 export declare const HOLD_SECONDS: number;

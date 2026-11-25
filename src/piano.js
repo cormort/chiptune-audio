@@ -7,6 +7,7 @@
  */
 
 import { noteFreq } from './instruments.js';
+import { mulberry32 } from './rng.js';
 import { SampledInstruments, startAt } from './samples.js';
 // **合併後**的取樣庫（內建的平台鋼琴覆蓋遠端那份；遠端表裡的 grand 已經移除）
 import { SAMPLE_LIBRARY } from './samples.js';
@@ -43,46 +44,54 @@ export function renderAcousticPiano(note, sampleRate = 44100, seconds = 2.8, pre
 
   const baseDecay = Math.max(0.7, 3.4 - Math.log2(Math.max(20, f0) / 55) * 0.45);
   const brightSlope = preset === 'bright' ? 0.15 : preset === 'mellow' ? 0.45 : 0.25;
+  const attackSamples = Math.min(Math.floor(0.003 * sampleRate), totalSamples);
+  const invAttack = attackSamples > 0 ? 1 / attackSamples : 1;
 
   for (let k = 1; k <= K; k++) {
     const fk = k * f0 * Math.sqrt(1 + B * k * k);
     if (fk >= nyquist) break;
 
     // 泛音振幅分佈：符合真實敲擊琴弦的頻譜斜率
-    const amp0 = Math.exp(-brightSlope * (k - 1)) * (k === 1 ? 0.58 : (0.42 / Math.pow(k, 0.55)));
+    const amp0 = 0.5 * Math.exp(-brightSlope * (k - 1)) * (k === 1 ? 0.58 : (0.42 / Math.pow(k, 0.55)));
 
-    // 關鍵：各階泛音依物理規律單獨衰減，高頻消逝極快
+    // 關鍵：各階泛音依物理規律單獨衰減，高頻消逝極快；改用每步連乘取代每樣本 Math.exp
     const decayK = baseDecay / (1 + 0.65 * (k - 1) + 0.07 * (k - 1) * (k - 1));
-    const dStep = 1 / (decayK * sampleRate);
+    const expStep = Math.exp(-1 / (decayK * sampleRate));
 
-    // 雙弦微失諧 (雙/三弦合奏帶來的溫暖自然聲學拍頻)
+    // 雙弦微失諧：用複數旋轉遞推取代每樣本兩次 Math.sin
     const df = 0.22 * (1 + 0.08 * k);
     const w1 = 2 * Math.PI * (fk - df) / sampleRate;
     const w2 = 2 * Math.PI * (fk + df) / sampleRate;
+    const cos1 = Math.cos(w1), sin1 = Math.sin(w1);
+    const cos2 = Math.cos(w2), sin2 = Math.sin(w2);
 
-    let ph1 = 0, ph2 = 0;
-    const attackSamples = Math.min(Math.floor(0.003 * sampleRate), totalSamples);
+    let c1 = 1, s1 = 0;
+    let c2 = 1, s2 = 0;
+    let env = amp0;
 
     for (let i = 0; i < totalSamples; i++) {
-      const env = Math.exp(-i * dStep);
-      // 3ms 起音防爆音平滑斜率
-      const aEnv = i < attackSamples ? i / attackSamples : 1;
-      const s = 0.5 * (Math.sin(ph1) + Math.sin(ph2)) * amp0 * env * aEnv;
-      out[i] += s;
-      ph1 += w1;
-      ph2 += w2;
+      const aEnv = i < attackSamples ? i * invAttack : 1;
+      out[i] += (s1 + s2) * env * aEnv;
+      env *= expStep;
+      const nc1 = c1 * cos1 - s1 * sin1;
+      s1 = s1 * cos1 + c1 * sin1;
+      c1 = nc1;
+      const nc2 = c2 * cos2 - s2 * sin2;
+      s2 = s2 * cos2 + c2 * sin2;
+      c2 = nc2;
     }
   }
 
-  // 琴槌毛氈木質撞擊聲 (Hammer Strike Thump)
+  // 琴槌毛氈木質撞擊聲 (Hammer Strike Thump)，使用決定性 PRNG 確保同音同參數輸出一致
   const hammerLen = Math.min(Math.floor(0.02 * sampleRate), totalSamples);
   const hammerVol = preset === 'mellow' ? 0.05 : preset === 'bright' ? 0.22 : 0.14;
   const hammerFilter = preset === 'mellow' ? 0.04 : preset === 'bright' ? 0.12 : 0.08;
+  const rng = mulberry32((0x9e3779b9 ^ Math.round(note)) >>> 0);
   let noiseState = 0;
   for (let i = 0; i < hammerLen; i++) {
     const t = i / hammerLen;
     const env = (1 - t) * (1 - t);
-    const white = (Math.random() * 2 - 1) * hammerVol;
+    const white = (rng() * 2 - 1) * hammerVol;
     noiseState += hammerFilter * (white - noiseState);
     out[i] += noiseState * env;
   }
@@ -148,6 +157,7 @@ export class AcousticPiano {
 
     src.connect(gainNode);
     gainNode.connect(this.targetNode);
+    src.onended = () => { gainNode.disconnect(); };
     startAt(ctx, gainNode, src, opts);
 
     let released = false;

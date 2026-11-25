@@ -42,10 +42,13 @@ test('flattenMidi: speed, transpose, volume and mute match what is rendered', ()
 test('flattenMidi: drums keep their GM key and their own flag', () => {
   const flat = flattenMidi(midi([
     { name: 'Kit', channel: 9, program: 0, instrument: 'drums', notes: [{ time: 0, dur: 0.1, note: 36, vel: 0.9 }] },
-  ]), { tracks: [{ transpose: 12 }] });
+    { name: 'SampledKit', channel: 9, program: 0, instrument: 'sampled:kit', notes: [{ time: 0.2, dur: 0.1, note: 38, vel: 0.8 }] },
+  ]), { tracks: [{ transpose: 12 }, { transpose: 12 }] });
   assert.equal(flat.notes[0].drum, true);
   assert.equal(flat.notes[0].note, 36, 'a drum is not transposed');
   assert.equal(flat.notes[0].vel, 0.9);
+  assert.equal(flat.notes[1].drum, true, 'sampled:kit must also be flagged as a drum track');
+  assert.equal(flat.notes[1].note, 38, 'sampled:kit is not transposed');
 });
 
 test('flattenMidi: rejects anything that is not parseMidi() output', () => {

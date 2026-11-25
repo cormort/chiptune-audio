@@ -4,6 +4,8 @@
  *  can be tested in Node and reused for any renderer (canvas, SVG, ...).
  */
 
+import { SAMPLE_KIT } from './drums.js';
+
 /** The 88 keys of a real piano: A0 (21) to C8 (108). */
 export const PIANO_LOW = 21;
 export const PIANO_HIGH = 108;
@@ -49,7 +51,7 @@ export function flattenMidi(midi, { tracks = [], speed = 1 } = {}) {
   midi.tracks.forEach((track, i) => {
     const s = settings[i] || {};
     const instrument = s.instrument || track.instrument;
-    const drum = instrument === 'drums';
+    const drum = instrument === 'drums' || instrument === SAMPLE_KIT;
     const volume = Number.isFinite(s.volume) ? Math.min(1, Math.max(0, s.volume)) : 1;
     const transpose = Number.isFinite(s.transpose) ? Math.round(s.transpose) : 0;
     for (const n of track.notes) {

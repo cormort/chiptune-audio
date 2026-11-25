@@ -18,22 +18,133 @@
 <!-- 共用權杖與基礎元素；頁面自己的版面在下一個 <style> -->
 <link rel="stylesheet" href="page/theme.css">
 <style>
-  /* 電子琴版面：樂器 → 設定 → 琴鍵；按住發聲、放開停止，可多指和弦 */
-  .instruments { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 8px; }
-  #held { font: 13px var(--font-mono); color: var(--muted); min-height: 1.2em; }
+  /* GarageBand Smart Keyboard 版面：音色機架 → 控制列＋LCD 顯示幕 → 紅毛氈立體鋼琴鍵 */
+  .instruments {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.4rem, 1fr));
+    gap: 8px;
+    padding: 10px;
+    background: #12151d;
+    border: 1px solid #2b303f;
+    border-radius: 10px;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.65);
+  }
+  .instruments button {
+    position: relative;
+    padding-left: 1.35rem;
+    text-align: start;
+    font-size: 13px;
+  }
+  .instruments button::before {
+    content: "";
+    position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4b5267;
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+  }
+  .instruments button.on::before {
+    background: #140d02;
+    box-shadow: 0 0 6px #fff;
+  }
 
-  /* 琴鍵：白鍵平均分寬，黑鍵以百分比絕對定位在兩個白鍵之間 */
-  .keys { position: relative; display: flex; height: 180px; margin: 12px 0 8px; user-select: none; touch-action: none; }
-  .key { position: relative; border: 1px solid var(--line); border-radius: 0 0 6px 6px; padding: 0 0 6px;
-         display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-         font: 11px/1.2 var(--font-mono); cursor: pointer; }
-  .key.white { flex: 1; min-width: 0; background: var(--key-white); color: var(--key-white-text); margin-right: -1px; }
-  .key.black { position: absolute; top: 0; height: 60%; z-index: 1; background: var(--key-black);
-               color: var(--key-black-text); border-color: var(--key-black); }
-  .key.down { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  .key b { font-weight: 700; color: inherit; }
+  /* 背光 LCD 音色與和弦顯示窗 */
+  #bankHint, #held {
+    font: 12.5px/1.4 var(--font-mono);
+    background: var(--lcd-bg);
+    color: var(--lcd-text);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #2d3548;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.07);
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.35);
+  }
+  #bankHint { flex: 1 1 16rem; }
+  #held {
+    min-height: 2.15rem;
+    display: flex; align-items: center;
+    color: var(--lcd-sub);
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+    margin: 8px 0 6px;
+  }
+  #held:empty::before {
+    content: "READY · 按下琴鍵或電腦鍵盤 Z–M / Q–I 演奏";
+    color: #546079;
+    text-shadow: none;
+  }
+
+  /* 鋼琴外框與頂部經典酒紅色絲絨毛氈壓條（GarageBand Red Felt Strip） */
+  .keys {
+    position: relative;
+    display: flex;
+    height: 224px;
+    margin: 12px 0 10px;
+    padding: 12px 6px 8px;
+    background: linear-gradient(180deg, #0d0e12 0%, #191c24 100%);
+    border: 1px solid #353a4a;
+    border-radius: 12px;
+    box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.9), 0 10px 24px rgba(0, 0, 0, 0.55);
+    user-select: none;
+    touch-action: none;
+    overflow: hidden;
+  }
+  .keys::before {
+    content: "";
+    position: absolute; left: 6px; right: 6px; top: 6px; height: 7px;
+    z-index: 3;
+    background: linear-gradient(180deg, #4a0a12 0%, #9f1929 48%, #590c15 100%);
+    border-bottom: 1px solid #2a0408;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.75);
+    border-radius: 3px 3px 0 0;
+    pointer-events: none;
+  }
+
+  /* 琴鍵：立體象牙白鍵與高光黑檀木黑鍵 */
+  .key {
+    position: relative;
+    border: 1px solid #181a22;
+    border-radius: 0 0 8px 8px;
+    padding: 0 0 10px;
+    display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+    font: 11px/1.25 var(--font-mono);
+    cursor: pointer;
+    transition: transform .04s ease, box-shadow .06s ease, background .06s ease;
+  }
+  .key.white {
+    flex: 1; min-width: 0;
+    background: linear-gradient(180deg, #dfe2ea 0%, #fbfcfe 12%, #f4f5f9 86%, #d5d9e4 100%);
+    color: var(--key-white-text);
+    margin-right: -1px;
+    box-shadow: inset 0 -8px 0 #c2c7d6, inset 0 2px 3px rgba(0, 0, 0, 0.25), 0 3px 5px rgba(0, 0, 0, 0.45);
+  }
+  .key.black {
+    position: absolute; top: 12px; height: 59%; z-index: 2;
+    background: linear-gradient(180deg, #323643 0%, #1a1d26 16%, #0f1117 82%, #292d3a 100%);
+    color: var(--key-black-text);
+    border-color: #08090d;
+    border-radius: 0 0 6px 6px;
+    padding-bottom: 8px;
+    box-shadow:
+      inset 0 -9px 2px rgba(0, 0, 0, 0.85),
+      inset 0 1px 1px rgba(255, 255, 255, 0.24),
+      inset 2px 0 1px rgba(255, 255, 255, 0.08),
+      inset -2px 0 1px rgba(0, 0, 0, 0.6),
+      0 7px 12px rgba(0, 0, 0, 0.7);
+  }
+  .key.white.down {
+    transform: translateY(2px);
+    background: linear-gradient(180deg, #fde68a 0%, #fbbf24 55%, #f59e0b 100%);
+    color: #1c1002;
+    box-shadow: inset 0 -3px 0 #b45309, inset 0 3px 6px rgba(0, 0, 0, 0.35), 0 0 16px rgba(245, 158, 11, 0.55);
+  }
+  .key.black.down {
+    transform: translateY(2px);
+    background: linear-gradient(180deg, #fbbf24 0%, #d97706 75%, #92400e 100%);
+    color: #140b00;
+    border-color: #fde68a;
+    box-shadow: inset 0 -4px 1px rgba(0, 0, 0, 0.55), 0 3px 8px rgba(0, 0, 0, 0.7), 0 0 14px rgba(245, 158, 11, 0.7);
+  }
+  .key b { font-weight: 700; color: inherit; font-size: 10px; opacity: .75; margin-bottom: 1px; }
   .key i { font-style: normal; line-height: .6; }
-  /* 手機上黑鍵只有十幾 px 寬，「C#」用 11px 會跟隔壁黏在一起：字跟著螢幕寬度縮 */
   .key.black span { font-size: min(11px, 2.6vw); letter-spacing: -.05em; }
 </style>
 
@@ -41,17 +152,19 @@
   <header>
     <h1>chiptune-audio 電子琴</h1>
     <nav class="nav" aria-label="頁面">
+      <a href="index.html" aria-current="page">🎹 電子琴</a>
+      <a href="kalimba.html">🪕 卡林巴琴</a>
+      <a href="score.html">🎼 琴譜</a>
+      <a href="console.html">🎛 控制台</a>
+      <span class="sep" aria-hidden="true">|</span>
       <a href="#instrumentsSection">樂器</a>
       <a href="#keysSection">琴鍵</a>
-      <a href="kalimba.html">卡林巴琴</a>
-      <a href="console.html">控制台</a>
     </nav>
   </header>
 
-  <!-- 樂器：四套音色庫，切換後從下面挑一個位置 -->
+  <!-- 樂器：三套音色庫，切換後從下面挑一個位置 -->
   <section id="instrumentsSection">
     <h2>樂器</h2>
-    <p class="muted" style="margin:-.35rem 0 .6rem">① 先挑一套音色庫 → ② 再挑裡面的音色 → ③ 到下面彈。</p>
     <div class="row" role="group" aria-label="音色模式" style="margin-bottom:10px">
       <button id="bankChip" class="on" aria-pressed="true" data-bank="chip">晶片音色</button>
       <button id="bankReal" aria-pressed="false" data-bank="real">寫實合成</button>
@@ -61,7 +174,7 @@
     <div class="instruments" id="instruments"></div>
     <div class="row" style="margin-top:10px">
       <button id="prefetchAll">⬇ 下載全部音色（離線用）</button>
-      <span class="muted" id="prefetchInfo">只預載了內建的鼓組與幾把樂器；按這裡可以把 20 多種錄音全部抓下來，之後離線都能用。</span>
+      <span class="muted" id="prefetchInfo">按這裡可把 20 多種真實樂器錄音一次抓齊，之後完全離線可用。</span>
     </div>
   </section>
 
@@ -73,15 +186,7 @@
     </div>
     <div class="keys" id="keys"></div>
     <div id="held" aria-live="polite"></div>
-    <p class="muted">按住琴鍵持續發聲，放開停止，可以同時按多個鍵彈和弦；鋼琴、撥弦、鐘聲會自然衰減。<br>
-      • <b>晶片音色</b>：單一振盪器的 8-bit 復古遊戲聲。<br>
-      • <b>寫實合成</b>：疊上泛音、微走音與起音雜訊（純程式碼零依賴）。<br>
-      • <b>真實錄音取樣</b>：真實樂器的錄音（平台鋼琴四層力度＋釋音、弦樂群、木吉他／電吉他三層力度、小提琴、大提琴、長笛、單簧管、薩克斯風、小號、
-      木吉他、豎琴、木琴…共 20 種）。第一次選到那個樂器才開始抓樣本，抓過存進瀏覽器快取，之後離線也能彈；
-      樣本還沒到（第一次按、或離線）會先用對應的合成音色代替，按鍵不會沒聲音。<br>
-      電腦鍵盤：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）是低八度，
-      上排 <kbd>Q</kbd>–<kbd>U</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）是高八度。
-      音量、八度、標示與選用的音色會存在瀏覽器裡，下次開啟直接接上。</p>
+    <p class="muted">支援多指觸控與電腦鍵盤和弦：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）為低八度，上排 <kbd>Q</kbd>–<kbd>I</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）為高八度。</p>
   </section>
 </main>
 

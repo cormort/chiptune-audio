@@ -38,6 +38,7 @@ const midiPlaying = () => !!audio.music && nowPlaying === 'midi';
 // 只有真的開始播過才接手「播完了」的處理；被使用者停止時 stopAllMusic 會關掉它。
 let midiStarted = false;
 let midiDone = false;    // 這一首的「播完」已經處理過，避免重複觸發
+let midiSeq = 0;         // 非同步 playMidi 的請求序號：等待取樣下載期間若被停止或切歌，舊的那輪直接放棄
 
 /** 換誰擁有音樂匯流排。MIDI 不是用音樂的聲部推桿合成的，所以推桿要標成未生效。 */
 function setOwner(kind) {
@@ -46,6 +47,7 @@ function setOwner(kind) {
 }
 
 function stopAllMusic() {
+  midiSeq++;
   audio.stopMusic();
   setOwner(null);
   midiStarted = false;
@@ -241,33 +243,22 @@ function saveMusicOptions() {
   prefs.patch({ musicSeed: o.seed, musicMood: o.mood, musicBars: o.bars });
 }
 
-// 合成整首循環會花十幾毫秒；先算好就能在播放時立即開始。
-function preloadMusic() {
-  const opts = musicOptions();
-  const t0 = performance.now();
-  audio.preloadMusic(opts);
-  const ms = performance.now() - t0;
-  const song = generateSong(opts);
-  $('musicInfo').textContent =
-    `已備妥：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒 · 合成 ${ms.toFixed(1)} ms`;
-}
-
 function playMusic() {
   const opts = musicOptions();
+  const t0 = performance.now();
   audio.playMusic(opts);
+  const ms = performance.now() - t0;
   setOwner('song');
   $('midiStatus').textContent = '';
   const song = generateSong(opts);
-  $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒`;
+  $('musicInfo').textContent = `播放中：${song.bpm} BPM，循環 ${(song.bars * 16 * (60 / song.bpm / 4)).toFixed(1)} 秒 · 合成 ${ms.toFixed(1)} ms`;
 }
 
 $('playMusic').onclick = playMusic;
-$('preloadMusic').onclick = preloadMusic;
 $('dice').onclick = () => { $('seed').value = 1 + Math.floor(Math.random() * 99999); playMusic(); };
 $('stopMusic').onclick = () => { if (nowPlaying === 'song') stopAllMusic(); };
 const songPlaying = () => audio.music && nowPlaying === 'song';
-for (const id of ['mood', 'bars']) $(id).onchange = () => { saveMusicOptions(); if (songPlaying()) playMusic(); };
-$('seed').onchange = () => { saveMusicOptions(); if (songPlaying()) playMusic(); };
+for (const id of ['mood', 'bars', 'seed']) $(id).onchange = () => { saveMusicOptions(); if (songPlaying()) playMusic(); };
 
 $('wavMusic').onclick = () => {
   const opts = musicOptions();
@@ -438,6 +429,7 @@ async function addFiles(files) {
 /** 換清單裡的某一首：停掉目前的聲音，換上它的解析結果與它自己的軌道設定。 */
 function selectItem(i, opts = {}) {
   if (i < 0 || i >= queue.length) return;
+  midiSeq++;
   const { offset = 0, play = !!$('midiAutoPlay').checked } = opts;
   const it = queue[i];
   if (nowPlaying === 'midi') stopAllMusic();   // 舊的那首不是這一首
@@ -644,12 +636,14 @@ function tracksForRender(fallback = [], kitFallback = false) {
 }
 
 async function playMidi(offset = 0) {
+  const seq = ++midiSeq;
   midiStarted = false;   // 還沒真的開始播（這中間的 tick 不該當成「播完了」）
   midiDone = false;      // 新的一輪：下一次「播完」要重新判斷
   const { samples, fallback, kitFallback } = await ensureSamples();
+  if (seq !== midiSeq) return;
   $('midiStatus').textContent = usesRealVoices() ? '合成中…（寫實音色較慢，請稍等）' : '合成中…';
   await new Promise((r) => setTimeout(r));   // let the status paint before the render blocks
-  if (!midi || !midi.tracks.length) return;
+  if (seq !== midiSeq || !midi || !midi.tracks.length) return;
   const t0 = performance.now();
   const src = audio.playMidi(midi, {
     tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed, loop: $('midiLoop').checked, offset,
@@ -712,8 +706,9 @@ $('wavMidi').onclick = async () => {
     $('midiStatus').textContent = '匯出中…（寫實音色較慢，請稍等）';
     await new Promise((r) => setTimeout(r));
   }
+  const rate = audio.sampleRate;
   // 立體匯出：取樣樂器有自己的左右聲道時（平台鋼琴）就保留，其他樂器兩邊一樣。
-  downloadWav(renderMidiStereo(midi, { tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed }), `${midiName}-remix.wav`, SAMPLE_RATE);
+  downloadWav(renderMidiStereo(midi, { tracks: tracksForRender(fallback, kitFallback), samples, speed: midiSpeed, sampleRate: rate }), `${midiName}-remix.wav`, rate);
   if (!midiPlaying()) $('midiStatus').textContent = `已下載 ${midiName}-remix.wav`;
 };
 

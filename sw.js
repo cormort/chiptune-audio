@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v37';
+const VERSION = 'v38';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
@@ -479,7 +479,12 @@ function prefetchMedia() {
   filling = (async () => {
     const cache = await caches.open(MEDIA_CACHE);
     if (await cache.match(MEDIA_MARK)) return { skipped: true, done: MEDIA.length, total: MEDIA.length, missed: 0 };
-    const have = new Set((await cache.keys()).map((r) => new URL(r.url).pathname.replace(/^.*\/chiptune-audio\//, '')));
+    const base = new URL('.', location.href).pathname;
+    const toRel = (u) => {
+      const p = new URL(u).pathname;
+      return p.startsWith(base) ? p.slice(base.length) : p.replace(/^.*\/chiptune-audio\/|^\/+/, '');
+    };
+    const have = new Set((await cache.keys()).map((r) => toRel(r.url)));
     const missed = await fillCache(cache, MEDIA.filter((p) => !have.has(p)));
     if (!missed.length) await cache.put(MEDIA_MARK, new Response('ok'));
     return { skipped: false, done: MEDIA.length - missed.length, total: MEDIA.length, missed: missed.length };

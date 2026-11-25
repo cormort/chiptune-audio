@@ -1,12 +1,12 @@
 // 琴譜播放頁（score.html）的程式。markup 只留版面，這裡才是行為——
 // 跟其他頁面一樣走 page/ui.js（$、Service worker、安裝按鈕）。
-import { ChiptuneAudio, INSTRUMENT_LABELS, AcousticPiano, SampledPiano } from '../src/index.js';
-import { $, installApp, registerServiceWorker } from './ui.js';
+import { ChiptuneAudio, INSTRUMENT_LABELS, AcousticPiano, SampledPiano, pitchName } from '../src/index.js';
+import { $, installApp, prefs, registerServiceWorker } from './ui.js';
 
 registerServiceWorker();
 installApp();
 
-const audio = new ChiptuneAudio({ volume: 0.6 });
+const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
 // Same two piano voices as keyboard.html.
 const pianos = {
   acoustic: new AcousticPiano(() => audio._ensure(), () => audio.master),
@@ -17,9 +17,7 @@ let voices = [];
 // song = { beats, parts: [ { measures: [ { events: [ { start, dur, pitches: [midi] } ] } ] } ] } — all times in quarter notes.
 let song = null;
 const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const DURS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
-const midiName = (n) => NAMES[n % 12] + (Math.floor(n / 12) - 1);
 
 function parseMusicXml(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
@@ -41,7 +39,10 @@ function parseMusicXml(text) {
           const dur = num(el, 'duration') / divisions;
           let pitch = [];
           if (el.querySelector('pitch')) {
-            pitch = [12 * (num(el, 'octave') + 1) + SEMI[el.querySelector('step').textContent] + num(el, 'alter')];
+            const step = el.querySelector('step')?.textContent?.trim();
+            if (step && step in SEMI) {
+              pitch = [12 * (num(el, 'octave') + 1) + SEMI[step] + num(el, 'alter')];
+            }
           }
           if (el.querySelector('chord') && events.length) events[events.length - 1].pitches.push(...pitch);
           else { events.push({ start: cursor, dur, pitches: pitch }); cursor += dur; }
@@ -98,7 +99,7 @@ function measureCard(part, m, mi) {
     const row = document.createElement('div');
     row.className = 'ev';
     const inp = document.createElement('input');
-    inp.value = e.pitches.map(midiName).join(' ') || 'r';
+    inp.value = e.pitches.map(pitchName).join(' ') || 'r';
     inp.title = '音名，例如 C4 或和弦 G3 E3；r = 休止';
     inp.onchange = () => {
       const p = parsePitches(inp.value);
@@ -147,8 +148,9 @@ function show(s, images = []) {
   render();
 }
 
+$('inst').add(new Option('真實平台鋼琴（取樣）', 'sample'));
 $('inst').add(new Option('物理擬真鋼琴', 'acoustic'));
-$('inst').add(new Option('真實平台鋼琴 (取樣)', 'sample'));
+for (const k of Object.keys(INSTRUMENT_LABELS.real)) $('inst').add(new Option(`寫實 ${INSTRUMENT_LABELS.real[k]}`, `real:${k}`));
 for (const k of Object.keys(INSTRUMENT_LABELS.chip)) $('inst').add(new Option(`晶片 ${INSTRUMENT_LABELS.chip[k]}`, k));
 $('beats').onchange = () => { song.beats = +$('beats').value || song.beats; render(); };
 

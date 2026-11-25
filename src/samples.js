@@ -279,19 +279,20 @@ export function mixSampleInto(out, at, pcm, ratio, gain, { hold = Infinity, rele
   if (!(ratio > 0) || !(gain > 0) || pcm.length < 2) return 0;
   const end = out.length;
   const last = pcm.length - 1;
+  const holdSteps = Number.isFinite(hold) ? hold * rate : Infinity;
   const fadeSteps = release > 0 ? release * rate : 0;
+  const invFade = fadeSteps > 0 ? 1 / fadeSteps : 0;
   let i = at < 0 ? 0 : at;
-  let n = i < 0 ? -at : 0;
+  let n = at < 0 ? -at : 0;
   for (; i < end; i++, n++) {
     const pos = n * ratio;
     if (pos >= last) break;                       // 樣本放完了（錄音本來就那麼長）
     const idx = pos | 0;
     const frac = pos - idx;
     let env = 1;
-    const t = n / rate;
-    if (t > hold) {
+    if (n > holdSteps) {
       if (fadeSteps <= 0) break;
-      const k = (t - hold) / release;
+      const k = (n - holdSteps) * invFade;
       if (k >= 1) break;
       env = 1 - k;
     }
@@ -502,36 +503,68 @@ export class SampledInstruments {
     const key = `${name}|${note}`;
     const round = this._rounds.get(key) || 0;
     this._rounds.set(key, round + 1);
-    const v = sampleVoice(inst.notes, note, opts.vel === undefined ? 0.85 : opts.vel, round);
+    const vel = opts.vel === undefined ? 0.85 : opts.vel;
+    const baseGain = Math.max(0, Math.min(1, vel * (opts.gain === undefined ? 0.9 : opts.gain)));
+    const v = sampleVoice(inst.notes, note, vel, round);
+    const rate = inst.notes[0].rate;
+    const parts = v.take ? [{ pcm: v.take, gain: 1 }] : (v.mix.length ? v.mix : [{ pcm: v.pcm, gain: 1 }]);
     // 立體樣本（鋼琴）用兩聲道播：它的左右是兩支不同視角的麥克風，混成單聲道就是
-    // 丟掉半個錄音，而且會抵消。
-    const pair = v.take ? null : (v.mix.find((m) => m.left && m.right) || null);
-    const buffer = pair
-      ? this.stereoBufferFor(pair.left, pair.right, inst.notes[0].rate)
-      : this.bufferFor(v.pcm, inst.notes[0].rate);
-    if (!buffer) return null;
+    // 丟掉半個錄音，而且會抵消。在力度交界處（±9%）同時播兩層做等功率淡化。
+    const layers = [];
+    for (const part of parts) {
+      const buffer = part.left && part.right
+        ? this.stereoBufferFor(part.left, part.right, rate)
+        : this.bufferFor(part.pcm, rate);
+      if (buffer) layers.push({ buffer, gain: baseGain * (part.gain ?? 1) });
+    }
+    if (!layers.length) return null;
     if (ctx.state === 'suspended') ctx.resume();
 
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.playbackRate.value = v.rate;
-    const gainNode = ctx.createGain();
-    gainNode.gain.value = Math.max(0, Math.min(1, (opts.vel === undefined ? 0.85 : opts.vel) * (opts.gain === undefined ? 0.9 : opts.gain)));
-    src.connect(gainNode);
-    gainNode.connect(this.targetNode);
-    startAt(ctx, gainNode, src, opts);
+    const target = this.targetNode;
+    const active = [];
+    for (const { buffer, gain } of layers) {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.playbackRate.value = v.rate;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = gain;
+      src.connect(gainNode);
+      gainNode.connect(target);
+      src.onended = () => { gainNode.disconnect(); };
+      startAt(ctx, gainNode, src, opts);
+      active.push({ src, gainNode });
+    }
 
     let released = false;
     return {
-      source: src,
+      source: active[0].src,
+      sources: active.map((a) => a.src),
       release: (fade = 0.22) => {
         if (released) return;
         released = true;
         const now = ctx.currentTime;
         const f = Math.max(0.02, fade);
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setTargetAtTime(0, now, f / 4);
-        try { src.stop(now + f); } catch {}
+        for (const { src, gainNode } of active) {
+          gainNode.gain.cancelScheduledValues(now);
+          gainNode.gain.setTargetAtTime(0, now, f / 4);
+          try { src.stop(now + f); } catch {}
+        }
+        // 放開鍵的制音器釋音（平台鋼琴）：若有載入 release 取樣，在放開瞬間輕輕疊上
+        if (inst.release && inst.release.notes && inst.release.notes.length && target) {
+          const relHit = nearestSample(inst.release.notes, note);
+          const relBuf = relHit ? this.bufferFor(relHit.pcm, inst.release.rate) : null;
+          if (relBuf && ctx.createBufferSource) {
+            const relSrc = ctx.createBufferSource();
+            relSrc.buffer = relBuf;
+            relSrc.playbackRate.value = 2 ** ((note - relHit.midi) / 12);
+            const relGain = ctx.createGain();
+            relGain.gain.value = Math.min(1, baseGain * 0.5);
+            relSrc.connect(relGain);
+            relGain.connect(target);
+            relSrc.onended = () => { relGain.disconnect(); };
+            relSrc.start(now);
+          }
+        }
       },
     };
   }

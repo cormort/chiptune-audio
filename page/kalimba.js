@@ -6,7 +6,7 @@
 // 卡林巴是**撥了就一直響**的樂器（鋼簧振動衰減很慢），所以放開指標不會停音——
 // 要停請按「止音」，或讓它自己響完。這跟電子琴頁面「放開就停」不一樣，是真的琴的行為。
 import {
-  ChiptuneAudio, SampledInstruments, SAMPLE_RATE, renderMidi, noteFreq,
+  ChiptuneAudio, SampledInstruments, SAMPLE_RATE, renderMidi, noteFreq, pitchName,
   instrumentNote, instrumentRelease, sampleSynth, sampleLabel, SAMPLE_LIBRARY,
   KALIMBA_TUNINGS, KALIMBA_DEMOS, tinePositions, tineNote, tineForKey, tineNumber,
   velocityAt, demoSeconds,
@@ -21,9 +21,6 @@ const NAME = 'kalimba';
 const RING = 3.2;
 const audio = new ChiptuneAudio({ volume: prefs.get('kalimba:volume', 0.7) });
 const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);
-
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const noteName = (n) => NOTE_NAMES[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
 
 const LABEL_MODES = { number: '簡譜', name: '音名', key: '按鍵' };
 const tuningById = (id) => KALIMBA_TUNINGS.find((t) => t.id === id) || KALIMBA_TUNINGS[0];
@@ -55,7 +52,7 @@ function labelTines() {
   tinePositions().forEach((t) => {
     const el = tineEls[t.index];
     const midi = tineNote(t.index, tuning.transpose);
-    const name = noteName(midi);
+    const name = pitchName(midi);
     const number = tineNumber(t.index);
     const key = t.key.toUpperCase();
     const main = labelMode === 'name' ? name : labelMode === 'number' ? number : key;
@@ -94,7 +91,7 @@ function paintRinging() {
   const now = performance.now();
   while (recent.length && now - recent[0].at > 2600) recent.shift();
   $('held').textContent = recent.length
-    ? recent.map((r) => `${noteName(r.midi)} ${noteFreq(r.midi).toFixed(1)} Hz`).join(' · ')
+    ? recent.map((r) => `${pitchName(r.midi)} ${noteFreq(r.midi).toFixed(1)} Hz`).join(' · ')
     : '';
   return recent.length > 0;
 }
@@ -233,12 +230,14 @@ $('exportWav').onclick = () => {
   // 錄音已經解碼完就用真實簧片，還沒有的話用同一組代理音色（不讓匯出失敗）
   const ready = !!sampled.pcm(NAME);
   const instrument = ready ? `sampled:${NAME}` : sampleSynth(NAME);
+  const rate = audio.sampleRate;
   const pcm = renderMidi(midi, {
     tracks: [{ instrument }],
     samples: ready ? sampled.voices([NAME]) : null,
+    sampleRate: rate,
   });
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadWav(pcm, `kalimba-${stamp}.wav`, SAMPLE_RATE);
+  downloadWav(pcm, `kalimba-${stamp}.wav`, rate);
   $('recInfo').textContent = `${events.length} 個音已匯出（${ready ? '真實簧片錄音' : '合成音色'}）`;
 };
 

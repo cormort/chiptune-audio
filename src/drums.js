@@ -11,6 +11,8 @@ import { prepareSample } from './samples.js';
 
 /** 真實鼓組在 renderMidi／樂器選單裡的名字（跟 chip／real／sampled:<樂器> 並列）。 */
 export const SAMPLE_KIT = 'sampled:kit';
+/** 載入鼓組時同時幾條連線（跟 SampledInstruments 與 sw.js 一致）。 */
+const LOAD_WORKERS = 6;
 
 /** 一個擊點要播哪個錄音：力度決定層（取不超過它的最大 vel），round robin 由
  *  `counter` 決定——同一個力度層有幾個錄音就輪流用，連續打才不會像機器。
@@ -113,12 +115,13 @@ export class SampledKit {
     let rate = 0;                 // 解碼後的取樣率（＝AudioContext 的），混音要用
     let failed = 0;
     let done = 0;
-    for (const job of jobs) {
+    const todo = [...jobs];
+    const one = async (job) => {
       if (job.keep) {
         pcmOf.set(job.url, have.notes[job.midi][job.i].pcm[job.j]);
         done++;
         if (onProgress) onProgress(done, jobs.length, name);
-        continue;
+        return;
       }
       try {
         let res = cache ? await cache.match(job.url) : null;
@@ -138,7 +141,9 @@ export class SampledKit {
       }
       done++;
       if (onProgress) onProgress(done, jobs.length, name);
-    }
+    };
+    const worker = async () => { while (todo.length) await one(todo.shift()); };
+    await Promise.all(Array.from({ length: Math.min(LOAD_WORKERS, todo.length) }, worker));
 
     for (const [midi, layers] of Object.entries(kit.notes)) {
       const out = [];

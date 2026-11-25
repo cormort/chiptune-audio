@@ -217,6 +217,11 @@ test('mixSampleInto places, resamples and releases a recording as asked', () => 
   const late = new Float32Array(4);
   mixSampleInto(late, 10, pcm, 1, 1);      // 起點在緩衝區外
   assert.equal(peak(late), 0);
+
+  // 負起點（at < 0）：應該從樣本的第 -at 個位置接續寫入 out[0]
+  const neg = new Float32Array(4);
+  mixSampleInto(neg, -1, pcm, 1, 1);
+  assert.deepEqual([...neg.slice(0, 2)], [0.5, 0.25], 'negative offset advances into the sample');
 });
 
 test('renderMidi mixes recordings for a sampled track and still normalises', () => {
@@ -543,4 +548,71 @@ test('both pages play from the shared sample library', () => {
   // 取樣音色在 MIDI 面板裡是 sampled:<name>，跟 chip／real 一樣靠前綴分辨
   assert.ok(console_.includes('SAMPLE_PREFIX'), 'page/console.js does not build sampled:<name> options');
   assert.ok(keyboard.includes('sampleSynth('), 'page/keyboard.js has no synth fallback while samples load');
+});
+
+test('SampledInstruments.playNote: crossfades layers at boundary, plays release sample on note-off, and disconnects GainNodes', async () => {
+  const sources = [];
+  const gains = [];
+  const ctx = {
+    currentTime: 1,
+    sampleRate: 44100,
+    state: 'running',
+    destination: {},
+    createBuffer: (ch, len, rate) => ({
+      numberOfChannels: ch, length: len, sampleRate: rate,
+      copyToChannel() {},
+    }),
+    createGain: () => {
+      const g = {
+        gain: { value: 1, cancelScheduledValues() {}, setTargetAtTime() {} },
+        connect() {},
+        disconnect() { g.disconnected = true; },
+        disconnected: false,
+      };
+      gains.push(g);
+      return g;
+    },
+    createBufferSource: () => {
+      const s = {
+        buffer: null,
+        playbackRate: { value: 1 },
+        connect() {},
+        start(when) { s.startedAt = when; },
+        stop(when) { s.stoppedAt = when; },
+        onended: null,
+      };
+      sources.push(s);
+      return s;
+    },
+  };
+
+  const bank = new SampledInstruments(ctx);
+  const spec = {
+    name: 'test-piano',
+    base: 'https://example.test/p/',
+    notes: { 60: [{ vel: 0, file: '60-p.mp3' }, { vel: 0.5, file: '60-f.mp3' }] },
+    release: { base: 'https://example.test/r/', notes: { 60: '60-rel.mp3' } },
+  };
+  await bank.load(spec, {
+    fetchImpl: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }),
+    decode: async () => fakeBuffer(64, 44100),
+  });
+
+  // At velocity 0.5 (the layer boundary), both layers play in equal-power crossfade
+  const handle = bank.playNote('test-piano', 60, { vel: 0.5 });
+  assert.ok(handle);
+  assert.equal(handle.sources.length, 2, 'two layers should play at the velocity boundary');
+  assert.equal(sources.length, 2);
+
+  // When released, both layers stop and the release damper sample starts
+  handle.release(0.2);
+  assert.equal(sources.length, 3, 'releasing the note should trigger the release sample');
+  assert.equal(sources[2].startedAt, 1);
+
+  // Every source cleans up its GainNode on ended
+  for (const s of sources) {
+    assert.equal(typeof s.onended, 'function');
+    s.onended();
+  }
+  assert.ok(gains.every((g) => g.disconnected), 'every GainNode must disconnect when its source ends');
 });

@@ -59,3 +59,27 @@ test('AcousticPiano.playNote: when/dur schedule the start and the fade-out', () 
   p.playNote(60);                          // unchanged: start now, no scheduled end
   assert.deepEqual(calls, [['start', 5]]);
 });
+
+test('renderAcousticPiano: deterministic output and AcousticPiano disconnects GainNode on ended', () => {
+  const a = renderAcousticPiano(60, SAMPLE_RATE, 0.5, 'standard');
+  const b = renderAcousticPiano(60, SAMPLE_RATE, 0.5, 'standard');
+  assert.deepEqual(a, b, 'renderAcousticPiano must be deterministic');
+
+  let disconnected = 0;
+  let lastSource = null;
+  const ctx = {
+    currentTime: 0, sampleRate: 8000, state: 'running', destination: {},
+    createBuffer: (_, len) => ({ getChannelData: () => new Float32Array(len) }),
+    createGain: () => ({ gain: { value: 1, setTargetAtTime() {}, cancelScheduledValues() {} }, connect() {}, disconnect: () => { disconnected++; } }),
+    createBufferSource: () => {
+      const src = { connect() {}, start() {}, stop() {}, onended: null };
+      lastSource = src;
+      return src;
+    },
+  };
+  const p = new AcousticPiano(ctx);
+  p.playNote(60);
+  assert.equal(typeof lastSource.onended, 'function', 'onended must be wired to clean up the GainNode');
+  lastSource.onended();
+  assert.equal(disconnected, 1, 'GainNode must disconnect when the note ends');
+});
