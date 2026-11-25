@@ -103,15 +103,22 @@ function renderPluck(out, offset, p, sampleRate, n) {
   // Scale per-cycle feedback inversely with f0 so high notes (more cycles/sec) decay at the same rate/sec
   const feedback = Math.min(0.9996, Math.pow(damp, Math.min(2.5, Math.max(0.2, 261.63 / f0))));
 
+  // Physical plucked-string initial displacement: triangular wave at pluck position beta
+  // (0.36 near middle -> warm bass/harp, 0.21 -> guitar, 0.11 near bridge -> bright harpsichord)
+  // plus ~15% filtered pick noise for realistic attack transient without random missing fundamentals.
+  const beta = Math.max(0.08, Math.min(0.45, 0.36 - 0.28 * bright));
+  const peakAt = Math.max(1, Math.min(delayLen - 1, Math.round(beta * delayLen)));
   const rng = mulberry32((p.seed ^ Math.round(f0 * 7)) >>> 0);
   let excLp = 0;
   let mean = 0;
   let excPeak = 0;
   for (let i = 0; i < delayLen; i++) {
+    const tri = i <= peakAt ? i / peakAt : (delayLen - i) / (delayLen - peakAt);
     const white = rng() * 2 - 1;
     excLp += bright * (white - excLp);
-    ring[i] = excLp;
-    mean += excLp;
+    const val = (tri * 2 - 1) * 0.85 + excLp * 0.15;
+    ring[i] = val;
+    mean += val;
   }
   mean /= delayLen;
   for (let i = 0; i < delayLen; i++) {
@@ -119,7 +126,6 @@ function renderPluck(out, offset, p, sampleRate, n) {
     const a = Math.abs(ring[i]);
     if (a > excPeak) excPeak = a;
   }
-  // Normalize initial excitation peak so soft-bright plucks (like bass/harp) stay audible at all octaves
   if (excPeak > 0.05) {
     const norm = 0.85 / excPeak;
     for (let i = 0; i < delayLen; i++) ring[i] *= norm;
