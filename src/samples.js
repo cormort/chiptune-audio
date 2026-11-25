@@ -582,6 +582,7 @@ export class SampledInstruments {
     const filterFreq = Math.min(20000, 1200 + vel * vel * 15000);
     const explicitPan = Number.isFinite(opts.pan) ? Math.max(-1, Math.min(1, opts.pan)) : null;
     const sustained = SUSTAINED_INSTRUMENTS.has(name) && !opts.dur;
+    const startedAt = opts.when !== undefined ? opts.when : ctx.currentTime;
 
     const active = [];
     for (const { buffer, pcm, stereo, gain } of layers) {
@@ -636,8 +637,10 @@ export class SampledInstruments {
           gainNode.gain.setTargetAtTime(0, now, f / 4);
           try { src.stop(now + f); } catch {}
         }
-        // 放開鍵的制音器釋音（平台鋼琴）：若有載入 release 取樣，在放開瞬間輕輕疊上
-        if (inst.release && inst.release.notes && inst.release.notes.length && target) {
+        // 放開鍵的制音器釋音（平台鋼琴）：release 樣本本身經過正規化，音量需大幅壓低並隨按鍵時間衰減，否則尾音會像「咚咚」敲擊聲
+        const heldSec = Math.max(0, now - startedAt);
+        const relEnv = Math.exp(-heldSec * 0.7);
+        if (relEnv >= 0.08 && inst.release && inst.release.notes && inst.release.notes.length && target) {
           const relHit = nearestSample(inst.release.notes, note);
           const relBuf = relHit ? this.bufferFor(relHit.pcm, inst.release.rate) : null;
           if (relBuf && ctx.createBufferSource) {
@@ -645,7 +648,7 @@ export class SampledInstruments {
             relSrc.buffer = relBuf;
             relSrc.playbackRate.value = 2 ** ((note - relHit.midi) / 12);
             const relGain = ctx.createGain();
-            relGain.gain.value = Math.min(1, baseGain * 0.5);
+            relGain.gain.value = Math.min(1, baseGain * 0.08 * relEnv);
             relSrc.connect(relGain);
             relGain.connect(target);
             relSrc.onended = () => { relGain.disconnect(); };

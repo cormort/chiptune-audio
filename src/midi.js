@@ -19,8 +19,8 @@ const SAMPLE_RELEASE_SECONDS = 0.14;
  *  normalised per hit, so this is headroom, not volume (each hit carries its own
  *  `gain` from the kit data, which is what balances kick against hi-hat). */
 const KIT_VOICE_GAIN = 0.9;
-/** 放開鍵的釋音（鋼琴的制音器聲）混音音量：它只是收尾的細節，不該跟主體一樣大。 */
-const SAMPLE_RELEASE_GAIN = 0.5;
+/** 放開鍵的釋音（鋼琴的制音器聲）混音音量：它只是收尾的細節，必須壓低避免尾音出現明顯「咚咚」聲。 */
+const SAMPLE_RELEASE_GAIN = 0.09;
 
 const DRUM_CHANNEL = 9; // GM channel 10
 
