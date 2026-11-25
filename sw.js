@@ -7,7 +7,7 @@
 // `cache-control: max-age=600`, and without it a freshly deployed worker would
 // precache whatever the browser still had lying around — the app would then
 // serve a mix of two versions for up to ten minutes.
-const VERSION = 'v41';
+const VERSION = 'v42';
 /** 外殼（HTML／JS／CSS）每次部署都換。 */
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
@@ -21,7 +21,7 @@ const MEDIA_PREFIX = 'chiptune-media-';
 const APP = [
   './', 'index.html', 'console.html', 'keyboard.html', 'kalimba.html', 'score.html', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
-  'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/music.js', 'src/rng.js',
+  'src/index.js', 'src/engine.js', 'src/sfx.js', 'src/synth.js', 'src/music.js', 'src/rng.js',
   'src/instruments.js', 'src/midi.js', 'src/wav.js', 'src/piano.js', 'src/pianoroll.js',
   'src/samples.js', 'src/sample-library.js', 'src/dynamic-library.js', 'src/gm.js', 'src/drums.js',
   'src/kalimba.js', 'src/kalimba-library.js',

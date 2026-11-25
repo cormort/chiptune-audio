@@ -1,4 +1,5 @@
 import { mulberry32 } from './rng.js';
+import { renderAcousticModel } from './synth.js';
 
 export const SAMPLE_RATE = 44100;
 export const WAVE = { SQUARE: 0, SAW: 1, TRIANGLE: 2, NOISE: 3 };
@@ -73,6 +74,10 @@ const LIMITS = {
  *  across the 24 presets), and for the renderer an absent key means exactly
  *  "default", so a sparse object stays both fast and unambiguous. */
 const TIMBRE_KEYS = ['h2', 'h3', 'h4', 'h5', 'unison', 'detune', 'cutoff', 'chiff'];
+const ACOUSTIC_KEYS = [
+  'fmRatio', 'fmIndex', 'fmDecay', 'damp', 'pluckBright',
+  'bodyFreq', 'bodyQ', 'vibDelay', 'tremRate', 'tremDepth', 'scoop', 'filterEnv',
+];
 
 /** Coerce a params object into a complete, finite, in-range parameter set.
  *  Unknown keys are dropped, `undefined`/`NaN`/`Infinity` fall back to the
@@ -104,6 +109,13 @@ export function normalizeSfx(params = {}) {
     if (k === 'unison') v = Math.round(v);
     // `detune` only matters alongside `unison`, so it rides along with it.
     if (v !== SFX_DEFAULTS[k] || (k === 'detune' && p.unison !== undefined)) p[k] = v;
+  }
+  if (typeof src.model === 'string' && src.model) {
+    p.model = src.model;
+    for (const k of ACOUSTIC_KEYS) {
+      const raw = src[k];
+      if (typeof raw === 'number' && Number.isFinite(raw)) p[k] = raw;
+    }
   }
   return p;
 }
@@ -357,6 +369,7 @@ function renderRichVoice(out, offset, p, sampleRate) {
 /** One oscillator, or the rich voice when a timbre param is set. The check is
  *  outside the loops on purpose: see renderRichVoice. */
 function renderVoice(out, offset, p, sampleRate) {
+  if (p.model) return renderAcousticModel(out, offset, p, sampleRate);
   if (p.h2 || p.h3 || p.h4 || p.h5 || p.unison || p.cutoff || p.chiff) {
     return renderRichVoice(out, offset, p, sampleRate);
   }

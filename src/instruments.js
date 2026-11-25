@@ -40,98 +40,86 @@ export const INSTRUMENTS = {
  *  for (a violin is not a saw wave), so this bank is a superset: every chip key
  *  resolves here, and the extras resolve as `real:<name>` only. */
 export const REALISTIC_INSTRUMENTS = {
-  piano: { hold: false, release: 0.2, tone: 9, params: {
-    wave: WAVE.SAW, h2: 0.42, h3: 0.26, h4: 0.14, h5: 0.08, unison: 1, detune: 4,
-    chiff: 0.2, attack: 0.002, sustain: 0.02, decay: 2, vol: 0.46 } },
-  epiano: { hold: false, release: 0.2, tone: 11, params: {
-    wave: WAVE.SQUARE, duty: 0.5, h2: 0.55, h3: 0.12, h4: 0.3, h5: 0.05, unison: 1, detune: 6,
-    chiff: 0.08, attack: 0.003, sustain: 0.04, decay: 1.6, vol: 0.42 } },
+  piano: { hold: false, release: 0.2, params: {
+    model: 'piano', attack: 0.002, sustain: 0.02, decay: 2.2, vol: 0.5 } },
+  epiano: { hold: false, release: 0.22, params: {
+    model: 'fm', fmRatio: 14, fmIndex: 1.8, fmDecay: 0.28, tremRate: 4.5, tremDepth: 0.14,
+    chiff: 0.06, attack: 0.002, sustain: 0.05, decay: 1.8, vol: 0.45 } },
   organ: { hold: true, release: 0.07, tone: 10, params: {
-    wave: WAVE.SQUARE, duty: 0.5, h2: 0.6, h3: 0.3, h4: 0.42, h5: 0.12,
-    attack: 0.02, vibDepth: 0.004, vibRate: 6.2, vol: 0.34 } },
-  strings: { hold: true, release: 0.45, tone: 7, params: {
-    wave: WAVE.SAW, h2: 0.32, h3: 0.2, h4: 0.1, unison: 2, detune: 12,
-    attack: 0.2, vibDepth: 0.01, vibRate: 5.2, vol: 0.4 } },
-  flute: { hold: true, release: 0.15, tone: 6, params: {
-    wave: WAVE.TRIANGLE, h2: 0.16, h3: 0.05, chiff: 0.3,
-    attack: 0.05, vibDepth: 0.014, vibRate: 5, vol: 0.45 } },
-  brass: { hold: true, release: 0.12, tone: 6, params: {
-    wave: WAVE.SAW, h2: 0.45, h3: 0.3, h4: 0.18, h5: 0.1, unison: 1, detune: 7,
-    chiff: 0.06, attack: 0.05, vibDepth: 0.005, vibRate: 5, vol: 0.4 } },
-  guitar: { hold: false, release: null, tone: 8, params: {
-    wave: WAVE.SAW, h2: 0.45, h3: 0.22, h4: 0.12, h5: 0.06, unison: 1, detune: 3,
-    chiff: 0.16, attack: 0.001, sustain: 0.01, decay: 1.1, vol: 0.44 } },
-  bell: { hold: false, release: null, tone: 16, params: {
-    wave: WAVE.TRIANGLE, h2: 0.45, h3: 0.2, h4: 0.5, h5: 0.3,
-    attack: 0.002, sustain: 0, decay: 2.4, vol: 0.5 } },
-  bass: { hold: true, release: 0.1, tone: 5, params: {
-    wave: WAVE.SAW, h2: 0.3, h3: 0.14, h4: 0.07, unison: 1, detune: 4,
-    attack: 0.012, vol: 0.45 } },
-  harp: { hold: false, release: null, tone: 9, params: {
-    wave: WAVE.SAW, h2: 0.36, h3: 0.18, h4: 0.09, chiff: 0.1,
-    attack: 0.002, sustain: 0.02, decay: 1.7, vol: 0.44 } },
-  choir: { hold: true, release: 0.35, tone: 6, params: {
-    wave: WAVE.TRIANGLE, h2: 0.28, h3: 0.18, h4: 0.09, unison: 2, detune: 16,
-    attack: 0.28, vibDepth: 0.012, vibRate: 4.6, vol: 0.42 } },
-  marimba: { hold: false, release: null, tone: 13, params: {
-    wave: WAVE.TRIANGLE, h2: 0.22, h3: 0.05, h4: 0.45, chiff: 0.12,
-    attack: 0.001, sustain: 0.004, decay: 0.8, vol: 0.5 } },
+    model: 'wind', wave: WAVE.TRIANGLE, h2: 0.65, h3: 0.35, h4: 0.48, h5: 0.15,
+    attack: 0.015, vibDepth: 0.003, vibRate: 6.2, vibDelay: 0.15, vol: 0.38 } },
+  strings: { hold: true, release: 0.45, tone: 7.5, params: {
+    model: 'bow', wave: WAVE.SAW, h2: 0.36, h3: 0.22, h4: 0.12, unison: 2, detune: 11,
+    bodyFreq: 420, bodyQ: 1.4, filterEnv: 0.35,
+    attack: 0.16, vibDepth: 0.01, vibRate: 5.2, vibDelay: 0.25, vol: 0.44 } },
+  flute: { hold: true, release: 0.14, tone: 6, params: {
+    model: 'flute', wave: WAVE.TRIANGLE, h2: 0.22, h3: 0.07, chiff: 0.35, filterEnv: 0.25,
+    attack: 0.045, vibDepth: 0.013, vibRate: 5.1, vibDelay: 0.22, vol: 0.48 } },
+  brass: { hold: true, release: 0.12, tone: 5, params: {
+    model: 'brass', wave: WAVE.SAW, h2: 0.55, h3: 0.38, h4: 0.22, h5: 0.12, unison: 1, detune: 7,
+    filterEnv: 1.15, bodyFreq: 520, bodyQ: 1.2, chiff: 0.08,
+    attack: 0.045, vibDepth: 0.004, vibRate: 5.0, vibDelay: 0.25, vol: 0.42 } },
+  guitar: { hold: false, release: null, params: {
+    model: 'pluck', pluckBright: 0.52, damp: 0.9945, bodyFreq: 195, bodyQ: 1.6,
+    attack: 0.001, sustain: 0.01, decay: 1.5, vol: 0.52 } },
+  bell: { hold: false, release: null, params: {
+    model: 'fm', fmRatio: 3.5, fmIndex: 4.2, fmDecay: 0.65,
+    attack: 0.001, sustain: 0, decay: 2.4, vol: 0.48 } },
+  bass: { hold: true, release: 0.1, params: {
+    model: 'pluck', pluckBright: 0.34, damp: 0.9965, bodyFreq: 110, bodyQ: 1.3,
+    attack: 0.002, vol: 0.55 } },
+  harp: { hold: false, release: null, params: {
+    model: 'pluck', pluckBright: 0.42, damp: 0.996, bodyFreq: 260, bodyQ: 1.2,
+    attack: 0.001, sustain: 0.01, decay: 1.9, vol: 0.52 } },
+  choir: { hold: true, release: 0.35, tone: 5.5, params: {
+    model: 'choir', wave: WAVE.TRIANGLE, h2: 0.34, h3: 0.22, h4: 0.14, unison: 2, detune: 15,
+    bodyFreq: 680, bodyQ: 2.2, filterEnv: 0.25,
+    attack: 0.22, vibDepth: 0.012, vibRate: 4.8, vibDelay: 0.3, vol: 0.46 } },
+  marimba: { hold: false, release: null, params: {
+    model: 'fm', fmRatio: 4.0, fmIndex: 1.25, fmDecay: 0.14, chiff: 0.16,
+    attack: 0.001, sustain: 0.004, decay: 0.9, vol: 0.54 } },
 
   // ---- real instruments the chip bank has no slot for ----
-  // Each one is the same recipe aimed at a different body: a bowed string gets
-  // a slow bow noise and a player's vibrato, a reed gets breath plus the odd
-  // harmonics a cylindrical bore favours, a struck string gets a pick transient
-  // and rings out. `tone` is per instrument, not per family: the violin has to
-  // stay brighter than the cello at the same pitch.
-  violin: { hold: true, release: 0.22, tone: 8, params: {
-    wave: WAVE.SAW, h2: 0.38, h3: 0.22, h4: 0.12, h5: 0.06, unison: 1, detune: 5,
-    chiff: 0.12, attack: 0.09, vibDepth: 0.012, vibRate: 5.6, vol: 0.38 } },
-  cello: { hold: true, release: 0.3, tone: 5.5, params: {
-    wave: WAVE.SAW, h2: 0.34, h3: 0.2, h4: 0.1, unison: 1, detune: 6,
-    chiff: 0.1, attack: 0.13, vibDepth: 0.009, vibRate: 5, vol: 0.44 } },
-  trumpet: { hold: true, release: 0.1, tone: 7, params: {
-    wave: WAVE.SAW, h2: 0.5, h3: 0.34, h4: 0.2, h5: 0.12, unison: 1, detune: 6,
-    chiff: 0.12, attack: 0.045, vibDepth: 0.004, vibRate: 5.4, vol: 0.36 } },
-  sax: { hold: true, release: 0.14, tone: 6.5, params: {
-    wave: WAVE.SQUARE, duty: 0.4, h2: 0.55, h3: 0.36, h4: 0.18, h5: 0.08, unison: 1, detune: 7,
-    chiff: 0.24, attack: 0.05, vibDepth: 0.008, vibRate: 5, vol: 0.36 } },
-  // A clarinet's bore is closed at one end, so it favours the odd harmonics —
-  // that hollow fifth is what says "clarinet" rather than "organ".
-  clarinet: { hold: true, release: 0.12, tone: 6, params: {
-    wave: WAVE.SQUARE, duty: 0.5, h2: 0.07, h3: 0.44, h4: 0.05, h5: 0.2,
-    chiff: 0.18, attack: 0.04, vibDepth: 0.005, vibRate: 4.8, vol: 0.4 } },
-  // Two strings per note, plucked by a quill: bright, quick, and gone.
-  harpsichord: { hold: false, release: 0.16, tone: 12, params: {
-    wave: WAVE.SAW, h2: 0.5, h3: 0.3, h4: 0.2, h5: 0.1, unison: 1, detune: 9,
-    chiff: 0.22, attack: 0.001, sustain: 0.01, decay: 1.3, vol: 0.42 } },
-  // Metal bars with a resonator tube: the fourth harmonic is the tuning, and
-  // the motor gives it a slow tremolo rather than a vibrato.
-  vibraphone: { hold: false, release: null, tone: 14, params: {
-    wave: WAVE.TRIANGLE, h2: 0.18, h3: 0.04, h4: 0.5, h5: 0.12,
-    attack: 0.002, sustain: 0.01, decay: 2.6, vibDepth: 0.008, vibRate: 5.5, vol: 0.46 } },
-  // Two strings, a snakeskin soundbox and no fingerboard: a wide expressive
-  // vibrato and a lot of bow noise, which is most of what an erhu is.
-  erhu: { hold: true, release: 0.24, tone: 7, params: {
-    wave: WAVE.SAW, h2: 0.4, h3: 0.3, h4: 0.16, h5: 0.08, unison: 1, detune: 9,
-    chiff: 0.16, attack: 0.07, vibDepth: 0.02, vibRate: 6.2, vol: 0.36 } },
-  // Free reeds in pairs, badly out of tune with each other on purpose: the
-  // beating between them is the instrument.
-  accordion: { hold: true, release: 0.11, tone: 9, params: {
-    wave: WAVE.SQUARE, duty: 0.5, h2: 0.5, h3: 0.3, h4: 0.22, h5: 0.1, unison: 1, detune: 13,
-    chiff: 0.06, attack: 0.035, vibDepth: 0.003, vibRate: 5.8, vol: 0.36 } },
-  // A comb of tuned steel teeth: tiny, high, and mostly fourth harmonic.
-  musicbox: { hold: false, release: null, tone: 18, params: {
-    wave: WAVE.TRIANGLE, h2: 0.16, h3: 0.04, h4: 0.42, h5: 0.16, chiff: 0.08,
-    attack: 0.001, sustain: 0.004, decay: 1.5, vol: 0.46 } },
-  // 卡林巴：一根鋼簧被拇指撥響。量過 17 個真實簧片的錄音（samples/kalimba/）：
-  // 泛音比基頻低 22–71 dB，也就是**幾乎是純音**，而前 15 ms 的起音能量比基頻高
-  // 6–48 dB——那個「鏘」的一聲是拇指打到簧片上的敲擊，不是泛音。所以這個音色的重點
-  // 是：乾淨的三角波底、很少的泛音、明顯的 chiff、以及很長的衰減（低音簧片量到
-  // 2.1 秒才掉 20 dB，高音 0.2 秒——`decay` 是固定的，這一段由簧片本身長度造成，
-  // 合成庫做不出來，所以這只是取樣還沒到時的代理音色）。
-  kalimba: { hold: false, release: null, tone: 7, params: {
-    wave: WAVE.TRIANGLE, h2: 0.08, h3: 0.02, h4: 0.03, h5: 0.01,
-    chiff: 0.3, attack: 0.001, sustain: 0.005, decay: 2.6, vol: 0.5 } },
+  violin: { hold: true, release: 0.22, tone: 7.5, params: {
+    model: 'bow', wave: WAVE.SAW, h2: 0.42, h3: 0.25, h4: 0.14, h5: 0.08, unison: 1, detune: 4,
+    bodyFreq: 480, bodyQ: 1.7, filterEnv: 0.45, scoop: -0.35, chiff: 0.16,
+    attack: 0.08, vibDepth: 0.013, vibRate: 5.6, vibDelay: 0.2, vol: 0.44 } },
+  cello: { hold: true, release: 0.3, tone: 5.2, params: {
+    model: 'bow', wave: WAVE.SAW, h2: 0.38, h3: 0.22, h4: 0.11, unison: 1, detune: 5,
+    bodyFreq: 210, bodyQ: 1.6, filterEnv: 0.4, scoop: -0.25, chiff: 0.14,
+    attack: 0.11, vibDepth: 0.01, vibRate: 5.0, vibDelay: 0.22, vol: 0.48 } },
+  trumpet: { hold: true, release: 0.1, tone: 5.5, params: {
+    model: 'brass', wave: WAVE.SAW, h2: 0.62, h3: 0.44, h4: 0.26, h5: 0.15, unison: 1, detune: 5,
+    filterEnv: 1.3, bodyFreq: 900, bodyQ: 1.3, chiff: 0.12,
+    attack: 0.038, vibDepth: 0.006, vibRate: 5.4, vibDelay: 0.25, vol: 0.42 } },
+  sax: { hold: true, release: 0.14, tone: 5.5, params: {
+    model: 'reed', wave: WAVE.SQUARE, duty: 0.38, h2: 0.55, h3: 0.38, h4: 0.22, h5: 0.1, unison: 1, detune: 6,
+    filterEnv: 0.9, bodyFreq: 580, bodyQ: 1.5, chiff: 0.22,
+    attack: 0.042, vibDepth: 0.009, vibRate: 5.1, vibDelay: 0.2, vol: 0.42 } },
+  clarinet: { hold: true, release: 0.12, tone: 5.2, params: {
+    model: 'reed', wave: WAVE.SQUARE, duty: 0.5, h2: 0.08, h3: 0.52, h4: 0.05, h5: 0.26,
+    filterEnv: 0.45, bodyFreq: 440, bodyQ: 1.3, chiff: 0.18,
+    attack: 0.035, vibDepth: 0.005, vibRate: 4.8, vibDelay: 0.22, vol: 0.46 } },
+  harpsichord: { hold: false, release: 0.16, params: {
+    model: 'pluck', pluckBright: 0.88, damp: 0.9935, bodyFreq: 650, bodyQ: 1.1,
+    attack: 0.001, sustain: 0.01, decay: 1.4, vol: 0.5 } },
+  vibraphone: { hold: false, release: null, params: {
+    model: 'fm', fmRatio: 4.0, fmIndex: 0.9, fmDecay: 0.22, tremRate: 5.6, tremDepth: 0.28,
+    attack: 0.002, sustain: 0.01, decay: 2.5, vol: 0.5 } },
+  erhu: { hold: true, release: 0.24, tone: 6.2, params: {
+    model: 'bow', wave: WAVE.SAW, h2: 0.46, h3: 0.34, h4: 0.18, h5: 0.09, unison: 1, detune: 6,
+    bodyFreq: 960, bodyQ: 2.1, filterEnv: 0.55, scoop: -0.65, chiff: 0.2,
+    attack: 0.065, vibDepth: 0.02, vibRate: 6.2, vibDelay: 0.18, vol: 0.44 } },
+  accordion: { hold: true, release: 0.11, tone: 8.5, params: {
+    model: 'reed', wave: WAVE.SQUARE, duty: 0.44, h2: 0.52, h3: 0.32, h4: 0.22, h5: 0.12, unison: 1, detune: 13,
+    filterEnv: 0.25, chiff: 0.06,
+    attack: 0.03, vibDepth: 0.003, vibRate: 5.8, vol: 0.42 } },
+  musicbox: { hold: false, release: null, params: {
+    model: 'fm', fmRatio: 5.04, fmIndex: 2.1, fmDecay: 0.18, chiff: 0.08,
+    attack: 0.001, sustain: 0.004, decay: 1.6, vol: 0.5 } },
+  kalimba: { hold: false, release: null, params: {
+    model: 'fm', fmRatio: 6.27, fmIndex: 0.75, fmDecay: 0.06, chiff: 0.26,
+    attack: 0.001, sustain: 0.005, decay: 2.3, vol: 0.52 } },
 };
 
 /** The two banks the pages switch between. */
