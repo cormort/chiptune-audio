@@ -97,7 +97,6 @@ export const SAMPLE_LIBRARY = {
       71: 'B4.mp3',
       73: 'Cs5.mp3',
       76: 'E5.mp3',
-      79: 'G3.mp3',
       80: 'Gs5.mp3',
       82: 'As5.mp3',
     },

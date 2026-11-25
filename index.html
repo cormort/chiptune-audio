@@ -180,13 +180,15 @@
 
   <section id="keysSection">
     <div class="row">
-      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:8rem"></label>
+      <label class="inline">音量 <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6" style="width:7rem"></label>
+      <label class="inline">殘響 <input id="reverb" type="range" min="0" max="0.8" step="0.01" value="0.22" style="width:6.5rem"></label>
       <label class="inline">八度 <select id="octave"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
       <label class="inline">標示 <select id="keyLabel"><option value="key">電腦按鍵</option><option value="name">音名</option><option value="num">簡譜</option></select></label>
+      <button id="sustain" aria-pressed="false" title="延音踏板（也可按住空白鍵 Space）">延音踏板</button>
     </div>
     <div class="keys" id="keys"></div>
     <div id="held" aria-live="polite"></div>
-    <p class="muted">支援多指觸控與電腦鍵盤和弦：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）為低八度，上排 <kbd>Q</kbd>–<kbd>I</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）為高八度。</p>
+    <p class="muted">支援多指觸控與電腦鍵盤和弦：下排 <kbd>Z</kbd>–<kbd>M</kbd>（黑鍵 <kbd>S D G H J</kbd>）為低八度，上排 <kbd>Q</kbd>–<kbd>I</kbd>（黑鍵 <kbd>2 3 5 6 7</kbd>）為高八度，<kbd>Space</kbd> 為延音踏板。</p>
   </section>
 </main>
 

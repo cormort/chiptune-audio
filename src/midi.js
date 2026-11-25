@@ -154,7 +154,9 @@ export function parseMidi(data) {
 
     let tick = 0;
     let status = 0;
-    const open = new Map(); // `${ch}:${note}` -> [{ tick, vel }] (FIFO)
+    const open = new Map();       // `${ch}:${note}` -> [{ tick, vel }] (FIFO)
+    const pedal = new Map();      // ch -> boolean (CC64 >= 64)
+    const sustained = new Map();  // ch -> [{ note, tick, vel }]
     while (pos < end) {
       tick += vlq();
       let b = u8();
@@ -190,6 +192,16 @@ export function parseMidi(data) {
       const d1 = u8();
       const d2 = kind === 0xc0 || kind === 0xd0 ? 0 : u8();
       if (kind === 0x90 && d2 > 0) {
+        // Re-striking a note while sustain pedal is held ends the sustained tail first
+        const sus = sustained.get(ch);
+        if (sus && sus.length) {
+          for (let j = sus.length - 1; j >= 0; j--) {
+            if (sus[j].note === d1) {
+              const s = sus.splice(j, 1)[0];
+              raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
+            }
+          }
+        }
         const k = `${ch}:${d1}`;
         let q = open.get(k);
         if (!q) { q = []; open.set(k, q); }
@@ -204,16 +216,38 @@ export function parseMidi(data) {
       } else if (kind === 0x80 || kind === 0x90) {
         const q = open.get(`${ch}:${d1}`);
         const on = q && q.shift();
-        if (on) raw.push({ trk, ch, tick: on.tick, endTick: tick, note: d1, vel: on.vel });
+        if (on) {
+          if (pedal.get(ch)) {
+            let sus = sustained.get(ch);
+            if (!sus) { sus = []; sustained.set(ch, sus); }
+            sus.push({ note: d1, tick: on.tick, vel: on.vel });
+          } else {
+            raw.push({ trk, ch, tick: on.tick, endTick: tick, note: d1, vel: on.vel });
+          }
+        }
+      } else if (kind === 0xb0 && d1 === 64) {
+        if (d2 >= 64) {
+          pedal.set(ch, true);
+        } else {
+          pedal.set(ch, false);
+          const sus = sustained.get(ch);
+          if (sus && sus.length) {
+            for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
+            sus.length = 0;
+          }
+        }
       } else if (kind === 0xc0) {
         const k = `${trk}:${ch}`;
         if (!programs.has(k)) programs.set(k, d1);
       }
     }
-    // Notes never switched off end with their track.
+    // Notes never switched off (or still held by sustain pedal) end with their track.
     for (const [k, q] of open) {
       const [ch, note] = k.split(':').map(Number);
       for (const on of q) raw.push({ trk, ch, tick: on.tick, endTick: tick, note, vel: on.vel });
+    }
+    for (const [ch, sus] of sustained) {
+      for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
     }
     pos = end;
   }

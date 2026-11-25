@@ -360,3 +360,40 @@ test('setMix skips the re-render when the part levels are already playing', () =
   assert.ok(a.ctx.buffersCreated > created);
   assert.ok(first.stopped);
 });
+
+test('setReverb wires procedural stereo convolver and ramps wet gain', () => {
+  const mkParam = (v) => ({
+    value: v, calls: [],
+    cancelScheduledValues() {},
+    setTargetAtTime(val) { this.value = val; this.calls.push(val); },
+  });
+  const nodes = [];
+  const ctx = {
+    currentTime: 0, sampleRate: 44100, state: 'running', destination: { kind: 'dest' },
+    createBuffer: (ch, len) => {
+      const chs = Array.from({ length: ch }, () => new Float32Array(len));
+      return { getChannelData: (c) => chs[c] };
+    },
+    createGain: () => {
+      const g = { kind: 'gain', gain: mkParam(1), connections: [], connect(d) { this.connections.push(d); } };
+      nodes.push(g);
+      return g;
+    },
+    createConvolver: () => {
+      const c = { kind: 'convolver', buffer: null, connections: [], connect(d) { this.connections.push(d); } };
+      nodes.push(c);
+      return c;
+    },
+    createBufferSource: () => ({ playbackRate: { value: 1 }, connect() {}, start() {}, stop() {} }),
+    resume() { return Promise.resolve(); },
+  };
+  globalThis.AudioContext = function () { return ctx; };
+  const a = new ChiptuneAudio({ reverb: 0.25 });
+  a._ensure();
+  assert.ok(a.reverbNode && a.reverbNode.buffer, 'convolver IR should be synthesized');
+  assert.equal(a.reverbGain.gain.value, 0.25);
+  assert.equal(a.setReverb(2), 1, 'reverb amount clamps to 1');
+  assert.equal(a.reverbGain.gain.value, 1);
+  assert.equal(a.setReverb(-1), 0);
+  assert.equal(a.reverbGain.gain.value, 0);
+});

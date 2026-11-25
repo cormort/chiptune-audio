@@ -135,3 +135,18 @@ test('instruments: held notes follow the note length, others keep their envelope
   }
   assert.throws(() => instrumentNote('kazoo', 60), /Unknown instrument/);
 });
+
+test('parseMidi honours CC64 sustain pedal', () => {
+  const bytes = smf(1, 480, [
+    track([[0, ...tempo(500000)]]),
+    track([
+      [0, 0xb0, 64, 127],     // pedal down at t=0
+      [0, 0x90, 60, 100],     // C4 on at t=0
+      [480, 0x80, 60, 0],     // C4 note-off at t=0.5s (held by pedal)
+      [480, 0xb0, 64, 0],     // pedal up at t=1.0s
+    ]),
+  ]);
+  const m = parseMidi(bytes);
+  assert.equal(m.tracks[0].notes.length, 1);
+  assert.ok(Math.abs(m.tracks[0].notes[0].dur - 1.0) < 1e-6, `sustained note should last 1.0s, got ${m.tracks[0].notes[0].dur}`);
+});

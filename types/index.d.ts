@@ -357,7 +357,7 @@ export declare class SampledInstruments {
   playNote(
     name: string,
     note: number,
-    opts?: { vel?: number; gain?: number; when?: number; dur?: number },
+    opts?: { vel?: number; gain?: number; pan?: number; when?: number; dur?: number },
   ): { source: AudioBufferSourceNode; sources: AudioBufferSourceNode[]; release: (fade?: number) => void } | null;
   pcm(name: string): SamplePcm | null;
   voices(names?: string[]): Record<string, SamplePcm>;
@@ -713,6 +713,8 @@ export interface ChiptuneAudioOptions {
   sampleRate?: number;
   /** Opt-in master output filter (tames naive-oscillator aliasing). */
   filter?: { type?: BiquadFilterType; freq?: number; q?: number } | null;
+  /** Room reverb wet mix, 0..1. Default 0. */
+  reverb?: number;
 }
 
 export interface MixLevels extends PartMix {
@@ -730,6 +732,7 @@ export declare class ChiptuneAudio {
   readonly sfxCache: Map<string, AudioBuffer>;
   volume: number;
   muted: boolean;
+  reverb: number;
   /** Current mixer levels (use setMix to change them). */
   readonly mix: Readonly<Required<MixLevels>>;
 
@@ -759,6 +762,8 @@ export declare class ChiptuneAudio {
   resume(): Promise<void>;
   setVolume(v: number): void;
   setMuted(m: boolean): void;
+  /** Set room reverb wet mix, 0..1. */
+  setReverb(amount: number): number;
   /** Set mixer levels; `sfx`/`music` apply instantly, part levels re-render
    *  the playing loop and resume it in place. Returns the new levels. */
   setMix(levels: MixLevels): Required<MixLevels>;

@@ -12,7 +12,10 @@ import { $, installApp, prefs, registerServiceWorker } from './ui.js';
 registerServiceWorker();
 installApp();
 
-const audio = new ChiptuneAudio({ volume: prefs.get('volume', 0.6) });
+const audio = new ChiptuneAudio({
+  volume: prefs.get('volume', 0.6),
+  reverb: prefs.get('reverb', 0.22),
+});
 const sampled = new SampledInstruments(() => audio._ensure(), () => audio.master);
 
 // 取樣樂器的名稱與中文名來自 src/sample-library.js（20 種真實錄音）。
@@ -173,6 +176,21 @@ function labelKeys() {
 // with, and the fade to use when it is let go (so switching bank or instrument
 // mid-chord still releases every note the right way).
 const held = new Set();
+let sustain = false;
+const sustained = new Set();
+function setSustain(on) {
+  sustain = !!on;
+  $('sustain').classList.toggle('on', sustain);
+  $('sustain').setAttribute('aria-pressed', String(sustain));
+  if (!sustain) {
+    for (const note of sustained) {
+      if (note.voice && note.release !== null) note.voice.release(note.release);
+    }
+    sustained.clear();
+  }
+}
+$('sustain').onclick = () => setSustain(!sustain);
+
 function noteOn(i) {
   const n = baseMidi() + i;
   let voice = null;
@@ -201,7 +219,8 @@ function noteOn(i) {
 }
 function noteOff(note) {
   if (!note || !held.delete(note)) return;
-  if (note.voice && note.release !== null) note.voice.release(note.release);
+  if (sustain && note.voice && note.release !== null) sustained.add(note);
+  else if (note.voice && note.release !== null) note.voice.release(note.release);
   paintHeld();
 }
 function paintHeld() {
@@ -237,7 +256,8 @@ addEventListener('keydown', (e) => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   // The target is not always an Element (a synthetic event on window, or a
   // browser that reports document), and typing in a control must not play notes.
-  if (e.target && e.target.closest && e.target.closest('input, select, textarea')) return;
+  if (e.target && e.target.closest && e.target.closest('input, select, textarea, button')) return;
+  if (e.code === 'Space') { e.preventDefault(); setSustain(true); return; }
   const k = e.key.toLowerCase();
   const i = KEYMAP.indexOf(k);
   if (i < 0 || byKey.has(k)) return;
@@ -245,12 +265,14 @@ addEventListener('keydown', (e) => {
   byKey.set(k, noteOn(i));
 });
 addEventListener('keyup', (e) => {
+  if (e.code === 'Space') { setSustain(false); return; }
   const k = e.key.toLowerCase();
   noteOff(byKey.get(k));
   byKey.delete(k);
 });
 // Keys held while the window loses focus never get a keyup.
 addEventListener('blur', () => {
+  setSustain(false);
   for (const note of [...held]) noteOff(note);
   byKey.clear();
   byPointer.clear();
@@ -284,10 +306,12 @@ $('prefetchAll').onclick = async () => {
 
 // 設定：音量、八度、標示都留著（音色在上面一起存）。
 $('volume').value = audio.volume;
+$('reverb').value = audio.reverb;
 $('octave').value = String(prefs.get('octave', 4));
 // 手機（沒有滑鼠游標的觸控裝置）沒有實體鍵盤，預設標音名而不是 Z X C…
 $('keyLabel').value = prefs.get('keyLabel', matchMedia('(hover: none)').matches ? 'name' : 'key');
 $('octave').onchange = () => { prefs.set('octave', +$('octave').value); labelKeys(); };
 $('keyLabel').onchange = () => { prefs.set('keyLabel', $('keyLabel').value); labelKeys(); };
 $('volume').oninput = (e) => { audio.setVolume(+e.target.value); prefs.set('volume', +e.target.value); };
+$('reverb').oninput = (e) => { audio.setReverb(+e.target.value); prefs.set('reverb', +e.target.value); };
 labelKeys();

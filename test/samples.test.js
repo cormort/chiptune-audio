@@ -616,3 +616,83 @@ test('SampledInstruments.playNote: crossfades layers at boundary, plays release 
   }
   assert.ok(gains.every((g) => g.disconnected), 'every GainNode must disconnect when its source ends');
 });
+
+test('SampledInstruments: progressive loading publishes early, single-layer velocity filter, sustain loop, and stereo pan', async () => {
+  const filters = [];
+  const panners = [];
+  const sources = [];
+  const gains = [];
+  const ctx = {
+    currentTime: 0,
+    sampleRate: 44100,
+    state: 'running',
+    destination: {},
+    createBuffer: (ch, len, rate) => ({
+      numberOfChannels: ch, length: len, sampleRate: rate, copyToChannel() {},
+    }),
+    createBiquadFilter: () => {
+      const f = { type: 'lowpass', frequency: { value: 20000 }, connect() {}, disconnect() { f.disconnected = true; }, disconnected: false };
+      filters.push(f);
+      return f;
+    },
+    createStereoPanner: () => {
+      const p = { pan: { value: 0 }, connect() {}, disconnect() { p.disconnected = true; }, disconnected: false };
+      panners.push(p);
+      return p;
+    },
+    createGain: () => {
+      const g = { gain: { value: 1, cancelScheduledValues() {}, setTargetAtTime() {} }, connect() {}, disconnect() { g.disconnected = true; }, disconnected: false };
+      gains.push(g);
+      return g;
+    },
+    createBufferSource: () => {
+      const s = { buffer: null, playbackRate: { value: 1 }, loop: false, loopStart: 0, loopEnd: 0, connect() {}, start() {}, stop() {}, onended: null };
+      sources.push(s);
+      return s;
+    },
+  };
+
+  const bank = new SampledInstruments(ctx);
+  // Progressive loading: 7 notes x 2 layers; instrument should be playable before all 14 files finish
+  const progSpec = {
+    name: 'strings',
+    base: 'https://example.test/s/',
+    notes: Object.fromEntries([48, 52, 55, 60, 64, 67, 72].map((m) => [m, [{ vel: 0, file: `${m}p.mp3` }, { vel: 0.5, file: `${m}f.mp3` }]])),
+  };
+  let seenPlayableDuringLoad = false;
+  const longTone = (() => {
+    const len = 44100;
+    const d = new Float32Array(len);
+    for (let i = 0; i < len; i++) d[i] = Math.sin((2 * Math.PI * 220 * i) / 44100);
+    return { length: len, sampleRate: 44100, numberOfChannels: 1, getChannelData: () => d };
+  })();
+  await bank.load(progSpec, {
+    fetchImpl: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }),
+    decode: async () => longTone,
+    onProgress: (done, total) => {
+      if (done < total && bank.instruments.has('strings')) seenPlayableDuringLoad = true;
+    },
+  });
+  assert.equal(seenPlayableDuringLoad, true, 'progressive loading must publish primary notes before secondary layers finish');
+
+  // Sustained instrument ('strings') sets loop points when held without fixed dur
+  const hStr = bank.playNote('strings', 72, { vel: 0.85 });
+  assert.ok(hStr);
+  assert.equal(sources[0].loop, true, 'sustained instrument should loop in realtime');
+  assert.ok(sources[0].loopEnd > sources[0].loopStart);
+  assert.equal(panners.length, 1, 'mono recording gets key-tracked stereo panner');
+  assert.ok(panners[0].pan.value > 0, 'high note pans slightly right');
+
+  // Single-layer instrument with soft velocity engages lowpass velocity filter
+  await bank.load({ name: 'harp-test', base: 'https://example.test/h/', notes: { 60: '60.mp3' } }, {
+    fetchImpl: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }),
+    decode: async () => longTone,
+  });
+  const hHarp = bank.playNote('harp-test', 48, { vel: 0.3 });
+  assert.ok(hHarp);
+  assert.equal(filters.length, 1, 'soft note on single-layer instrument engages lowpass velocity filter');
+  assert.ok(filters[0].frequency.value < 5000);
+
+  for (const s of sources) s.onended();
+  assert.ok(filters.every((f) => f.disconnected) && panners.every((p) => p.disconnected) && gains.every((g) => g.disconnected));
+});

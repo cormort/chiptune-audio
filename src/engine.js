@@ -1,6 +1,7 @@
 import { renderSfx, SFX_PRESETS, SAMPLE_RATE, normalizeSfx } from './sfx.js';
 import { generateSong, renderSong } from './music.js';
 import { renderMidi } from './midi.js';
+import { mulberry32 } from './rng.js';
 
 // Rendered AudioBuffers kept around, bounded so a game that sprays custom
 // parameter objects cannot grow the heap without limit.
@@ -30,12 +31,15 @@ function sfxKey(sampleRate, name, params) {
 // Web Audio playback layer. Create it anywhere; audio starts on the first play*
 // call, which must happen after a user gesture (browser autoplay policy).
 export class ChiptuneAudio {
-  constructor({ volume = 0.6, sampleRate, filter = null } = {}) {
+  constructor({ volume = 0.6, sampleRate, filter = null, reverb = 0 } = {}) {
     this.volume = clamp01(volume, 0.6);
     this.muted = false;
+    this.reverb = clamp01(reverb, 0);
     this.ctx = null;
     this.master = null;
     this.filter = null;
+    this.reverbNode = null;
+    this.reverbGain = null;
     this.music = null;
     this.musicBus = null;
     /** Mixer levels, each 0..1: the sfx/music buses and the three music parts. */
@@ -77,10 +81,59 @@ export class ChiptuneAudio {
       this.musicBus = this.ctx.createGain();
       this.musicBus.gain.value = this.mix.music;
       this.musicBus.connect(this.master);
+      this._setupReverb();
       this._applyVolume(true);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
+  }
+
+  /** Build a lightweight procedural stereo room impulse response (zero external files).
+   *  Wired in parallel off `master` so any instrument routed into `audio.master`
+   *  automatically gets natural room ambience when `reverb > 0`. */
+  _setupReverb() {
+    if (!this.ctx || !this.master || typeof this.ctx.createConvolver !== 'function') return;
+    if (this.reverbNode) return;
+    const rate = this.ctx.sampleRate || SAMPLE_RATE;
+    const len = Math.max(1, Math.floor(rate * 1.45));
+    const ir = this.ctx.createBuffer(2, len, rate);
+    const rng = mulberry32(0x7e7e5b);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = ir.getChannelData(ch);
+      let lp = 0;
+      const damp = 0.32;
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        const decay = Math.pow(1 - t, 2.6);
+        const white = (rng() * 2 - 1) * decay;
+        lp += damp * (white - lp);
+        data[i] = lp * 0.45;
+      }
+      const er1 = Math.min(len - 1, Math.floor(rate * (ch === 0 ? 0.011 : 0.015)));
+      const er2 = Math.min(len - 1, Math.floor(rate * (ch === 0 ? 0.023 : 0.029)));
+      data[er1] += 0.35;
+      data[er2] += 0.2;
+    }
+    const conv = this.ctx.createConvolver();
+    conv.buffer = ir;
+    const wet = this.ctx.createGain();
+    wet.gain.value = this.reverb;
+    const dest = this.filter || this.ctx.destination;
+    this.master.connect(conv);
+    conv.connect(wet);
+    wet.connect(dest);
+    this.reverbNode = conv;
+    this.reverbGain = wet;
+  }
+
+  /** Set room reverb wet mix, 0 (dry) .. 1 (lush hall). */
+  setReverb(amount) {
+    this.reverb = clamp01(amount, this.reverb);
+    if (!this.reverbGain || !this.ctx) return this.reverb;
+    const now = this.ctx.currentTime;
+    this.reverbGain.gain.cancelScheduledValues(now);
+    this.reverbGain.gain.setTargetAtTime(this.reverb, now, 0.02);
+    return this.reverb;
   }
 
   /** Ramp rather than jump, so volume/mute changes do not click. */
@@ -355,6 +408,8 @@ export class ChiptuneAudio {
       this.master = null;
       this.musicBus = null;
       this.filter = null;
+      this.reverbNode = null;
+      this.reverbGain = null;
       if (ctx.state !== 'closed') await ctx.close();
     }
   }

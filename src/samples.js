@@ -272,7 +272,31 @@ export function sampleVoice(notes, midi, vel = 1, round = 0) {
   };
 }
 
-/** 讓 out[at + i] 疊上 pcm[0], pcm[1], ...（離線算 MIDI 用），線性內插。
+/** 持續發聲的管弦／風琴類取樣：即時按住超過原錄音長度時，自動在中段做過零點循環。 */
+const SUSTAINED_INSTRUMENTS = new Set([
+  'strings', 'organ', 'flute', 'flute-vib', 'violin', 'cello', 'contrabass',
+  'clarinet', 'saxophone', 'trumpet', 'trombone', 'french-horn', 'tuba',
+]);
+
+/** 在錄音中段（約 35% 與 78%）尋找向上過零點作為無縫循環邊界。 */
+function findLoopPoints(pcm, rate) {
+  if (!pcm || !rate || pcm.length < rate * 0.8) return null;
+  const zeroNear = (target, radius) => {
+    const lo = Math.max(1, target - radius);
+    const hi = Math.min(pcm.length - 1, target + radius);
+    for (let i = lo; i <= hi; i++) {
+      if (pcm[i - 1] <= 0 && pcm[i] > 0) return i;
+    }
+    return target;
+  };
+  const radius = Math.min(2048, Math.floor(pcm.length * 0.05));
+  const a = zeroNear(Math.floor(pcm.length * 0.35), radius);
+  const b = zeroNear(Math.floor(pcm.length * 0.78), radius);
+  if (b - a < rate * 0.2) return null;
+  return { loopStart: a / rate, loopEnd: b / rate };
+}
+
+/** 讓 out[at + i] 疊上 pcm[0], pcm[1], ...（離線算 MIDI 用），4 點 Hermite 三次內插。
  *  `ratio` 是每個輸出樣本要前進幾個樣本（含取樣率換算與播放速率）。
  *  `hold` 秒之後用 `release` 秒淡出，然後停止——取樣器接到 note-off 就是這樣做的。 */
 export function mixSampleInto(out, at, pcm, ratio, gain, { hold = Infinity, release = 0.12, rate = 44100 } = {}) {
@@ -296,7 +320,21 @@ export function mixSampleInto(out, at, pcm, ratio, gain, { hold = Infinity, rele
       if (k >= 1) break;
       env = 1 - k;
     }
-    out[i] += (pcm[idx] + (pcm[idx + 1] - pcm[idx]) * frac) * gain * env;
+    let sample;
+    if (frac === 0) {
+      sample = pcm[idx];
+    } else if (idx >= 1 && idx + 2 < pcm.length) {
+      // 4 點 Catmull-Rom / Hermite 內插：保留跨八度升頻／降頻時的高頻清晰度
+      const y0 = pcm[idx - 1], y1 = pcm[idx], y2 = pcm[idx + 1], y3 = pcm[idx + 2];
+      const c0 = y1;
+      const c1 = 0.5 * (y2 - y0);
+      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+      sample = ((c3 * frac + c2) * frac + c1) * frac + c0;
+    } else {
+      sample = pcm[idx] + (pcm[idx + 1] - pcm[idx]) * frac;
+    }
+    out[i] += sample * gain * env;
   }
   return i;
 }
@@ -387,9 +425,35 @@ export class SampledInstruments {
     let releaseRate = this.instruments.get(name)?.release?.rate || 0;
     let failed = 0;
     let done = 0;
-    // 同時抓幾個檔：一個一個抓的話，平台鋼琴 105 個檔在手機上每個都要等一趟來回，
-    // 光等就要十幾秒。每個檔的結果都寫進以 midi／take 為鍵的位置、最後再排序，所以順序無所謂。
-    const todo = [...urls];
+    // 同時抓幾個檔：先抓每個音高的第一條核心延音層，提早啟用真實取樣；再補其他力度層與釋音。
+    const seenPrimary = new Set();
+    const primary = [];
+    const secondary = [];
+    for (const u of urls) {
+      if (!u.release && !seenPrimary.has(u.midi)) {
+        seenPrimary.add(u.midi);
+        primary.push(u);
+      } else {
+        secondary.push(u);
+      }
+    }
+    const todo = [...primary, ...secondary];
+    const quickReady = Math.min(6, primary.length);
+    let publishedEarly = false;
+    const snapshot = (applyNorm) => {
+      const sorted = [...notes.values()]
+        .map((n) => ({ ...n, layers: [...n.layers].sort((a, b) => a.vel - b.vel), ...(n.takes ? { takes: n.takes.filter(Boolean) } : {}) }))
+        .sort((a, b) => a.midi - b.midi);
+      const gain = applyNorm ? normalizeInstrument(sorted) : 1;
+      const hit = {
+        notes: sorted,
+        failed,
+        gain,
+        ...(release.size ? { release: { rate: releaseRate || 44100, notes: [...release.values()].sort((a, b) => a.midi - b.midi) } } : {}),
+      };
+      if (sorted.length) this.instruments.set(name, hit);
+      return hit;
+    };
     const one = async ({ midi, vel, url, take, release: isRelease }) => {
       if (isRelease && release.has(midi)) { done++; return; }
       const had = notes.get(midi);
@@ -430,25 +494,16 @@ export class SampledInstruments {
         if (typeof console !== 'undefined') console.warn(`[samples] ${name} ${url}: ${err.message}`);
       }
       done++;
+      if (!publishedEarly && quickReady > 0 && notes.size >= quickReady && secondary.length > 0) {
+        publishedEarly = true;
+        snapshot(false);
+      }
       if (onProgress) onProgress(done, urls.length, name);
     };
     const worker = async () => { while (todo.length) await one(todo.shift()); };
     await Promise.all(Array.from({ length: Math.min(LOAD_WORKERS, todo.length) }, worker));
-    const sorted = [...notes.values()].sort((a, b) => a.midi - b.midi);
-    for (const entry of sorted) {
-      entry.layers.sort((a, b) => a.vel - b.vel);
-      if (Array.isArray(entry.takes)) entry.takes = entry.takes.filter(Boolean);
-    }
-    // 樂器之間的基準音量：鋼琴原本比別人小 6 dB（見 normalizeInstrument）
-    const gain = normalizeInstrument(sorted);
-    const hit = {
-      notes: sorted,
-      failed,
-      gain,
-      ...(release.size ? { release: { rate: releaseRate || 44100, notes: [...release.values()].sort((a, b) => a.midi - b.midi) } } : {}),
-    };
-    if (sorted.length) this.instruments.set(name, hit);
-    this.loadedCount = sorted.reduce((n, e) => n + e.layers.length, 0);
+    const hit = snapshot(true);
+    this.loadedCount = hit.notes.reduce((n, e) => n + e.layers.length, 0);
     this.total = urls.length;
     return hit;
   }
@@ -512,25 +567,57 @@ export class SampledInstruments {
     // 丟掉半個錄音，而且會抵消。在力度交界處（±9%）同時播兩層做等功率淡化。
     const layers = [];
     for (const part of parts) {
-      const buffer = part.left && part.right
+      const stereo = !!(part.left && part.right);
+      const buffer = stereo
         ? this.stereoBufferFor(part.left, part.right, rate)
         : this.bufferFor(part.pcm, rate);
-      if (buffer) layers.push({ buffer, gain: baseGain * (part.gain ?? 1) });
+      if (buffer) layers.push({ buffer, pcm: part.pcm, stereo, gain: baseGain * (part.gain ?? 1) });
     }
     if (!layers.length) return null;
     if (ctx.state === 'suspended') ctx.resume();
 
     const target = this.targetNode;
+    const isSingleLayer = !(SAMPLE_LIBRARY[name] && SAMPLE_LIBRARY[name].layers) && (!v.sample.layers || v.sample.layers.length <= 1);
+    const useVelFilter = isSingleLayer && vel < 0.88 && typeof ctx.createBiquadFilter === 'function';
+    const filterFreq = Math.min(20000, 1200 + vel * vel * 15000);
+    const explicitPan = Number.isFinite(opts.pan) ? Math.max(-1, Math.min(1, opts.pan)) : null;
+    const sustained = SUSTAINED_INSTRUMENTS.has(name) && !opts.dur;
+
     const active = [];
-    for (const { buffer, gain } of layers) {
+    for (const { buffer, pcm, stereo, gain } of layers) {
       const src = ctx.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = v.rate;
+      if (sustained) {
+        const lp = findLoopPoints(pcm, rate);
+        if (lp) { src.loop = true; src.loopStart = lp.loopStart; src.loopEnd = lp.loopEnd; }
+      }
+      const created = [];
+      let tail = src;
+      if (useVelFilter) {
+        const filt = ctx.createBiquadFilter();
+        filt.type = 'lowpass';
+        filt.frequency.value = filterFreq;
+        tail.connect(filt);
+        tail = filt;
+        created.push(filt);
+      }
+      const panVal = explicitPan !== null
+        ? explicitPan
+        : (!stereo ? Math.max(-0.35, Math.min(0.35, ((note - 60) / 48) * 0.35)) : 0);
+      if (panVal !== 0 && typeof ctx.createStereoPanner === 'function') {
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = panVal;
+        tail.connect(panner);
+        tail = panner;
+        created.push(panner);
+      }
       const gainNode = ctx.createGain();
       gainNode.gain.value = gain;
-      src.connect(gainNode);
+      tail.connect(gainNode);
       gainNode.connect(target);
-      src.onended = () => { gainNode.disconnect(); };
+      created.push(gainNode);
+      src.onended = () => { for (const n of created) n.disconnect(); };
       startAt(ctx, gainNode, src, opts);
       active.push({ src, gainNode });
     }
