@@ -36,22 +36,26 @@ const CACHE = '/tmp/chiptune-guitar';
 const FORCE = process.argv.includes('--force');
 const SECONDS = 3.2;
 const REFERENCE = 0.7;
-const LAYERS = 3;
 
-/** 兩把吉他：SFZ 程式、輸出資料夾、資料表鍵名、中文名、代理合成音色。 */
-const JAZZ = process.argv.includes('--jazz');
-/** 兩套來源：Shinyguitar（木吉他＝鋼弦、電吉他）與 Emily（半空心、flatwound 弦，當爵士吉他）。 */
+/** 四套來源：
+ *  - nylon: FreePats Spanish Classical Guitar（CC0 1.0，真實西班牙古典尼龍弦吉他）
+ *  - steel: Discord SFZ GM Bank 2017 Martin HD28 Vintage Series（CC0 1.0，真實民謠鋼弦木吉他）
+ *  - shiny: Karoryfer Shinyguitar（CC0 1.0，電吉他）
+ *  - emily: Karoryfer Emily the Strange（CC0 1.0，半空心 flatwound 爵士吉他） */
 const SOURCES = {
+  nylon: { repo: 'freepats/spanish-classical-guitar', credit: 'Spanish Classical Guitar — FreePats（CC0 1.0）', layers: 'single' },
+  steel: { repo: 'sfzinstruments/Discord-SFZ-GM-Bank', credit: '2017 Martin HD28 Vintage Series — Discord SFZ GM Bank（CC0 1.0）', layers: 'single' },
   shiny: { repo: 'sfzinstruments/karoryfer.shinyguitar', credit: 'Sharur Shinyguitar — Karoryfer Samples（CC0 1.0）', layers: 'hivel' },
   emily: { repo: 'sfzinstruments/karoryfer.emilyguitar', credit: 'Emily the Strange guitar — Karoryfer Samples（CC0 1.0）', layers: 'name' },
 };
 const ALL_GUITARS = [
-  { key: 'guitar-acoustic', src: 'shiny', sfz: 'Programs/acoustic_five.sfz', dir: 'samples/guitar-acoustic', label: '木吉他', synth: 'real:guitar' },
-  { key: 'guitar-electric', src: 'shiny', sfz: 'Programs/electric_five.sfz', dir: 'samples/guitar-electric', label: '電吉他', synth: 'real:guitar' },
-  { key: 'guitar-jazz', src: 'emily', sfz: 'emily_clean.sfz', dir: 'samples/guitar-jazz', label: '爵士吉他', synth: 'real:guitar' },
+  { key: 'guitar-nylon', src: 'nylon', sfz: 'SpanishClassicalGuitar-20190618.sfz', dir: 'samples/guitar-nylon', label: '古典吉他', synth: 'real:guitar', layers: 1, minMidi: 40, maxStep: 3 },
+  { key: 'guitar-acoustic', src: 'steel', sfz: 'Discord GM/Melodic/026-Acoustic Guitar (steel).sfz', dir: 'samples/guitar-acoustic', label: '木吉他', synth: 'real:guitar', layers: 1 },
+  { key: 'guitar-electric', src: 'shiny', sfz: 'Programs/electric_five.sfz', dir: 'samples/guitar-electric', label: '電吉他', synth: 'real:guitar', layers: 3 },
+  { key: 'guitar-jazz', src: 'emily', sfz: 'emily_clean.sfz', dir: 'samples/guitar-jazz', label: '爵士吉他', synth: 'real:guitar', layers: 3 },
 ];
 // 一次跑就重建**全部**（快取讓它很快）：這個資料表是整份寫出的，只跑一部分會把其他把
-// 吉他的項目洗掉。`--jazz` 只是保留給「只想看爵士那把」的除錯用，不會只寫一部分。
+// 吉他的項目洗掉。
 const GUITARS = ALL_GUITARS;
 const RAW_OF = (src) => `https://cdn.jsdelivr.net/gh/${SOURCES[src].repo}@master/`;
 const API_OF = (src) => `https://api.github.com/repos/${SOURCES[src].repo}/git/trees/HEAD?recursive=1`;
@@ -73,7 +77,7 @@ function fetchText(url, tries = 4) {
 function readSfz(src, path) {
   const cached = join(CACHE, `${src}-${path.replace(/[^\w.-]/g, '_')}`);
   if (exists(cached)) return readFileSync(cached, 'utf8');
-  const text = fetchText(RAW_OF(src) + path);
+  const text = fetchText(RAW_OF(src) + path.split('/').map(encodeURIComponent).join('/'));
   mkdirSync(CACHE, { recursive: true });
   writeFile(cached, text);
   return text;
@@ -90,7 +94,7 @@ function sampleIndex(src) {
     map.set(basename(t.path).toLowerCase(), t.path);
   }
   mkdirSync(CACHE, { recursive: true });
-  writeFile(join(CACHE, 'tree.json'), JSON.stringify([...map]));
+  writeFile(cached, JSON.stringify([...map]));
   return map;
 }
 
@@ -106,47 +110,56 @@ function parseSfz(src, path) {
   let group = {};
   let cur = null;
   const out = [];
+  const parseOpcodes = (s, target) => {
+    for (const m of s.matchAll(/([A-Za-z_0-9]+)=([^]*?)(?=\s+[A-Za-z_0-9]+=|$)/g)) {
+      target[m[1].toLowerCase()] = m[2].trim();
+    }
+  };
   for (const raw of lines) {
     const t = raw.trim();
     if (!t || t.startsWith('//')) continue;
     if (t.startsWith('<')) {
-      const tag = t.replace(/[<>]/g, '').split(/\s/)[0].toLowerCase();
-      if (tag === 'group') { group = {}; cur = null; }
-      else if (tag === 'region') { if (cur) out.push(cur); cur = { ...group }; }
-      else if (tag === 'global') { cur = null; }
+      const endTag = t.indexOf('>');
+      const tag = (endTag > 0 ? t.slice(1, endTag) : t.replace(/[<>]/g, '')).split(/\s/)[0].toLowerCase();
+      const rest = endTag > 0 ? t.slice(endTag + 1).trim() : '';
+      if (tag === 'group') { if (cur) out.push(cur); group = {}; cur = null; if (rest) parseOpcodes(rest, group); }
+      else if (tag === 'region') { if (cur) out.push(cur); cur = { ...group }; if (rest) parseOpcodes(rest, cur); }
+      else if (tag === 'global') { if (cur) out.push(cur); cur = null; }
       continue;
     }
-    const m = t.match(/^([A-Za-z_0-9]+)=(.*)$/);
-    if (!m) continue;
-    if (cur) cur[m[1].toLowerCase()] = m[2];
-    else group[m[1].toLowerCase()] = m[2];
+    parseOpcodes(t, cur || group);
   }
   if (cur) out.push(cur);
-  return out.filter((r) => r.pitch_keycenter && r.sample).map((r) => {
-    const file = basename(String(r.sample).trim().replace(/\\/g, '/'));
-    // 力度層：用這一群的 hivel／lovel 判（hivel 32/64/127 = 弱／中／強）
+  return out.filter((r) => (r.pitch_keycenter || r.key) && r.sample && !String(r.sample).startsWith('*')).map((r) => {
     const raw0 = String(r.sample).trim().replace(/\\/g, '/');
+    const file = basename(raw0);
+    const keycenter = +(r.pitch_keycenter || r.key);
+    if (SOURCES[src].layers === 'single') {
+      return { keycenter, layer: 0, file, lo: 0, hi: 127 };
+    }
+    // 力度層：用這一群的 hivel／lovel 判（hivel 32/64/127 = 弱／中／強）
     if (SOURCES[src].layers === 'name') {
       // 只收 notes/ 底下的（noises／release 是同一個程式裡的效果音，不是音高）
       if (!/^notes\//i.test(raw0)) return null;
       const dyn = file.match(/_(pp|mf|ff|p|f)_rr\d/i);
       const layer = !dyn ? 1 : (dyn[1].toLowerCase() === 'pp' || dyn[1].toLowerCase() === 'p') ? 0
         : (dyn[1].toLowerCase() === 'mf') ? 1 : 2;
-      return { keycenter: +r.pitch_keycenter, layer, file, lo: 0, hi: 127 };
+      return { keycenter, layer, file, lo: 0, hi: 127 };
     }
     const hi = Number(r.hivel ?? 127);
     const lo = Number(r.lovel ?? 0);
     const mid = (hi + lo) / 2;
     const layer = mid <= 40 ? 0 : mid <= 80 ? 1 : 2;
-    return { keycenter: +r.pitch_keycenter, layer, file, lo, hi };
+    return { keycenter, layer, file, lo, hi };
   // `vl4`／`rr4` 不是音：這套來源把敲擊、摩擦、放開弦的雜音也放在同一張表裡
   }).filter((r) => r && !/vl4|rr4/i.test(r.file));
 }
 
 function local(src, file) {
-  const p = join(CACHE, file);
+  const dir = join(CACHE, src);
+  const p = join(dir, file);
   if (exists(p) && !FORCE) return p;
-  mkdirSync(CACHE, { recursive: true });
+  mkdirSync(dir, { recursive: true });
   const path = sampleIndexCache[src].get(file.toLowerCase());
   if (!path) throw new Error(`來源裡找不到 ${file}`);
   sh('curl', ['-sfL', RAW_OF(src) + path.split('/').map(encodeURIComponent).join('/'), '-o', p]);
@@ -162,10 +175,27 @@ function main() {
   let reused = 0;
 
   for (const g of GUITARS) {
+    const layersCount = g.layers || 3;
     const outDir = join(ROOT, g.dir);
     mkdirSync(outDir, { recursive: true });
-    const regions = parseSfz(g.src, g.sfz);
-    if (regions.length < 24) throw new Error(`${g.key} 只解析到 ${regions.length} 個 region`);
+    let regions = parseSfz(g.src, g.sfz);
+    if (regions.length < 12) throw new Error(`${g.key} 只解析到 ${regions.length} 個 region`);
+    if (g.minMidi !== undefined || g.maxStep) {
+      let midis = [...new Set(regions.map((r) => r.keycenter))].sort((a, b) => a - b);
+      if (g.minMidi !== undefined) midis = midis.filter((m) => m >= g.minMidi);
+      if (g.maxStep && midis.length > 1) {
+        const kept = [midis[0]];
+        for (let idx = 0; idx < midis.length - 1;) {
+          let next = idx + 1;
+          while (next + 1 < midis.length && midis[next + 1] - midis[idx] <= g.maxStep) next++;
+          kept.push(midis[next]);
+          idx = next;
+        }
+        midis = kept;
+      }
+      const keepSet = new Set(midis);
+      regions = regions.filter((r) => keepSet.has(r.keycenter));
+    }
     // 依 (音高, 層) 分組，取第一個 region 當代表（同一個位置有多個 round robin，
     // 這次只取一個：層數是這次的重點，round robin 留給下一輪）
     const byPitch = new Map();
@@ -175,7 +205,7 @@ function main() {
       if (!byPitch.has(k)) byPitch.set(k, r.file);
     }
     // 逐層的峰值基準（層負責音色、力度負責音量——跟 build-velocity 同一個規則）
-    const peaksByLayer = [[], [], []];
+    const peaksByLayer = Array.from({ length: layersCount }, () => []);
     const notes = {};
     const rows = [];
     for (const [k, file] of [...byPitch.entries()].sort()) {
@@ -197,7 +227,7 @@ function main() {
     });
     const worst = Math.max(...checks.map((c) => Math.abs(c.cents)));
     const classOk = checks.filter((c) => ((c.measured % 12) + 12) % 12 === ((c.keycenter % 12) + 12) % 12).length;
-    console.log(`${g.label}（${g.key}）：${regions.length} 個 region → ${rows.length} 個檔（${new Set(rows.map((r) => r.keycenter)).size} 個音高 × ${LAYERS} 層）`);
+    console.log(`${g.label}（${g.key}）：${regions.length} 個 region → ${rows.length} 個檔（${new Set(rows.map((r) => r.keycenter)).size} 個音高 × ${layersCount} 層）`);
     console.log(`  音高：量到的音級與 SFZ keycenter 相符 ${classOk}/${checks.length}；與 keycenter 最大差 ${worst.toFixed(1)} 音分`);
     console.log(`  逐層基準音量：${gainByLayer.map((x) => '×' + x.toFixed(2)).join('　')}`);
     // 低音弦的基頻很弱（跟大提琴組一樣），諧波求和會抓到第 3 泛音；音高以 SFZ 的
@@ -208,24 +238,28 @@ function main() {
       }
     }
     for (const c of checks) {
-      const g2 = gainByLayer[c.layer];
+      const p = peakOf(c.pcm) || 1;
+      const g2 = Math.min(gainByLayer[c.layer], 0.98 / p);
       for (let i = 0; i < c.pcm.length; i++) c.pcm[i] *= g2;
-      const dest = join(outDir, `${c.keycenter}-v${c.layer + 1}.mp3`);
+      const outName = layersCount === 1 ? `${c.keycenter}.mp3` : `${c.keycenter}-v${c.layer + 1}.mp3`;
+      const dest = join(outDir, outName);
       if (exists(dest) && !FORCE) reused++;
       else { encode(c.pcm, dest, { cache: CACHE }); made++; }
-      (notes[c.keycenter] ||= []).push({ vel: +(c.layer / LAYERS).toFixed(2), file: `${c.keycenter}-v${c.layer + 1}.mp3` });
+      (notes[c.keycenter] ||= []).push({ vel: +(c.layer / layersCount).toFixed(2), file: outName });
     }
     const midis = Object.keys(notes).map(Number).sort((a, b) => a - b);
     const gaps = midis.slice(1).map((m, i) => m - midis[i]);
     for (const m of midis) notes[m].sort((a, b) => a.vel - b.vel);
-    const body = midis.map((m) => `    ${m}: [${notes[m].map((l) => `{ vel: ${l.vel}, file: '${l.file}' }`).join(', ')}],`).join('\n');
+    const body = layersCount === 1
+      ? midis.map((m) => `    ${m}: '${notes[m][0].file}',`).join('\n')
+      : midis.map((m) => `    ${m}: [${notes[m].map((l) => `{ vel: ${l.vel}, file: '${l.file}' }`).join(', ')}],`).join('\n');
+    const layersLine = layersCount === 1 ? '' : `\n    layers: ${layersCount},`;
     library[g.key] = `  '${g.key}': {
     label: '${g.label}',
     credit: '${SOURCES[g.src].credit}',
     synth: '${g.synth}',
     base: '${g.dir}/',
-    gap: ${Math.max(...gaps)},
-    layers: ${LAYERS},
+    gap: ${Math.max(...gaps)},${layersLine}
     notes: {
 ${body}
     },

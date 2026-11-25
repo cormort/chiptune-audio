@@ -5,9 +5,9 @@
 // 與 GM 21-23（簧風琴）現在直接用合成那條路，不再多一份單層錄音。
 //
 // **內建版本優先**：grand／violin／cello／flute／clarinet／trumpet／trombone／tuba／
-// guitar-acoustic／guitar-electric 這些名字已經由 repo 內建的取樣（samples/velocity、
-// samples/flute、samples/guitar-*）覆蓋，所以它們的遠端項目已經移除——留著只會讓人以為
-// 那些檔案會被下載（實際上 src/samples.js 的合併會蓋掉）。
+// guitar-nylon／guitar-acoustic／guitar-electric 這些名字已經由 repo 內建的取樣
+// （samples/velocity、samples/flute、samples/guitar-*）覆蓋，所以它們的遠端項目已經移除——
+// 留著只會讓人以為那些檔案會被下載（實際上 src/samples.js 的合併會蓋掉）。
 //
 // 這張表是產生的，不是手寫的——來源是公開授權的樣本庫 nbrosowsky/tonejs-instruments
 // （樣本 CC-BY 3.0，出處：VSCO 2 Community Edition、University of Iowa MIS、Karoryfer、
@@ -73,32 +73,6 @@ export const SAMPLE_LIBRARY = {
       93: 'A6.mp3',
       98: 'D7.mp3',
       101: 'F7.mp3',
-    },
-  },
-  'guitar-nylon': {
-    label: '古典吉他',
-    credit: 'Freesound（quartertone）',
-    synth: 'real:guitar',
-    gap: 4,
-    base: 'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-nylon/',
-    notes: {   // B1 的檔案量起來是 B3（差 +24 半音，來源檔名標錯），不用它：
-   // 這個最低音改用最近的鄰居（B1 以上都是正確的）
-      40: 'E2.mp3',
-      42: 'Fs2.mp3',
-      45: 'A2.mp3',
-      49: 'Cs3.mp3',
-      50: 'D3.mp3',
-      54: 'Fs3.mp3',
-      57: 'A3.mp3',
-      59: 'B3.mp3',
-      63: 'Ds4.mp3',
-      64: 'E4.mp3',
-      68: 'Gs4.mp3',
-      71: 'B4.mp3',
-      73: 'Cs5.mp3',
-      76: 'E5.mp3',
-      80: 'Gs5.mp3',
-      82: 'As5.mp3',
     },
   },
   'bass-electric': {

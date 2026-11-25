@@ -34,8 +34,8 @@ export const SAMPLE_LIBRARY = {
   'flute-vib': FLUTE_VIB_INSTRUMENT,
   // 弦樂群：原本的取樣庫裡沒有這個樂器（GM 44-45／48-51 以前借獨奏小提琴／大提琴）
   strings: STRINGS_INSTRUMENT,
-  // 木吉他與電吉他：Karoryfer Shinyguitar（CC0），各 16 個音高 × 3 層力度，
-  // 覆蓋遠端那兩個單層版本（單層＝小力彈只是同一段錄音變小聲）
+  // 吉他群：古典吉他（FreePats 西班牙古典）、木吉他（Martin HD28 鋼弦）、電吉他、爵士吉他（CC0），
+  // 全部內建並進 service worker 預快取。
   ...GUITAR_INSTRUMENTS,
 };
 
