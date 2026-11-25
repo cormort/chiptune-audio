@@ -35,6 +35,9 @@
       inset 0 0 40px rgba(20, 8, 0, 0.55),
       0 14px 30px rgba(0, 0, 0, 0.65);
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
     touch-action: none;
     overflow: hidden;
   }
@@ -74,6 +77,8 @@
       inset 0 -6px 4px rgba(255, 255, 255, 0.45),
       0 6px 10px rgba(0, 0, 0, 0.65);
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
     z-index: 2;
   }
   .tine .label {
@@ -109,11 +114,15 @@
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.85);
   }
   #held {
-    min-height: 2.1rem; display: flex; align-items: center;
+    height: 2.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.5;
     color: var(--lcd-sub);
   }
   #held:empty::before {
-    content: "READY · 點按或滑過簧片刮奏（Glissando），按鍵 1–9 / Q–I";
+    content: "READY · 點按或滑過簧片刮奏";
     color: #546079;
   }
   #record {

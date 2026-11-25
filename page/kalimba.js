@@ -138,6 +138,7 @@ const board = $('board');
 board.onpointerdown = (e) => {
   const el = e.target.closest('.tine');
   if (!el) return;
+  e.preventDefault();
   el.releasePointerCapture?.(e.pointerId);   // 觸控會把指標抓在簧片上，放掉才收得到其他簧片
   const i = +el.dataset.i;
   byPointer.set(e.pointerId, i);

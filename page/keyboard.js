@@ -235,6 +235,7 @@ const byPointer = new Map();
 $('keys').onpointerdown = (e) => {
   const el = e.target.closest('.key');
   if (!el) return;
+  e.preventDefault();
   el.releasePointerCapture?.(e.pointerId);   // touch captures to the key; release so pointerover reaches the others
   noteOff(byPointer.get(e.pointerId));
   byPointer.set(e.pointerId, noteOn(+el.dataset.i));
