@@ -362,7 +362,8 @@ export function startAt(ctx, gainNode, src, opts) {
  *  每條弦的前幾個泛音（含鋼弦的輕微不諧和 B）各一個衰減的正弦，低音弦響得久、高音弦短。
  *  左右聲道相位隨機，讓共鳴有空間感而不是一個點。
  *
- *  回傳的陣列另外帶 `.modes`：每條弦的每個泛音一筆 { midi, w, decay, ampL, ampR, phL, phR }
+ *  回傳的陣列另外帶 `.modes`：每條弦的每個泛音一筆 { midi, w, decay, len, ampL, ampR, phL, phR }
+ *  （len：這個模態在脈衝響應裡算到第幾個樣本為止，−60 dB 或脈衝響應的長度，先到者）
  *  （已經乘上正規化），h[n] = amp·decay^n·sin(w·n + ph)。整個脈衝響應就是全部模態的和，
  *  所以不踩踏板時「只有按住的那幾條弦」的共鳴，就是只取那幾條弦的模態——音量自動一致。 */
 export function resonanceImpulse(rate = 44100, seconds = 3) {
@@ -399,7 +400,7 @@ export function resonanceImpulse(rate = 44100, seconds = 3) {
           c = nc;
         }
       }
-      modes.push({ midi, w, decay, ampL: amp, ampR: amp, phL: ph[0], phR: ph[1] });
+      modes.push({ midi, k, w, decay, len, ampL: amp, ampR: amp, phL: ph[0], phR: ph[1] });
     }
   }
   // 正規化到單位能量：音量交給 resonanceSend 的校正，跟取樣率與長度無關
@@ -418,11 +419,11 @@ export function resonanceImpulse(rate = 44100, seconds = 3) {
 /** 共鳴比原音小多少（dB，量的是起音後 1.5 秒內的 RMS）。 */
 const RESONANCE_DB = -20;
 /** 校正表：單位增益時共鳴比原音大幾 dB，從 A0（21）起每 3 個半音一格（量的是平台鋼琴
- *  中力度層 m4，OfflineAudioContext 卷積 resonanceImpulse(44100)）。中音區的泛音跟最多
+ *  中力度層 m4，OfflineAudioContext 卷積 resonanceImpulse(44100)，扣掉每個音自己那條弦）。中音區的泛音跟最多
  *  條弦重合，共鳴比高音大 20 dB 以上；每個音送進共鳴的量用這張表拉平到 RESONANCE_DB。
  *  ponytail: 換了 resonanceImpulse 或鋼琴取樣就要重量這張表。 */
-const RESONANCE_CAL = [9.1, 6.1, 10.3, 12.6, 17, 14.2, 16.6, 17.2, 17, 13.6, 17.2, 14, 18.3, 20.1, 18.5,
-  13.5, 18.3, 17.3, 18.6, 13.6, 10.5, 6.6, 7.4, 4.2, 5.1, 1.7, 2.3, 6, 0.9, 7.7];
+const RESONANCE_CAL = [8.6, 6, 9.6, 11.2, 16.8, 14.8, 14.8, 13.5, 13.4, 11.1, 14.2, 13.2, 15.5, 16.8, 16.2,
+  13.2, 14.7, 11.5, 15.4, 12.4, 9.1, 4.2, 3.9, 2, 2.1, 0, 0.7, 5.3, 1.2, 7.9];
 
 /** 這個音送進共鳴弦的增益。 */
 export function resonanceSend(midi) {
@@ -459,6 +460,43 @@ function fft(re, im, inverse) {
   }
 }
 
+/** 一條弦（`modes`：resonanceImpulse 裡那條弦的模態）對輸入的回應，左右各自的輸入與輸出。
+ *  每個模態是複數單極點 z ← p·z + u[i]，輸出 amp·Im(e^{iφ}·z)；模態在脈衝響應裡只算到 len，
+ *  所以再減掉 p^len·u[i−len] 把它截斷——這樣才跟卷積裡的那一份一模一樣，扣得乾淨。
+ *  回傳 { left, right }（Float64Array，長度 = 輸入 + 最長的 len）。 */
+export function ownStringResponse(uL, uR, modes) {
+  let tail = 0;
+  for (const mo of modes) tail = Math.max(tail, mo.len);
+  const n = Math.max(uL.length, uR.length) + tail;
+  const left = new Float64Array(n), right = new Float64Array(n);
+  // 熱迴圈：一個輸入、一或兩個輸出（不在迴圈裡解構陣列，快好幾倍）
+  const run = (u, mo, o1, s1, c1, o2, s2, c2) => {
+    const cw = Math.cos(mo.w), sw = Math.sin(mo.w);
+    const pr = mo.decay * cw, pi = mo.decay * sw;
+    const L = mo.len, rL = mo.decay ** L;
+    const qr = rL * Math.cos(mo.w * L), qi = rL * Math.sin(mo.w * L);
+    const ul = u.length, end = Math.min(n, ul + L);
+    let zr = 0, zi = 0;
+    for (let i = 0; i < end; i++) {
+      const a = i < ul ? u[i] : 0;
+      const j = i - L;
+      const b = j >= 0 && j < ul ? u[j] : 0;
+      const nr = pr * zr - pi * zi + a - qr * b;
+      zi = pr * zi + pi * zr - qi * b;
+      zr = nr;
+      o1[i] += s1 * zr + c1 * zi;
+      if (o2) o2[i] += s2 * zr + c2 * zi;
+    }
+  };
+  for (const mo of modes) {
+    const sl = Math.sin(mo.phL) * mo.ampL, cl = Math.cos(mo.phL) * mo.ampL;
+    const sr = Math.sin(mo.phR) * mo.ampR, cr = Math.cos(mo.phR) * mo.ampR;
+    if (uL === uR) run(uL, mo, left, sl, cl, right, sr, cr);   // 同一個輸入：一次遞迴給兩邊
+    else { run(uL, mo, left, sl, cl, null, 0, 0); run(uR, mo, right, sr, cr, null, 0, 0); }
+  }
+  return { left, right };
+}
+
 /** 共鳴卷積要降到的取樣率：共鳴只有 5 kHz 以下（resonanceImpulse 的上限），
  *  所以降到約 11 kHz 算，FFT 少 4 倍以上的工作。 */
 const RESONANCE_WORK_RATE = 11025;
@@ -491,6 +529,11 @@ export function renderResonance(send, pedal, rate = 44100, opts = {}) {
   while (half < r * 2.5) half <<= 1;
   const N = half * 2;
   const ir = resonanceImpulse(r, half / r);
+  const modesOf = new Map();
+  for (const mode of ir.modes) {
+    if (!modesOf.has(mode.midi)) modesOf.set(mode.midi, []);
+    modesOf.get(mode.midi).push(mode);
+  }
 
   // 踏板的開關（降頻後的每個樣本）：卷積那一路的增益，也決定按住的鍵的共振器要不要開
   const gate = new Float64Array(m);
@@ -531,6 +574,25 @@ export function renderResonance(send, pedal, rate = 44100, opts = {}) {
       for (let i = 0; i < N; i++) { yl[start + i] += re[i] / N; yr[start + i] += im[i] / N; }
     }
     for (let i = 0; i < m; i++) { yl[i] *= gate[i]; yr[i] *= gate[i]; }
+    // 扣掉每個音「自己那條弦被自己帶動」的那一份（那條弦是被敲的弦，不是共鳴）：卷積是線性的，
+    // 所以就是這個音的送出經過它那條弦的模態（ownStringResponse）、套同樣的踏板開關，再減掉
+    for (const h of held) {
+      const modes = modesOf.get(h.note);
+      const own = modes && typeof h.self === 'function' ? h.self() : null;
+      if (!own) continue;
+      const at = Math.round(h.on * rate);
+      const on = (at / D) | 0;
+      if (on >= m) continue;
+      const u = new Float64Array(Math.ceil((at + own.length) / D) - on + 1);
+      for (let j = 0; j < own.length; j++) u[(((at + j) / D) | 0) - on] += own[j] / D;
+      const resp = ownStringResponse(u, u, modes);
+      const end = Math.min(m, on + resp.left.length);
+      for (let i = on; i < end; i++) {
+        if (gate[i] === 0) continue;
+        yl[i] -= gate[i] * resp.left[i - on];
+        yr[i] -= gate[i] * resp.right[i - on];
+      }
+    }
   }
 
   if (held.length) {
@@ -545,11 +607,6 @@ export function renderResonance(send, pedal, rate = 44100, opts = {}) {
       if (off <= on) continue;
       if (!byNote.has(h.note)) byNote.set(h.note, []);
       byNote.get(h.note).push([on, off, h]);
-    }
-    const modesOf = new Map();
-    for (const mode of ir.modes) {
-      if (!modesOf.has(mode.midi)) modesOf.set(mode.midi, []);
-      modesOf.get(mode.midi).push(mode);
     }
     for (const [note, spans] of byNote) {
       const modes = modesOf.get(note);
@@ -749,6 +806,53 @@ export class SampledInstruments {
     return p;
   }
 
+  /** 踩踏板時把「這條弦被自己帶動」從 88 弦的卷積裡扣掉：那一份就是這一層錄音（照它播放的音高）
+   *  經過它自己那條弦的模態（ownStringResponse），是固定的波形——在 JS 裡算一次、取負號，
+   *  當成一個 AudioBuffer 跟著音一起播進踏板的 wet（開關也一樣）。比每個音掛幾十個
+   *  IIRFilterNode 省很多：量到同一段踏板樂句，IIR 要 4 倍以上的 CPU。
+   *  在約 11 kHz 算（共鳴只有 5 kHz 以下），區塊平均以樣本為中心、不會有相位延遲；
+   *  同一層同一個音高常常重複，最近用過的幾個留著不重算。
+   *  ponytail: 算的是整段錄音的回應，音被提早切掉（踩著踏板時不會）就會扣多一點。 */
+  _ownStringCorrection(ctx, note, part, pcmRate, playbackRate) {
+    const buf = this._resBuf;
+    if (!buf || buf.ctx !== ctx || typeof ctx.createBuffer !== 'function') return null;
+    const key = `${note}|${playbackRate}`;
+    const cache = (this._ownCache ||= new Map());
+    const hit = cache.get(part.pcm);
+    if (hit && hit.has(key)) return hit.get(key);
+    const R = ctx.sampleRate || 44100;
+    const D = Math.max(1, Math.round(R / RESONANCE_WORK_RATE));
+    const r = R / D;
+    const modes = buf.modes.filter((m) => m.midi === note).map((m) => ({
+      ...m, w: m.w * D, decay: m.decay ** D, len: Math.round(m.len / D), ampL: m.ampL * D, ampR: m.ampR * D,
+    }));
+    if (!modes.length) return null;
+    // 錄音照播放速率換到 context 的取樣，再以每個降頻樣本為中心取平均
+    const step = (playbackRate * pcmRate) / R;
+    const down = (pcm) => {
+      const frames = Math.floor((pcm.length - 1) / step);
+      const u = new Float64Array(Math.ceil(frames / D) + 1);
+      for (let j = 0; j < frames; j++) {
+        const p = j * step, i = p | 0, f = p - i;
+        u[Math.round(j / D)] += (pcm[i] + (pcm[i + 1] - pcm[i]) * f) / D;
+      }
+      return u;
+    };
+    const uL = down(part.left || part.pcm);
+    const uR = part.right ? down(part.right) : uL;
+    const resp = ownStringResponse(uL, uR, modes);
+    const out = ctx.createBuffer(2, resp.left.length, r);
+    const L = out.getChannelData(0), Rch = out.getChannelData(1);
+    for (let i = 0; i < resp.left.length; i++) { L[i] = -resp.left[i]; Rch[i] = -resp.right[i]; }
+    if (!hit) cache.set(part.pcm, new Map());
+    cache.get(part.pcm).set(key, out);
+    // 只留最近的 24 個（每個約 1 MB）
+    let count = 0;
+    for (const m of cache.values()) count += m.size;
+    while (count > 24) { const [k0, m0] = cache.entries().next().value; count -= m0.size; cache.delete(k0); }
+    return out;
+  }
+
   /** 共鳴弦的 AudioBuffer（每個 AudioContext 算一次）。 */
   _resonanceBuffer() {
     const ctx = this.ctx;
@@ -931,7 +1035,7 @@ export class SampledInstruments {
       const buffer = stereo
         ? this.stereoBufferFor(part.left, part.right, rate)
         : this.bufferFor(part.pcm, rate);
-      if (buffer) layers.push({ buffer, pcm: part.pcm, stereo, gain: baseGain * (part.gain ?? 1) });
+      if (buffer) layers.push({ buffer, pcm: part.pcm, left: part.left, right: part.right, stereo, gain: baseGain * (part.gain ?? 1) });
     }
     if (!layers.length) return null;
     if (ctx.state === 'suspended') ctx.resume();
@@ -945,7 +1049,8 @@ export class SampledInstruments {
     const startedAt = opts.when !== undefined ? opts.when : ctx.currentTime;
 
     const active = [];
-    for (const { buffer, pcm, stereo, gain } of layers) {
+    for (const layer of layers) {
+      const { buffer, pcm, stereo, gain } = layer;
       const src = ctx.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = v.rate;
@@ -986,6 +1091,25 @@ export class SampledInstruments {
         gainNode.connect(send);
         send.connect(res.bus);
         created.push(send);
+        // 踏板的卷積裡也有「這條弦被自己帶動」的那一份：同一個音的送出接到它自己那條弦的模態
+        // （正負號相反、左右各一組），一樣經過踏板的開關，就把它從共鳴裡扣掉
+        if (res.wet && res.pedal) {
+          // 修正波形算一次要幾毫秒：不擋住按鍵，音開始以後再算，晚到的那一小段用 offset 跳過
+          // （共鳴是從零慢慢長出來的，前幾十毫秒幾乎沒有東西可扣）
+          setTimeout(() => {
+            const fix = this._ownStringCorrection(ctx, note, layer, rate, v.rate);
+            if (!fix) return;
+            const fs = ctx.createBufferSource();
+            fs.buffer = fix;
+            const fg = ctx.createGain();
+            fg.gain.value = gain * resonanceSend(note);
+            fs.connect(fg);
+            fg.connect(res.wet);
+            fs.onended = () => { fs.disconnect(); fg.disconnect(); };
+            const now = ctx.currentTime;
+            fs.start(Math.max(now, startedAt), Math.max(0, now - startedAt));
+          }, 0);
+        }
         // 這個鍵正被按住：它那條弦的共振器不該被自己的聲音帶動，送一份 −1 過去抵銷
         const own = res.held.get(note);
         if (own) {

@@ -462,12 +462,13 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
           }
           if (resSend) {
             // 這個鍵按住的時間（被踏板延長的音用 held）；self() 要用時才重混這個音自己的送出，
-            // 讓共鳴扣掉「被敲的那條弦被自己帶動」的部分（見 renderResonance）
+            // 讓共鳴扣掉「被敲的那條弦被自己帶動」的部分——踩不踩踏板都要（見 renderResonance）
             const keyDown = (n.held ?? n.dur) / speed;
             heldKeys.push({
               note, on: time, off: time + keyDown,
               self: () => {
-                const own = new Float32Array(Math.ceil((keyDown + 0.3) * sampleRate));
+                // 整個音（踩著踏板時鍵放開後還在響，那一段也要扣）
+                const own = new Float32Array(Math.ceil((n.dur / speed + SAMPLE_RELEASE_SECONDS + 0.05) * sampleRate));
                 for (const part of parts) mixSampleInto(own, 0, part.pcm || part.left, ratio, SAMPLE_VOICE_GAIN * vel * part.gain * send, mixOpts);
                 return own;
               },

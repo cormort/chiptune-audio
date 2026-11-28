@@ -409,6 +409,25 @@ test('without the pedal, only held keys resonate, never with their own note', as
   assert.ok(10 * Math.log10(d / s) < -40, `held-key modes must match the pedal convolution, off by ${(10 * Math.log10(d / s)).toFixed(1)} dB`);
 });
 
+test('with the pedal down, a note does not resonate its own string either', async () => {
+  const { renderResonance, resonanceImpulse } = await import('../src/samples.js');
+  const R = 44100, n = R * 4, note = 57;
+  const x = new Float32Array(n);
+  for (let i = 0; i < 300; i++) x[i] = Math.sin((2 * Math.PI * 220 * i) / R) * 0.5;
+  // 參考答案：拿掉 A3 那條弦（同樣截斷）的脈衝響應，直接卷積
+  let half = 1;
+  while (half < R * 2.5) half <<= 1;
+  const ir = resonanceImpulse(R, half / R);
+  const h = Float64Array.from(ir[0].subarray(0, half));
+  for (const md of ir.modes) if (md.midi === note) { let e = md.ampL; for (let i = 0; i < md.len; i++) { h[i] -= e * Math.sin(md.w * i + md.phL); e *= md.decay; } }
+  const ref = new Float64Array(n);
+  for (let j = 0; j < 300; j++) for (let i = 0; i < half && i + j < n; i++) ref[i + j] += x[j] * h[i];
+  const out = renderResonance(x, [{ time: 0, down: true }], R, { decimate: 1, held: [{ note, on: 0, off: 4, self: () => x }] });
+  let d = 0, s = 0;
+  for (let i = 0.2 * R; i < n; i++) { d += (out.left[i] - ref[i]) ** 2; s += ref[i] ** 2; }
+  assert.ok(10 * Math.log10(d / s) < -60, `own string must be removed exactly, off by ${(10 * Math.log10(d / s)).toFixed(1)} dB`);
+});
+
 test('the pedal fades the resonance in and damps it on release, building it only once', () => {
   const ramps = [];
   let convolvers = 0;
