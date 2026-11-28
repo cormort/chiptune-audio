@@ -421,6 +421,104 @@ export function resonanceSend(midi) {
   return 10 ** ((RESONANCE_DB - cal) / 20);
 }
 
+/** 就地的複數 FFT（radix-2，n 必須是 2 的次方）；inverse 時不除以 n。 */
+function fft(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = ((inverse ? 2 : -2) * Math.PI) / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len >> 1; k++) {
+        const a = i + k, b = a + (len >> 1);
+        const xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi;
+        re[a] += xr; im[a] += xi;
+        const nr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = nr;
+      }
+    }
+  }
+}
+
+/** 共鳴卷積要降到的取樣率：共鳴只有 5 kHz 以下（resonanceImpulse 的上限），
+ *  所以降到約 11 kHz 算，FFT 少 4 倍以上的工作。 */
+const RESONANCE_WORK_RATE = 11025;
+
+/** 離線版的共鳴弦（MIDI 匯出用）：跟即時的 ConvolverNode 用同一個脈衝響應與同一張校正表。
+ *
+ *  `send` 是已經乘上 resonanceSend(音高) 的鋼琴訊號（單聲道，`rate` 取樣率），
+ *  `pedal` 是 [{ time, down }]（秒）。回傳 { left, right }，長度跟 send 一樣。
+ *  踏板放開時共鳴被制音器壓掉（時間常數跟即時版一樣：抬起 10 ms、落下 30 ms）。
+ *  `opts.decimate` 可以強制降頻倍數（測試用，1 = 不降頻）。 */
+export function renderResonance(send, pedal, rate = 44100, opts = {}) {
+  const frames = send.length;
+  const left = new Float32Array(frames);
+  const right = new Float32Array(frames);
+  if (!frames || !Array.isArray(pedal) || !pedal.some((p) => p.down)) return { left, right };
+  const D = Math.max(1, opts.decimate ?? Math.round(rate / RESONANCE_WORK_RATE));
+  const r = rate / D;
+  const m = Math.ceil(frames / D);
+  // 降頻：每 D 個取平均（簡單的抗混疊；共鳴本來就只回應弦的泛音頻率）
+  const x = new Float64Array(m);
+  for (let i = 0; i < frames; i++) x[(i / D) | 0] += send[i] / D;
+  // 脈衝響應長度湊成 2 的次方的一半，區塊也是這麼長：FFT 大小 = 兩倍，剛好放得下
+  let half = 1;
+  while (half < r * 2.5) half <<= 1;
+  const N = half * 2;
+  const [hl, hr] = resonanceImpulse(r, half / r);
+  // 左右兩個實數脈衝響應塞進一個複數：H = FFT(hL + i·hR)；x 是實數，所以
+  // IFFT(X·H) 的實部就是左聲道、虛部就是右聲道——一次卷積兩個聲道
+  const Hre = new Float64Array(N), Him = new Float64Array(N);
+  Hre.set(hl.subarray(0, half)); Him.set(hr.subarray(0, half));
+  fft(Hre, Him, false);
+  const yl = new Float64Array(m + N), yr = new Float64Array(m + N);
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let start = 0; start < m; start += half) {
+    re.fill(0); im.fill(0);
+    const len = Math.min(half, m - start);
+    let any = false;
+    for (let i = 0; i < len; i++) { re[i] = x[start + i]; if (re[i] !== 0) any = true; }
+    if (!any) continue;
+    fft(re, im, false);
+    for (let k = 0; k < N; k++) {
+      const a = re[k], b = im[k];
+      re[k] = a * Hre[k] - b * Him[k];
+      im[k] = a * Him[k] + b * Hre[k];
+    }
+    fft(re, im, true);
+    for (let i = 0; i < N; i++) { yl[start + i] += re[i] / N; yr[start + i] += im[i] / N; }
+  }
+  // 制音器：踏板踩下時共鳴出現，放開時壓掉
+  const gate = new Float64Array(m);
+  const up = 1 - Math.exp(-1 / (0.01 * r)), downK = 1 - Math.exp(-1 / (0.03 * r));
+  let g = 0, target = 0, next = 0;
+  const events = [...pedal].sort((a, b) => a.time - b.time);
+  for (let i = 0; i < m; i++) {
+    while (next < events.length && events[next].time * r <= i) target = events[next++].down ? 1 : 0;
+    g += (target - g) * (target > g ? up : downK);
+    gate[i] = g;
+  }
+  // 升頻回原取樣率（線性內插）。單位能量的脈衝響應在 r 取樣率下比在 rate 下小 √D 倍（
+  // 卷積的總和少了 D 倍的項、正規化卻只放大 √D），補回來才跟即時版的音量一致。
+  const gain = Math.sqrt(D);
+  for (let i = 0; i < frames; i++) {
+    const p = i / D, j = p | 0, f = p - j;
+    const k = Math.min(m - 1, j + 1);
+    const gl = gate[j] + (gate[k] - gate[j]) * f;
+    left[i] = (yl[j] + (yl[k] - yl[j]) * f) * gl * gain;
+    right[i] = (yr[j] + (yr[k] - yr[j]) * f) * gl * gain;
+  }
+  return { left, right };
+}
+
 /** 取樣樂器播放器：載入樣本、挑最近的音、用播放速率補中間的音。
  *  一個實例可以載入多個樂器，各自獨立；載過的樂器不會重抓。
  *  建構子的兩個參數跟其他引擎一樣可以傳值或 getter（AudioContext 要等使用者手勢才會有）。 */

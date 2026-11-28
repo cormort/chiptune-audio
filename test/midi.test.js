@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseMidi, renderMidi, INSTRUMENTS, instrumentNote, noteFreq, renderSfx, HOLD_SECONDS, SAMPLE_RATE, MAX_MIDI_SECONDS,
+  parseMidi, renderMidi, renderMidiStereo, INSTRUMENTS, instrumentNote, noteFreq, renderSfx, HOLD_SECONDS, SAMPLE_RATE, MAX_MIDI_SECONDS,
 } from '../src/index.js';
 
 import { track, smf, name, tempo } from './smf.js';
@@ -149,4 +149,33 @@ test('parseMidi honours CC64 sustain pedal', () => {
   const m = parseMidi(bytes);
   assert.equal(m.tracks[0].notes.length, 1);
   assert.ok(Math.abs(m.tracks[0].notes[0].dur - 1.0) < 1e-6, `sustained note should last 1.0s, got ${m.tracks[0].notes[0].dur}`);
+  // 踏板的開關也留下來（匯出時鋼琴的共鳴弦要知道什麼時候踩著）
+  assert.deepEqual(m.tracks[0].pedal, [{ time: 0, down: true }, { time: 1, down: false }]);
+});
+
+test('a pedalled sampled piano gets sympathetic resonance in the export, an unpedalled one is untouched', () => {
+  const pedalled = parseMidi(smf(1, 480, [
+    track([[0, ...tempo(500000)]]),
+    track([[0, 0xb0, 64, 127], [0, 0x90, 57, 100], [960, 0x80, 57, 0], [960, 0xb0, 64, 0]]),
+  ]));
+  const plain = parseMidi(smf(1, 480, [
+    track([[0, ...tempo(500000)]]),
+    track([[0, 0x90, 57, 100], [1920, 0x80, 57, 0]]),
+  ]));
+  // 一秒的 A3（220 Hz）錄音，帶釋音的結構（＝有制音器的鋼琴）
+  const tone = Float32Array.from({ length: 44100 }, (_, i) => Math.sin((2 * Math.PI * 220 * i) / 44100) * 0.5 * (1 - i / 44100));
+  const piano = { 'sampled:grand': { rate: 44100, notes: [{ midi: 57, rate: 44100, layers: [{ vel: 0, pcm: tone }] }], release: { rate: 44100, kit: {} } } };
+  const opts = { tracks: [{ instrument: 'sampled:grand' }], samples: piano };
+  const withPedal = renderMidiStereo(pedalled, opts);
+  const without = renderMidiStereo(plain, opts);
+  // 沒踩踏板：沒有共鳴，跟一般的鋼琴音軌一樣（兩個檔的音長相同，只差踏板）
+  const diff = withPedal.left.reduce((s, v, i) => s + (v - without.left[i]) ** 2, 0);
+  assert.ok(diff > 0, 'the pedal must add resonance');
+  // 共鳴落在原音以下（校正目標 −20 dB，容許取樣與合成訊號的差）
+  const energy = (a, from, to) => { let s = 0; for (let i = Math.floor(from); i < to; i++) s += a[i] * a[i]; return s; };
+  const res = withPedal.left.map((v, i) => v - without.left[i]);
+  const db = 10 * Math.log10(energy(res, 0, 44100) / energy(without.left, 0, 44100));
+  assert.ok(db < -8 && db > -40, `resonance should sit well under the note, got ${db.toFixed(1)} dB`);
+  // 放開踏板（t = 2 s）之後，制音器在 0.2 秒內把共鳴壓到聽不到
+  assert.ok(energy(res, 2.2 * 44100, 2.5 * 44100) < 1e-4 * energy(res, 1.5 * 44100, 2 * 44100), 'dampers must stop the resonance');
 });

@@ -1,6 +1,6 @@
 import { renderSfxInto, SAMPLE_RATE, WAVE } from './sfx.js';
 import { INSTRUMENTS, instrumentNote, resolveInstrument } from './instruments.js';
-import { mixSampleInto, sampleVoice } from './samples.js';
+import { mixSampleInto, sampleVoice, resonanceSend, renderResonance } from './samples.js';
 import { pickHit, SAMPLE_KIT } from './drums.js';
 
 /** Longest MIDI render, in seconds. Later notes are dropped: a 5-minute mono
@@ -142,6 +142,7 @@ export function parseMidi(data) {
   const raw = [];         // { trk, ch, tick, endTick, note, vel }
   const names = [];
   const programs = new Map(); // `${trk}:${ch}` -> first program seen
+  const pedals = [];      // { trk, ch, tick, down }：延音踏板的開關（鋼琴的共鳴弦要用）
 
   let parsedTracks = 0;
   for (let trk = 0; trk < trackCount && pos < bytes.length; trk++) {
@@ -226,7 +227,9 @@ export function parseMidi(data) {
           }
         }
       } else if (kind === 0xb0 && d1 === 64) {
-        if (d2 >= 64) {
+        const down = d2 >= 64;
+        if (down !== !!pedal.get(ch)) pedals.push({ trk, ch, tick, down });
+        if (down) {
           pedal.set(ch, true);
         } else {
           pedal.set(ch, false);
@@ -267,13 +270,21 @@ export function parseMidi(data) {
     if (time + dur > duration) duration = time + dur;
   }
 
+  // 踏板事件跟著同一個聲部（有音符的聲部才有意義）
+  for (const p of pedals) {
+    const part = byPart.get(`${p.trk}:${p.ch}`);
+    if (part) (part.pedal ||= []).push({ time: toSeconds(p.tick), down: p.down });
+  }
+
   const parts = [...byPart.values()].sort((a, b) => a.trk - b.trk || a.ch - b.ch);
   let melodic = 0;
-  const tracks = parts.map(({ trk, ch, notes }) => {
+  const tracks = parts.map(({ trk, ch, notes, pedal }) => {
     notes.sort((a, b) => a.time - b.time || a.note - b.note);
     const program = programs.get(`${trk}:${ch}`) ?? 0;
     const name = names[trk] || `Track ${trk + 1}`;
-    return { name, channel: ch, program, instrument: suggestInstrument(ch, program, notes, melodic++), notes };
+    const track = { name, channel: ch, program, instrument: suggestInstrument(ch, program, notes, melodic++), notes };
+    if (pedal) track.pedal = pedal.sort((a, b) => a.time - b.time);
+    return track;
   });
   return { duration, tracks };
 }
@@ -402,6 +413,10 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
 
     let hit = 0;
     const rounds = new Map();     // 同一個鼓音連續打時輪流用不同的錄音（round robin）
+    // 鋼琴（有制音器的取樣）踩了延音踏板：另外混一條送往共鳴弦的訊號（每個音乘上
+    // 跟即時版一樣的 resonanceSend 校正），整條音軌混完再一次卷積
+    const resSend = voice && voice.release && Array.isArray(track.pedal) && track.pedal.some((p) => p.down)
+      ? new Float32Array(frames) : null;
     for (const n of track.notes) {
       const time = n.time / speed;
       if (time >= limit) break;
@@ -439,6 +454,7 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
             // 立體樣本：左右各自混進去。單聲道時左右一樣，等於原本的行為。
             if (stereo && part.left && part.right) addStereo(at, part.left, part.right, ratio, gain, mixOpts);
             else add(at, part.pcm, ratio, gain, mixOpts);
+            if (resSend) mixSampleInto(resSend, at, part.pcm || part.left, ratio, gain * resonanceSend(note), mixOpts);
           }
           // 放開鍵：鋼琴的「制音器」聲音。延音樣本在這裡被切掉，改由這個收尾。
           const rel = voice.release && pickHit(voice.release.kit[note], vel, 0);
@@ -453,6 +469,14 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
         ? drumParams(n.note, vel, (0x5eed + i * 7919 + hit++) >>> 0)
         : instrumentNote(instrument, note, { seconds: n.dur / speed, vel });
       sfx(at, p, sampleRate);
+    }
+    if (resSend) {
+      const wet = renderResonance(resSend, track.pedal.map((e) => ({ time: e.time / speed, down: e.down })), sampleRate);
+      if (stereo) {
+        for (let k = 0; k < frames; k++) { out.l[k] += wet.left[k]; out.r[k] += wet.right[k]; }
+      } else {
+        for (let k = 0; k < frames; k++) out[k] += (wet.left[k] + wet.right[k]) * 0.5;
+      }
     }
   });
 
