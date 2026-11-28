@@ -12,7 +12,7 @@
 
 | 樂器 | 來源 | 檔名規則 | 音數 | 層 | 量到的音色差（強/弱） |
 |---|---|---|---|---|---|
-| 平台鋼琴 | `sfzinstruments/SalamanderGrandPiano`（Salamander V3 原版） | `<音>v<n>.flac` | 30（A0–C8，最長 10 秒，衰減到 −60 dB 就停） | **4** | 0.58–0.77 倍（每階） |
+| 平台鋼琴 | `sfzinstruments/SalamanderGrandPiano`（Salamander V3 原版） | `<音>v<n>.flac` | 30（A0–C8，最長 10 秒，衰減到 −60 dB 就停） | **8**（v2…v16 取偶數） | 0.80–0.95 倍（每階；4 層時是 0.58–0.77） |
 | 小提琴 | VSCO `Strings/Solo Violin/Arco Vib` | `_p` / `_f` | 15 | 2 | 0.73 倍 |
 | 大提琴 | VSCO `Strings/Cello Section/susvib` | `_v1` / `_v3` | 13 | 2 | 0.66 倍 |
 | 單簧管 | VSCO `Woodwinds/Clarinet/susLong` | `_v1` / `_v2` / `_v3` | 10 | 3 | 0.65–0.74 倍 |

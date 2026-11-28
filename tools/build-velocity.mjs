@@ -44,7 +44,9 @@ const SALAMANDER = 'https://raw.githubusercontent.com/sfzinstruments/SalamanderG
 /** 鋼琴的 30 個音：整台琴 A0–C8，每 3 個半音一個（就是 Salamander 取樣的那些音）。
  *  以前只取 C2–C7，最低和最高的八度靠移調 3–9 個半音，音色明顯變形。 */
 const PIANO_NOTES = ['A0', 'C1', 'D#1', 'F#1', 'A1', 'C2', 'D#2', 'F#2', 'A2', 'C3', 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5', 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'];
-const PIANO_LAYERS = [3, 8, 13, 16];
+// Salamander 每個音 16 層；取偶數的 8 層（v2…v16）。4 層時相鄰兩層的亮度差 0.58–0.77 倍，
+// 力度一跨過交界音色就明顯跳一階；8 層每階的差距大約減半。
+const PIANO_LAYERS = [2, 4, 6, 8, 10, 12, 14, 16];
 const FORCE = process.argv.includes('--force');
 /** `--only=grand`：只重轉這個樂器，其他沿用現有檔案與資料表（不用下載它們的來源）。 */
 const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7) || null;
@@ -72,7 +74,7 @@ const midiOf = (name) => {
 const clarinet = (notes) => Object.fromEntries(notes.map((n) => [n,
   [1, 2, 3].map((v) => `DCClar_susLong_${n}_v${v}_rr1_sum.wav`)]));
 
-/** 鋼琴：4 個力度層，外加放開鍵的釋音取樣（rel16..rel76，一個音一個檔）。 */
+/** 鋼琴：8 個力度層，外加放開鍵的釋音取樣（rel1..rel88，一個音一個檔）。 */
 const piano = {
   label: '平台鋼琴',
   // 立體：兩支不同視角的麥克風，是這台琴「在一個空間裡」的那一半（見 STEREO_INSTRUMENTS）

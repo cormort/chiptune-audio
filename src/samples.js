@@ -49,7 +49,7 @@ export { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
 // 快取命中就不再重抓，所以**同名檔案的內容換了**（例如鋼琴從 5 秒改成取到 −60 dB）
 // 就要換這個名字；舊的那一份在 _load 開快取時刪掉。
-const CACHE_NAME = 'chiptune-samples-v2';
+const CACHE_NAME = 'chiptune-samples-v3';
 const CACHE_PREFIX = 'chiptune-samples-';
 /** 載入一個樂器時同時幾條連線（跟 sw.js 的 FILL_WORKERS 一樣：再多手機會整批失敗）。 */
 const LOAD_WORKERS = 6;
@@ -233,6 +233,9 @@ export function layerMix(entry, vel = 1, width = 0.18) {
   const layers = entry && entry.layers;
   if (!Array.isArray(layers) || !layers.length) return entry && entry.pcm ? [{ pcm: entry.pcm, gain: 1, ...stereoOf(entry) }] : [];
   const v = Number.isFinite(vel) ? Math.min(1, Math.max(0, vel)) : 1;
+  // 窗口不能比層距寬：8 層的鋼琴層距 0.125，0.18 的窗口會讓相鄰兩個交界的範圍重疊，
+  // 重疊區只認得第一個交界，增益在那裡會跳。
+  for (let k = 1; k < layers.length; k++) width = Math.min(width, layers[k].vel - layers[k - 1].vel);
   // 交界就是每一層（第 1 層以後）的起點。看 v 有沒有落在某個交界的前後半個窗口內，
   // 兩側對稱處理：剛好在交界上時兩層各 0.707（等功率），跨過窗口就是單層。
   let boundary = -1;

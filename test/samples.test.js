@@ -366,6 +366,18 @@ test('velocity picks the layer, and the layer carries its own audio', () => {
   assert.equal(sampleVoice([], 60, 1), null);
 });
 
+test('eight closely spaced layers sweep without a gain jump', () => {
+  // 8 層的鋼琴層距 0.125 比預設窗口 0.18 窄：窗口重疊時增益會在重疊區跳一下
+  const piano = { midi: 60, layers: Array.from({ length: 8 }, (_, i) => ({ vel: i / 8, pcm: Float32Array.from([i]) })) };
+  const level = (v) => { const g = new Float64Array(8); for (const x of layerMix(piano, v)) g[x.pcm[0]] = x.gain; return g; };
+  let prev = level(0);
+  for (let v = 0.001; v <= 1; v += 0.001) {
+    const cur = level(v);
+    for (let i = 0; i < 8; i++) assert.ok(Math.abs(cur[i] - prev[i]) < 0.05, `layer ${i} jumps at vel ${v.toFixed(3)}`);
+    prev = cur;
+  }
+});
+
 test('the layer boundary crossfades instead of stepping', () => {
   const mk = (v) => Float32Array.from([v]);
   const two = { midi: 60, layers: [{ vel: 0, pcm: mk(1) }, { vel: 0.5, pcm: mk(2) }] };
