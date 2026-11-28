@@ -357,6 +357,70 @@ export function startAt(ctx, gainNode, src, opts) {
   }
 }
 
+/** 共鳴弦的脈衝響應（立體 [L, R]）：踩下延音踏板時，制音器全部抬起，88 條弦都能被
+ *  響板傳來的振動帶動。弦是線性共振器，所以「整台琴的共鳴」就是一個脈衝響應——
+ *  每條弦的前幾個泛音（含鋼弦的輕微不諧和 B）各一個衰減的正弦，低音弦響得久、高音弦短。
+ *  左右聲道相位隨機，讓共鳴有空間感而不是一個點。
+ *  ponytail: 只模擬踏板踩下的情況；不踩踏板時「按住的鍵」也會共鳴，那要每條弦一個開關。 */
+export function resonanceImpulse(rate = 44100, seconds = 3) {
+  const n = Math.max(1, Math.floor(rate * seconds));
+  const out = [new Float32Array(n), new Float32Array(n)];
+  let seed = 0x5eed;
+  const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const top = Math.min(5000, rate * 0.45);
+  for (let midi = 21; midi <= 108; midi++) {
+    const f0 = 440 * 2 ** ((midi - 69) / 12);
+    const B = 0.00015 * Math.pow(f0 / 261.63, 0.4);
+    const tau = 2.4 * 2 ** (-(midi - 21) / 28);          // 秒（振幅 1/e）：A0 2.4 s → C8 0.27 s
+    for (let k = 1; k <= 8; k++) {
+      const fk = k * f0 * Math.sqrt(1 + B * k * k);
+      if (fk >= top) break;
+      const tauK = tau / (1 + 0.35 * (k - 1));
+      const decay = Math.exp(-1 / (tauK * rate));
+      const len = Math.min(n, Math.ceil(tauK * rate * 6.9));  // 衰減到 −60 dB 以下就不用算
+      const w = (2 * Math.PI * fk) / rate;
+      const cw = Math.cos(w), sw = Math.sin(w);
+      for (const ch of out) {
+        const ph = rand() * 2 * Math.PI;
+        // 共振器的峰值增益 ∝ 振幅 × 衰減時間：除以 τ，長響的低音弦才不會把整個音域蓋過去
+        let c = Math.cos(ph), s = Math.sin(ph), env = 1 / (k * tauK);
+        for (let i = 0; i < len; i++) {
+          ch[i] += s * env;
+          env *= decay;
+          const nc = c * cw - s * sw;
+          s = s * cw + c * sw;
+          c = nc;
+        }
+      }
+    }
+  }
+  // 正規化到單位能量：音量交給 resonanceSend 的校正，跟取樣率與長度無關
+  for (const ch of out) {
+    let e = 0;
+    for (const v of ch) e += v * v;
+    const g = e > 0 ? 1 / Math.sqrt(e) : 0;
+    for (let i = 0; i < n; i++) ch[i] *= g;
+  }
+  return out;
+}
+
+/** 共鳴比原音小多少（dB，量的是起音後 1.5 秒內的 RMS）。 */
+const RESONANCE_DB = -20;
+/** 校正表：單位增益時共鳴比原音大幾 dB，從 A0（21）起每 3 個半音一格（量的是平台鋼琴
+ *  中力度層 m4，OfflineAudioContext 卷積 resonanceImpulse(44100)）。中音區的泛音跟最多
+ *  條弦重合，共鳴比高音大 20 dB 以上；每個音送進共鳴的量用這張表拉平到 RESONANCE_DB。
+ *  ponytail: 換了 resonanceImpulse 或鋼琴取樣就要重量這張表。 */
+const RESONANCE_CAL = [9.1, 6.1, 10.3, 12.6, 17, 14.2, 16.6, 17.2, 17, 13.6, 17.2, 14, 18.3, 20.1, 18.5,
+  13.5, 18.3, 17.3, 18.6, 13.6, 10.5, 6.6, 7.4, 4.2, 5.1, 1.7, 2.3, 6, 0.9, 7.7];
+
+/** 這個音送進共鳴弦的增益。 */
+export function resonanceSend(midi) {
+  const x = Math.max(0, Math.min(RESONANCE_CAL.length - 1, (midi - 21) / 3));
+  const i = Math.min(RESONANCE_CAL.length - 2, Math.floor(x));
+  const cal = RESONANCE_CAL[i] + (RESONANCE_CAL[i + 1] - RESONANCE_CAL[i]) * (x - i);
+  return 10 ** ((RESONANCE_DB - cal) / 20);
+}
+
 /** 取樣樂器播放器：載入樣本、挑最近的音、用播放速率補中間的音。
  *  一個實例可以載入多個樂器，各自獨立；載過的樂器不會重抓。
  *  建構子的兩個參數跟其他引擎一樣可以傳值或 getter（AudioContext 要等使用者手勢才會有）。 */
@@ -381,6 +445,30 @@ export class SampledInstruments {
   get targetNode() {
     const out = typeof this._output === 'function' ? this._output() : this._output;
     return out || (this.ctx ? this.ctx.destination : null);
+  }
+
+  /** 延音踏板：踩下時有制音器的樂器（鋼琴）會帶出共鳴弦，放開時共鳴被制音器壓掉。
+   *  共鳴的 ConvolverNode 第一次踩踏板才建立（沒用過踏板的人不用多跑一個卷積）；
+   *  ponytail: 所以第一次踩下之前就在響的音不會進共鳴，之後每個音都會。 */
+  setPedal(down) {
+    const ctx = this.ctx;
+    if (!ctx || typeof ctx.createConvolver !== 'function') return;
+    if (down && !this._res) {
+      const input = ctx.createConvolver();
+      input.normalize = false;
+      input.buffer = this._resonanceBuffer();
+      const wet = ctx.createGain();
+      wet.gain.value = 0;
+      input.connect(wet);
+      if (this.targetNode) wet.connect(this.targetNode);
+      this._res = { input, wet };
+    }
+    if (!this._res) return;
+    const now = ctx.currentTime;
+    const g = this._res.wet.gain;
+    g.cancelScheduledValues(now);
+    // 踩下：抬起制音器很快（~30 ms）；放開：制音器落下，共鳴約 0.1 秒內悶掉
+    g.setTargetAtTime(down ? 1 : 0, now, down ? 0.01 : 0.03);
   }
 
   /** 這個樂器已經有幾個「檔案」可用（跟 wanted() 同一個單位，才能比較）。 */
@@ -412,7 +500,24 @@ export class SampledInstruments {
     if (total > 0 && this.loaded(name) >= total) return Promise.resolve(this.instruments.get(name));
     const p = this._load(name, spec, opts).finally(() => this._loading.delete(name));
     this._loading.set(name, p);
+    // 鋼琴（有制音器）載完後，趁空檔先算好共鳴的脈衝響應（約 0.2 秒），第一次踩踏板才不會卡一下
+    // （先算失敗也沒關係：第一次踩踏板時會再算一次）
+    if (spec.release) p.then(() => setTimeout(() => { try { this._resonanceBuffer(); } catch {} }, 0), () => {});
     return p;
+  }
+
+  /** 共鳴弦的 AudioBuffer（每個 AudioContext 算一次）。 */
+  _resonanceBuffer() {
+    const ctx = this.ctx;
+    if (!ctx || typeof ctx.createBuffer !== 'function') return null;
+    if (this._resBuf && this._resBuf.ctx === ctx) return this._resBuf.buffer;
+    const rate = ctx.sampleRate || 44100;
+    const [l, r] = resonanceImpulse(rate);
+    const buffer = ctx.createBuffer(2, l.length, rate);
+    buffer.getChannelData(0).set(l);
+    buffer.getChannelData(1).set(r);
+    this._resBuf = { ctx, buffer };
+    return buffer;
   }
 
   async _load(name, spec, { onProgress, fetchImpl, decode } = {}) {
@@ -629,6 +734,14 @@ export class SampledInstruments {
       gainNode.gain.value = gain;
       tail.connect(gainNode);
       gainNode.connect(target);
+      // 有制音器（釋音取樣）的就是鋼琴：也送進共鳴弦（踏板沒踩時那一路的增益是 0）
+      if (this._res && inst.release) {
+        const send = ctx.createGain();
+        send.gain.value = resonanceSend(note);
+        gainNode.connect(send);
+        send.connect(this._res.input);
+        created.push(send);
+      }
       created.push(gainNode);
       src.onended = () => { for (const n of created) n.disconnect(); };
       startAt(ctx, gainNode, src, opts);

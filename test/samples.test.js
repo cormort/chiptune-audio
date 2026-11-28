@@ -366,6 +366,45 @@ test('velocity picks the layer, and the layer carries its own audio', () => {
   assert.equal(sampleVoice([], 60, 1), null);
 });
 
+test('the sympathetic-string impulse rings at string pitches, decorrelated left/right', async () => {
+  const { resonanceImpulse } = await import('../src/samples.js');
+  const [L, R] = resonanceImpulse(44100, 3);
+  assert.equal(L.length, 132300);
+  assert.ok(L.every(Number.isFinite) && R.every(Number.isFinite));
+  const at = (x, f) => {
+    const c = 2 * Math.cos((2 * Math.PI * f) / 44100);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < 44100; i++) { const s = x[i] + c * s1 - s2; s2 = s1; s1 = s; }
+    return Math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2);
+  };
+  // A2 是一條弦；差四分之一音的地方沒有弦，要弱很多
+  assert.ok(at(L, 110) > 10 * at(L, 110 * 2 ** (0.5 / 12)), 'resonance must sit on the strings');
+  let lr = 0, ll = 0, rr = 0;
+  for (let i = 0; i < L.length; i++) { lr += L[i] * R[i]; ll += L[i] * L[i]; rr += R[i] * R[i]; }
+  assert.ok(Math.abs(lr / Math.sqrt(ll * rr)) < 0.3, 'left and right must not be the same signal');
+});
+
+test('the pedal fades the resonance in and damps it on release, building it only once', () => {
+  const ramps = [];
+  let convolvers = 0;
+  const param = () => ({ value: 0, cancelScheduledValues() {}, setTargetAtTime(v, t, tc) { ramps.push([v, tc]); } });
+  const node = () => ({ connect() {}, disconnect() {} });
+  const ctx = {
+    sampleRate: 8000, currentTime: 0, destination: node(),
+    createBuffer: (ch, len) => { const d = [new Float32Array(len), new Float32Array(len)]; return { getChannelData: (i) => d[i] }; },
+    createConvolver: () => { convolvers++; return node(); },
+    createGain: () => ({ ...node(), gain: param() }),
+  };
+  const bank = new SampledInstruments(ctx);
+  bank.setPedal(false);
+  assert.equal(convolvers, 0, 'no convolver until the pedal is first pressed');
+  bank.setPedal(true);
+  bank.setPedal(false);
+  bank.setPedal(true);
+  assert.equal(convolvers, 1, 'the resonance is built once and reused');
+  assert.ok(ramps[0][0] === 1 && ramps[1][0] === 0 && ramps[2][0] === 1, `down/up/down ramps, got ${JSON.stringify(ramps)}`);
+});
+
 test('eight closely spaced layers sweep without a gain jump', () => {
   // 8 層的鋼琴層距 0.125 比預設窗口 0.18 窄：窗口重疊時增益會在重疊區跳一下
   const piano = { midi: 60, layers: Array.from({ length: 8 }, (_, i) => ({ vel: i / 8, pcm: Float32Array.from([i]) })) };

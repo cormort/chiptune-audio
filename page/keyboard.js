@@ -182,6 +182,7 @@ function setSustain(on) {
   sustain = !!on;
   $('sustain').classList.toggle('on', sustain);
   $('sustain').setAttribute('aria-pressed', String(sustain));
+  sampled.setPedal(sustain);   // 鋼琴的共鳴弦
   if (!sustain) {
     for (const note of sustained) {
       if (note.voice && note.release !== null) note.voice.release(note.release);
