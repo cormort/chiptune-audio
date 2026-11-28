@@ -47,7 +47,10 @@ export { FLUTE_VIB_INSTRUMENT } from './flute-vib-library.js';
 export { STRINGS_INSTRUMENT } from './strings-library.js';
 export { GUITAR_INSTRUMENTS } from './guitar-library.js';
 
-const CACHE_NAME = 'chiptune-samples-v1';
+// 快取命中就不再重抓，所以**同名檔案的內容換了**（例如鋼琴從 5 秒改成取到 −60 dB）
+// 就要換這個名字；舊的那一份在 _load 開快取時刪掉。
+const CACHE_NAME = 'chiptune-samples-v2';
+const CACHE_PREFIX = 'chiptune-samples-';
 /** 載入一個樂器時同時幾條連線（跟 sw.js 的 FILL_WORKERS 一樣：再多手機會整批失敗）。 */
 const LOAD_WORKERS = 6;
 /** 取樣樂器在 renderMidi 裡的命名空間，和 chip／real 兩個合成庫並列。 */
@@ -415,7 +418,13 @@ export class SampledInstruments {
     const urls = sampleUrls(spec);
     let cache = null;
     try {
-      if (typeof caches !== 'undefined') cache = await caches.open(this.cacheName);
+      if (typeof caches !== 'undefined') {
+        if (!SampledInstruments._pruned) {
+          SampledInstruments._pruned = true;
+          for (const k of await caches.keys()) if (k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME) await caches.delete(k);
+        }
+        cache = await caches.open(this.cacheName);
+      }
     } catch {
       cache = null;   // 無痕模式或沒權限：照抓，只是不進快取
     }

@@ -41,10 +41,13 @@ const SRC = `https://raw.githubusercontent.com/${REPO}/master/`;
 const LIST_BASE = `https://github.com/${REPO}/tree/master/`;
 /** 鋼琴用的是同一台琴的**原版**（Salamander V3，每音 16 層，CC-BY 3.0）。 */
 const SALAMANDER = 'https://raw.githubusercontent.com/sfzinstruments/SalamanderGrandPiano/master/Samples/';
-/** 鋼琴的 21 個音（C2–C7，每 3 個半音一個）與 4 個力度層。 */
-const PIANO_NOTES = ['C2', 'D#2', 'F#2', 'A2', 'C3', 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5', 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7'];
+/** 鋼琴的 30 個音：整台琴 A0–C8，每 3 個半音一個（就是 Salamander 取樣的那些音）。
+ *  以前只取 C2–C7，最低和最高的八度靠移調 3–9 個半音，音色明顯變形。 */
+const PIANO_NOTES = ['A0', 'C1', 'D#1', 'F#1', 'A1', 'C2', 'D#2', 'F#2', 'A2', 'C3', 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5', 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'];
 const PIANO_LAYERS = [3, 8, 13, 16];
 const FORCE = process.argv.includes('--force');
+/** `--only=grand`：只重轉這個樂器，其他沿用現有檔案與資料表（不用下載它們的來源）。 */
+const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7) || null;
 
 const RATE = 44100;
 const REFERENCE = 0.7;     // 強層的中位峰值要拉到的基準
@@ -76,7 +79,10 @@ const piano = {
   stereo: true,
   credit: 'Salamander Grand Piano V3 — Alexander Holm（CC-BY 3.0）',
   synth: 'real:piano',
-  seconds: 5,
+  // 最長取這麼多秒，但每個檔在衰減到峰值 −60 dB 時就停（`tailDb`）：低音能響十幾秒，
+  // 以前一律切 5 秒，按住或踩踏板時低音會在 5 秒處被淡出切掉；高音本來就短，檔案反而變小。
+  seconds: 10,
+  tailDb: -60,
   src: SALAMANDER,
   dir: '',
   layers: Object.fromEntries(PIANO_NOTES.map((n) => [n, PIANO_LAYERS.map((v) => `${n}v${v}.flac`)])),
@@ -300,8 +306,18 @@ function decode(file, seconds, stereo = false) {
   return [left, right, mid][best];
 }
 
-/** 去掉開頭靜音、切長度、尾端淡出。不正規化（p 與 f 的音量差要留著）。 */
-function shape(pcm, seconds) {
+/** 最後一個還高於 `peak × 10^(db/20)` 的位置（之後都是聽不到的尾巴）。 */
+function audibleEnd(chans, start, n, peak, db) {
+  const floor = peak * 10 ** (db / 20);
+  for (let i = start + n - 1; i > start; i--) {
+    for (const c of chans) if (Math.abs(c[i]) > floor) return i - start + 1;
+  }
+  return n;
+}
+
+/** 去掉開頭靜音、切長度、尾端淡出。不正規化（p 與 f 的音量差要留著）。
+ *  `tailDb`（可省略）：在聲音衰減到峰值以下這麼多 dB 的地方提早結束。 */
+function shape(pcm, seconds, tailDb) {
   if (pcm && pcm.stereo) {
     // 立體：兩個聲道一起切（同一段起點與長度），淡出也一起
     const len = Math.min(pcm.left.length, Math.round(seconds * RATE));
@@ -312,7 +328,8 @@ function shape(pcm, seconds) {
     let start = 0;
     while (start < len && Math.abs(pcm.left[start]) < floor && Math.abs(pcm.right[start]) < floor) start++;
     start = Math.max(0, start - Math.round(PREROLL * RATE));
-    const n = Math.min(len - start, Math.round(seconds * RATE));
+    let n = Math.min(len - start, Math.round(seconds * RATE));
+    if (tailDb) n = Math.min(n, audibleEnd([pcm.left, pcm.right], start, n, peak, tailDb) + Math.round(FADE * RATE));
     const outL = new Float32Array(n);
     const outR = new Float32Array(n);
     const fadeLen = Math.min(Math.round(FADE * RATE), n);
@@ -369,6 +386,9 @@ for (const name of ['cello', 'clarinet', 'oboe', 'trombone', 'tuba', 'viola', 't
   if (INSTRUMENTS[name]) INSTRUMENTS[name].octave = 12;
 }
 
+/** `--only` 時，其他樂器的資料表照抄現在的 src/dynamic-library.js。 */
+const EXISTING = ONLY ? (await import(LIB_FILE)).DYNAMIC_INSTRUMENTS : {};
+
 function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const library = {};
@@ -377,6 +397,7 @@ function main() {
   let bytes = 0;
 
   for (const [name, inst] of Object.entries(INSTRUMENTS)) {
+    if (ONLY && name !== ONLY) { library[name] = EXISTING[name]; continue; }
     const dir = join(OUT_DIR, name);
     mkdirSync(dir, { recursive: true });
     const entries = {};
@@ -396,9 +417,10 @@ function main() {
       for (const [layerName, vel, file] of ordered) {
         const dest = join(dir, `${midi}-${layerName}.mp3`);
         const source = decode(fetchSource(inst.src || SRC, inst.dir ? `${inst.dir}/${file}` : file), inst.seconds, !!inst.stereo);
-        (peaksByLayer[layerName] ||= []).push(peakOf(shape(source, inst.seconds)));
+        const shaped = shape(source, inst.seconds, inst.tailDb);
+        (peaksByLayer[layerName] ||= []).push(peakOf(shaped));
         if (!existsSync(dest) || FORCE) {
-          converted.set(dest, { pcm: shape(source, inst.seconds), layer: layerName });
+          converted.set(dest, { pcm: shaped, layer: layerName });
           made++;
         } else {
           reused++;

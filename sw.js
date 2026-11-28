@@ -12,7 +12,7 @@ const VERSION = 'v44';
 const APP_CACHE = `chiptune-app-${VERSION}`;
 /** 音檔（鼓組、卡林巴、長笛、弦樂群、吉他…約 9.5 MB）用**清單的雜湊**當版本：
  *  只有樣本清單真的變了才會換名字，所以純程式更新時這 9.5 MB 一個位元組都不會重抓。 */
-const MEDIA_VERSION = 'm655a2b89';
+const MEDIA_VERSION = 'mc50b46cf';
 const MEDIA_CACHE = `chiptune-media-${MEDIA_VERSION}`;
 // 清理只刪自己這兩個前綴的舊版。樣本快取叫 chiptune-samples-v1（引擎在用的隨選快取），
 // 不在這兩個前綴裡——它裝的是使用者抓下來的十幾 MB 樂器錄音，不該因為換一版就重抓。
@@ -140,6 +140,11 @@ const DRUMS = [
 ];
 
 const RELEASES = [
+  'samples/velocity/grand-release/21.mp3',
+  'samples/velocity/grand-release/24.mp3',
+  'samples/velocity/grand-release/27.mp3',
+  'samples/velocity/grand-release/30.mp3',
+  'samples/velocity/grand-release/33.mp3',
   'samples/velocity/grand-release/36.mp3',
   'samples/velocity/grand-release/39.mp3',
   'samples/velocity/grand-release/42.mp3',
@@ -161,6 +166,10 @@ const RELEASES = [
   'samples/velocity/grand-release/90.mp3',
   'samples/velocity/grand-release/93.mp3',
   'samples/velocity/grand-release/96.mp3',
+  'samples/velocity/grand-release/99.mp3',
+  'samples/velocity/grand-release/102.mp3',
+  'samples/velocity/grand-release/105.mp3',
+  'samples/velocity/grand-release/108.mp3',
 ];
 
 // 卡林巴琴的 17 根簧片（約 0.6 MB）。這一把跟鼓組一樣是**內建的樂器**，不是「用到才抓」

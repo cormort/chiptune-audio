@@ -12,7 +12,7 @@
 
 | 樂器 | 來源 | 檔名規則 | 音數 | 層 | 量到的音色差（強/弱） |
 |---|---|---|---|---|---|
-| 平台鋼琴 | `sfzinstruments/SalamanderGrandPiano`（Salamander V3 原版） | `<音>v<n>.flac` | 21 | **4** | 0.58–0.77 倍（每階） |
+| 平台鋼琴 | `sfzinstruments/SalamanderGrandPiano`（Salamander V3 原版） | `<音>v<n>.flac` | 30（A0–C8，最長 10 秒，衰減到 −60 dB 就停） | **4** | 0.58–0.77 倍（每階） |
 | 小提琴 | VSCO `Strings/Solo Violin/Arco Vib` | `_p` / `_f` | 15 | 2 | 0.73 倍 |
 | 大提琴 | VSCO `Strings/Cello Section/susvib` | `_v1` / `_v3` | 13 | 2 | 0.66 倍 |
 | 單簧管 | VSCO `Woodwinds/Clarinet/susLong` | `_v1` / `_v2` / `_v3` | 10 | 3 | 0.65–0.74 倍 |
@@ -22,7 +22,7 @@
 | 低音號 | VSCO `Brass/Tuba/sus` | `_v1` / `_v2` / `_v3` | 7 | 3 | 0.35–0.57 倍 |
 | 小號 | VSCO `Brass/Trumpet/sus` | `_v1` / `_v3` | 10 | 2 | 0.31 倍 |
 
-另外鋼琴還有 **21 個放開鍵的釋音取樣**（`grand-release/`，Salamander 的 `rel16..rel76`），
+另外鋼琴還有 **30 個放開鍵的釋音取樣**（`grand-release/`，Salamander 的 `rel1..rel88`），
 note-off 時播——鋼琴的「制音器」聲音，是像不像真的另一半。
 
 「音色差」＝強層與弱層的亮度比（相鄰樣本差平方的平均 ÷ 訊號能量，與音量無關）。
