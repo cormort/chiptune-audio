@@ -361,10 +361,14 @@ export function startAt(ctx, gainNode, src, opts) {
  *  響板傳來的振動帶動。弦是線性共振器，所以「整台琴的共鳴」就是一個脈衝響應——
  *  每條弦的前幾個泛音（含鋼弦的輕微不諧和 B）各一個衰減的正弦，低音弦響得久、高音弦短。
  *  左右聲道相位隨機，讓共鳴有空間感而不是一個點。
- *  ponytail: 只模擬踏板踩下的情況；不踩踏板時「按住的鍵」也會共鳴，那要每條弦一個開關。 */
+ *
+ *  回傳的陣列另外帶 `.modes`：每條弦的每個泛音一筆 { midi, w, decay, ampL, ampR, phL, phR }
+ *  （已經乘上正規化），h[n] = amp·decay^n·sin(w·n + ph)。整個脈衝響應就是全部模態的和，
+ *  所以不踩踏板時「只有按住的那幾條弦」的共鳴，就是只取那幾條弦的模態——音量自動一致。 */
 export function resonanceImpulse(rate = 44100, seconds = 3) {
   const n = Math.max(1, Math.floor(rate * seconds));
   const out = [new Float32Array(n), new Float32Array(n)];
+  const modes = [];
   let seed = 0x5eed;
   const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
   const top = Math.min(5000, rate * 0.45);
@@ -380,10 +384,13 @@ export function resonanceImpulse(rate = 44100, seconds = 3) {
       const len = Math.min(n, Math.ceil(tauK * rate * 6.9));  // 衰減到 −60 dB 以下就不用算
       const w = (2 * Math.PI * fk) / rate;
       const cw = Math.cos(w), sw = Math.sin(w);
+      // 共振器的峰值增益 ∝ 振幅 × 衰減時間：除以 τ，長響的低音弦才不會把整個音域蓋過去
+      const amp = 1 / (k * tauK);
+      const ph = [];
       for (const ch of out) {
-        const ph = rand() * 2 * Math.PI;
-        // 共振器的峰值增益 ∝ 振幅 × 衰減時間：除以 τ，長響的低音弦才不會把整個音域蓋過去
-        let c = Math.cos(ph), s = Math.sin(ph), env = 1 / (k * tauK);
+        const p = rand() * 2 * Math.PI;
+        ph.push(p);
+        let c = Math.cos(p), s = Math.sin(p), env = amp;
         for (let i = 0; i < len; i++) {
           ch[i] += s * env;
           env *= decay;
@@ -392,15 +399,19 @@ export function resonanceImpulse(rate = 44100, seconds = 3) {
           c = nc;
         }
       }
+      modes.push({ midi, w, decay, ampL: amp, ampR: amp, phL: ph[0], phR: ph[1] });
     }
   }
   // 正規化到單位能量：音量交給 resonanceSend 的校正，跟取樣率與長度無關
-  for (const ch of out) {
+  const norms = out.map((ch) => {
     let e = 0;
     for (const v of ch) e += v * v;
     const g = e > 0 ? 1 / Math.sqrt(e) : 0;
     for (let i = 0; i < n; i++) ch[i] *= g;
-  }
+    return g;
+  });
+  for (const m of modes) { m.ampL *= norms[0]; m.ampR *= norms[1]; }
+  out.modes = modes;
   return out;
 }
 
@@ -452,17 +463,23 @@ function fft(re, im, inverse) {
  *  所以降到約 11 kHz 算，FFT 少 4 倍以上的工作。 */
 const RESONANCE_WORK_RATE = 11025;
 
-/** 離線版的共鳴弦（MIDI 匯出用）：跟即時的 ConvolverNode 用同一個脈衝響應與同一張校正表。
+/** 離線版的共鳴弦（MIDI 匯出用）：跟即時版用同一個脈衝響應、同一組模態、同一張校正表。
  *
  *  `send` 是已經乘上 resonanceSend(音高) 的鋼琴訊號（單聲道，`rate` 取樣率），
- *  `pedal` 是 [{ time, down }]（秒）。回傳 { left, right }，長度跟 send 一樣。
- *  踏板放開時共鳴被制音器壓掉（時間常數跟即時版一樣：抬起 10 ms、落下 30 ms）。
+ *  `pedal` 是 [{ time, down }]（秒）：踩著時 88 條弦都共鳴（FFT 卷積），放開時被制音器壓掉
+ *  （時間常數跟即時版一樣：抬起 10 ms、落下 30 ms）。
+ *  `opts.held` 是 [{ note, on, off, self }]（秒）：不踩踏板時，按住的鍵那條弦也會共鳴（那條弦的
+ *  模態，鍵放開後約 0.1 秒悶掉）。`self()`（可省略）回傳這個音自己的送出（`rate` 取樣率、從 on
+ *  開始）：那條弦就是被敲的弦，它被自己的聲音帶動不算共鳴，要扣掉——不扣的話每個音都會多一層
+ *  自己泛音的回聲（量到約 −22 dB），等於沒踩踏板也像踩了。回傳 { left, right }，長度跟 send 一樣。
  *  `opts.decimate` 可以強制降頻倍數（測試用，1 = 不降頻）。 */
 export function renderResonance(send, pedal, rate = 44100, opts = {}) {
   const frames = send.length;
   const left = new Float32Array(frames);
   const right = new Float32Array(frames);
-  if (!frames || !Array.isArray(pedal) || !pedal.some((p) => p.down)) return { left, right };
+  const usePedal = Array.isArray(pedal) && pedal.some((p) => p.down);
+  const held = Array.isArray(opts.held) ? opts.held.filter((h) => h.off > h.on) : [];
+  if (!frames || (!usePedal && !held.length)) return { left, right };
   const D = Math.max(1, opts.decimate ?? Math.round(rate / RESONANCE_WORK_RATE));
   const r = rate / D;
   const m = Math.ceil(frames / D);
@@ -473,48 +490,122 @@ export function renderResonance(send, pedal, rate = 44100, opts = {}) {
   let half = 1;
   while (half < r * 2.5) half <<= 1;
   const N = half * 2;
-  const [hl, hr] = resonanceImpulse(r, half / r);
-  // 左右兩個實數脈衝響應塞進一個複數：H = FFT(hL + i·hR)；x 是實數，所以
-  // IFFT(X·H) 的實部就是左聲道、虛部就是右聲道——一次卷積兩個聲道
-  const Hre = new Float64Array(N), Him = new Float64Array(N);
-  Hre.set(hl.subarray(0, half)); Him.set(hr.subarray(0, half));
-  fft(Hre, Him, false);
-  const yl = new Float64Array(m + N), yr = new Float64Array(m + N);
-  const re = new Float64Array(N), im = new Float64Array(N);
-  for (let start = 0; start < m; start += half) {
-    re.fill(0); im.fill(0);
-    const len = Math.min(half, m - start);
-    let any = false;
-    for (let i = 0; i < len; i++) { re[i] = x[start + i]; if (re[i] !== 0) any = true; }
-    if (!any) continue;
-    fft(re, im, false);
-    for (let k = 0; k < N; k++) {
-      const a = re[k], b = im[k];
-      re[k] = a * Hre[k] - b * Him[k];
-      im[k] = a * Him[k] + b * Hre[k];
-    }
-    fft(re, im, true);
-    for (let i = 0; i < N; i++) { yl[start + i] += re[i] / N; yr[start + i] += im[i] / N; }
-  }
-  // 制音器：踏板踩下時共鳴出現，放開時壓掉
+  const ir = resonanceImpulse(r, half / r);
+
+  // 踏板的開關（降頻後的每個樣本）：卷積那一路的增益，也決定按住的鍵的共振器要不要開
   const gate = new Float64Array(m);
-  const up = 1 - Math.exp(-1 / (0.01 * r)), downK = 1 - Math.exp(-1 / (0.03 * r));
-  let g = 0, target = 0, next = 0;
-  const events = [...pedal].sort((a, b) => a.time - b.time);
-  for (let i = 0; i < m; i++) {
-    while (next < events.length && events[next].time * r <= i) target = events[next++].down ? 1 : 0;
-    g += (target - g) * (target > g ? up : downK);
-    gate[i] = g;
+  const pedalDown = new Uint8Array(m);
+  {
+    const up = 1 - Math.exp(-1 / (0.01 * r)), downK = 1 - Math.exp(-1 / (0.03 * r));
+    let g = 0, target = 0, next = 0;
+    const events = usePedal ? [...pedal].sort((a, b) => a.time - b.time) : [];
+    for (let i = 0; i < m; i++) {
+      while (next < events.length && events[next].time * r <= i) target = events[next++].down ? 1 : 0;
+      g += (target - g) * (target > g ? up : downK);
+      gate[i] = g;
+      pedalDown[i] = target;
+    }
   }
+
+  const yl = new Float64Array(m + N), yr = new Float64Array(m + N);
+  if (usePedal) {
+    // 左右兩個實數脈衝響應塞進一個複數：H = FFT(hL + i·hR)；x 是實數，所以
+    // IFFT(X·H) 的實部就是左聲道、虛部就是右聲道——一次卷積兩個聲道
+    const Hre = new Float64Array(N), Him = new Float64Array(N);
+    Hre.set(ir[0].subarray(0, half)); Him.set(ir[1].subarray(0, half));
+    fft(Hre, Him, false);
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let start = 0; start < m; start += half) {
+      re.fill(0); im.fill(0);
+      const len = Math.min(half, m - start);
+      let any = false;
+      for (let i = 0; i < len; i++) { re[i] = x[start + i]; if (re[i] !== 0) any = true; }
+      if (!any) continue;
+      fft(re, im, false);
+      for (let k = 0; k < N; k++) {
+        const a = re[k], b = im[k];
+        re[k] = a * Hre[k] - b * Him[k];
+        im[k] = a * Him[k] + b * Hre[k];
+      }
+      fft(re, im, true);
+      for (let i = 0; i < N; i++) { yl[start + i] += re[i] / N; yr[start + i] += im[i] / N; }
+    }
+    for (let i = 0; i < m; i++) { yl[i] *= gate[i]; yr[i] *= gate[i]; }
+  }
+
+  if (held.length) {
+    // 每條弦的每個模態是一個複數單極點：z ← p·z + x，p = r·e^{iw}；輸出 amp·Im(e^{iφ}·z)
+    // 的脈衝響應正好是 resonanceImpulse 裡那個衰減正弦。鍵按住而且沒踩踏板時有輸入、
+    // 照原本的速度衰減；其他時候沒有輸入、制音器讓它 30 ms 一個 e 倍地悶掉。
+    const damp = Math.exp(-1 / (0.03 * r));
+    const tail = Math.ceil(0.25 * r);            // 制音器 0.25 秒後已經在 −70 dB 以下
+    const byNote = new Map();
+    for (const h of held) {
+      const on = Math.max(0, Math.floor(h.on * r)), off = Math.min(m, Math.ceil(h.off * r));
+      if (off <= on) continue;
+      if (!byNote.has(h.note)) byNote.set(h.note, []);
+      byNote.get(h.note).push([on, off, h]);
+    }
+    const modesOf = new Map();
+    for (const mode of ir.modes) {
+      if (!modesOf.has(mode.midi)) modesOf.set(mode.midi, []);
+      modesOf.get(mode.midi).push(mode);
+    }
+    for (const [note, spans] of byNote) {
+      const modes = modesOf.get(note);
+      if (!modes) continue;
+      // 同一個鍵重疊或接得很近的按住區間併成一段（共振器的狀態要接得上）
+      spans.sort((a, b) => a[0] - b[0]);
+      const merged = [];
+      for (const s of spans) {
+        const last = merged[merged.length - 1];
+        if (last && s[0] <= last[2]) { last[1] = Math.max(last[1], s[1]); last[2] = Math.min(m, last[1] + tail); last[3].push(s[2]); }
+        else merged.push([s[0], s[1], Math.min(m, s[1] + tail), [s[2]]]);
+      }
+      // 每一段的輸入：全部的送出，扣掉這條弦自己的音（見上面 self 的說明）
+      const inputs = merged.map(([on, , end, hs]) => {
+        const xin = x.slice(on, end);
+        for (const h of hs) {
+          const own = typeof h.self === 'function' ? h.self() : null;
+          if (!own) continue;
+          const at = Math.round(h.on * rate);
+          for (let j = 0; j < own.length; j++) {
+            const k = (((at + j) / D) | 0) - on;
+            if (k >= 0 && k < xin.length) xin[k] -= own[j] / D;
+          }
+        }
+        return xin;
+      });
+      for (const mode of modes) {
+        const cw = Math.cos(mode.w), sw = Math.sin(mode.w);
+        const pr = mode.decay * cw, pi = mode.decay * sw;
+        const dr = mode.decay * damp * cw, di = mode.decay * damp * sw;
+        const sl = Math.sin(mode.phL) * mode.ampL, cl = Math.cos(mode.phL) * mode.ampL;
+        const sr = Math.sin(mode.phR) * mode.ampR, cr = Math.cos(mode.phR) * mode.ampR;
+        merged.forEach(([on, off, end], s) => {
+          const xin = inputs[s];
+          let zr = 0, zi = 0;
+          for (let i = on; i < end; i++) {
+            let nr, ni;
+            if (i < off && !pedalDown[i]) { nr = pr * zr - pi * zi + xin[i - on]; ni = pr * zi + pi * zr; }
+            else { nr = dr * zr - di * zi; ni = dr * zi + di * zr; }
+            zr = nr; zi = ni;
+            yl[i] += sl * zr + cl * zi;
+            yr[i] += sr * zr + cr * zi;
+          }
+        });
+      }
+    }
+  }
+
   // 升頻回原取樣率（線性內插）。單位能量的脈衝響應在 r 取樣率下比在 rate 下小 √D 倍（
   // 卷積的總和少了 D 倍的項、正規化卻只放大 √D），補回來才跟即時版的音量一致。
   const gain = Math.sqrt(D);
   for (let i = 0; i < frames; i++) {
     const p = i / D, j = p | 0, f = p - j;
     const k = Math.min(m - 1, j + 1);
-    const gl = gate[j] + (gate[k] - gate[j]) * f;
-    left[i] = (yl[j] + (yl[k] - yl[j]) * f) * gl * gain;
-    right[i] = (yr[j] + (yr[k] - yr[j]) * f) * gl * gain;
+    left[i] = (yl[j] + (yl[k] - yl[j]) * f) * gain;
+    right[i] = (yr[j] + (yr[k] - yr[j]) * f) * gain;
   }
   return { left, right };
 }
@@ -545,28 +636,82 @@ export class SampledInstruments {
     return out || (this.ctx ? this.ctx.destination : null);
   }
 
-  /** 延音踏板：踩下時有制音器的樂器（鋼琴）會帶出共鳴弦，放開時共鳴被制音器壓掉。
-   *  共鳴的 ConvolverNode 第一次踩踏板才建立（沒用過踏板的人不用多跑一個卷積）；
-   *  ponytail: 所以第一次踩下之前就在響的音不會進共鳴，之後每個音都會。 */
+  /** 共鳴的匯流排：每個鋼琴音的送出都接到這裡，再分給踏板的卷積與按住的鍵的共振器。 */
+  _resBus() {
+    const ctx = this.ctx;
+    if (!ctx || typeof ctx.createGain !== 'function') return null;
+    if (!this._res || this._res.ctx !== ctx) this._res = { ctx, bus: ctx.createGain(), held: new Map(), pedal: false };
+    return this._res;
+  }
+
+  /** 延音踏板：踩下時制音器全部抬起，88 條弦都共鳴（ConvolverNode）；放開時壓掉，
+   *  只剩按住的鍵（setKeyHeld）那幾條弦還能共鳴。
+   *  卷積第一次踩踏板才建立（沒用過踏板的人不用多跑一個卷積）。 */
   setPedal(down) {
     const ctx = this.ctx;
     if (!ctx || typeof ctx.createConvolver !== 'function') return;
-    if (down && !this._res) {
-      const input = ctx.createConvolver();
-      input.normalize = false;
-      input.buffer = this._resonanceBuffer();
+    const res = this._resBus();
+    if (!res) return;
+    res.pedal = !!down;
+    if (down && !res.wet) {
+      const conv = ctx.createConvolver();
+      conv.normalize = false;
+      conv.buffer = this._resonanceBuffer();
       const wet = ctx.createGain();
       wet.gain.value = 0;
-      input.connect(wet);
+      res.bus.connect(conv);
+      conv.connect(wet);
       if (this.targetNode) wet.connect(this.targetNode);
-      this._res = { input, wet };
+      res.wet = wet;
     }
-    if (!this._res) return;
     const now = ctx.currentTime;
-    const g = this._res.wet.gain;
-    g.cancelScheduledValues(now);
-    // 踩下：抬起制音器很快（~30 ms）；放開：制音器落下，共鳴約 0.1 秒內悶掉
-    g.setTargetAtTime(down ? 1 : 0, now, down ? 0.01 : 0.03);
+    // 踩下：抬起制音器很快（~10 ms）；放開：制音器落下，共鳴約 0.1 秒內悶掉
+    const ramp = (param, v) => { param.cancelScheduledValues(now); param.setTargetAtTime(v, now, v ? 0.01 : 0.03); };
+    if (res.wet) ramp(res.wet.gain, down ? 1 : 0);
+    // 踩著踏板時那幾條弦已經在 88 弦的卷積裡，按住的鍵的共振器先關掉，免得算兩次
+    for (const h of res.held.values()) ramp(h.out.gain, down ? 0 : 1);
+  }
+
+  /** 不踩踏板時按住的鍵：那條弦的制音器抬起，它的泛音會被其他音帶動。每條弦是幾個
+   *  原生 IIRFilterNode（二階共振器，脈衝響應就是 resonanceImpulse 裡那條弦的衰減正弦，
+   *  所以音量跟踏板的共鳴一致）。放開鍵時制音器落下，約 0.1 秒內悶掉。
+   *  那條弦自己被敲出來的聲音不算共鳴：playNote 會把這個音的送出再以 −1 接進來抵銷掉。
+   *  ponytail: 單聲道（只用左聲道的相位）。 */
+  setKeyHeld(midi, down) {
+    const ctx = this.ctx;
+    if (!ctx || typeof ctx.createIIRFilter !== 'function') return;
+    const res = this._resBus();
+    if (!res) return;
+    const now = ctx.currentTime;
+    const old = res.held.get(midi);
+    if (old && (!down || old.count > 0)) {
+      if (down) { old.count++; return; }
+      if (--old.count > 0) return;
+      res.held.delete(midi);
+      old.out.gain.cancelScheduledValues(now);
+      old.out.gain.setTargetAtTime(0, now, 0.03);
+      setTimeout(() => { for (const n of old.nodes) n.disconnect(); old.input.disconnect(); old.out.disconnect(); }, 400);
+      return;
+    }
+    if (!down || !this._resBuf || this._resBuf.ctx !== ctx) return;   // 脈衝響應還沒算好就先不共鳴
+    const input = ctx.createGain();
+    res.bus.connect(input);
+    const out = ctx.createGain();
+    out.gain.value = res.pedal ? 0 : 1;
+    const nodes = [];
+    for (const m of this._resBuf.modes) {
+      if (m.midi !== midi) continue;
+      // h[n] = amp·r^n·sin(w·n + φ) 的 z 轉換：(amp·sinφ + amp·r·sin(w−φ)·z⁻¹) / (1 − 2r·cos w·z⁻¹ + r²·z⁻²)
+      const f = ctx.createIIRFilter(
+        [m.ampL * Math.sin(m.phL), m.ampL * m.decay * Math.sin(m.w - m.phL)],
+        [1, -2 * m.decay * Math.cos(m.w), m.decay * m.decay],
+      );
+      input.connect(f);
+      f.connect(out);
+      nodes.push(f);
+    }
+    if (this.targetNode) out.connect(this.targetNode);
+    res.held.set(midi, { input, out, nodes, count: 1 });
   }
 
   /** 這個樂器已經有幾個「檔案」可用（跟 wanted() 同一個單位，才能比較）。 */
@@ -610,11 +755,11 @@ export class SampledInstruments {
     if (!ctx || typeof ctx.createBuffer !== 'function') return null;
     if (this._resBuf && this._resBuf.ctx === ctx) return this._resBuf.buffer;
     const rate = ctx.sampleRate || 44100;
-    const [l, r] = resonanceImpulse(rate);
-    const buffer = ctx.createBuffer(2, l.length, rate);
-    buffer.getChannelData(0).set(l);
-    buffer.getChannelData(1).set(r);
-    this._resBuf = { ctx, buffer };
+    const ir = resonanceImpulse(rate);
+    const buffer = ctx.createBuffer(2, ir[0].length, rate);
+    buffer.getChannelData(0).set(ir[0]);
+    buffer.getChannelData(1).set(ir[1]);
+    this._resBuf = { ctx, buffer, modes: ir.modes };
     return buffer;
   }
 
@@ -832,13 +977,24 @@ export class SampledInstruments {
       gainNode.gain.value = gain;
       tail.connect(gainNode);
       gainNode.connect(target);
-      // 有制音器（釋音取樣）的就是鋼琴：也送進共鳴弦（踏板沒踩時那一路的增益是 0）
-      if (this._res && inst.release) {
+      // 有制音器（釋音取樣）的就是鋼琴：也送進共鳴弦的匯流排（踏板或按住的鍵決定哪些弦會響）
+      // （匯流排由 setPedal／setKeyHeld 建立：沒用到共鳴的頁面不會多出任何節點）
+      const res = inst.release && this._res && this._res.ctx === ctx ? this._res : null;
+      if (res) {
         const send = ctx.createGain();
         send.gain.value = resonanceSend(note);
         gainNode.connect(send);
-        send.connect(this._res.input);
+        send.connect(res.bus);
         created.push(send);
+        // 這個鍵正被按住：它那條弦的共振器不該被自己的聲音帶動，送一份 −1 過去抵銷
+        const own = res.held.get(note);
+        if (own) {
+          const neg = ctx.createGain();
+          neg.gain.value = -1;
+          send.connect(neg);
+          neg.connect(own.input);
+          created.push(neg);
+        }
       }
       created.push(gainNode);
       src.onended = () => { for (const n of created) n.disconnect(); };

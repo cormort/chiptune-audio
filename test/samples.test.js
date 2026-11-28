@@ -384,6 +384,31 @@ test('the sympathetic-string impulse rings at string pitches, decorrelated left/
   assert.ok(Math.abs(lr / Math.sqrt(ll * rr)) < 0.3, 'left and right must not be the same signal');
 });
 
+test('without the pedal, only held keys resonate, never with their own note', async () => {
+  const { renderResonance } = await import('../src/samples.js');
+  const R = 44100;
+  const tone = (f, from, to, len) => { const x = new Float32Array(len); for (let i = from * R; i < to * R; i++) x[i] = Math.sin((2 * Math.PI * f * i) / R) * 0.2; return x; };
+  const energy = (o, a, b) => { let s = 0; for (let i = Math.floor(a * R); i < b * R; i++) s += o.left[i] ** 2 + o.right[i] ** 2; return s; };
+  // A3（220 Hz）在 0.5–1.0 秒響；A2（110 Hz）的第 2 泛音正好是 220 Hz
+  const a3 = tone(220, 0.5, 1, R * 3);
+  const heldA2 = renderResonance(a3, [], R, { held: [{ note: 45, on: 0, off: 2 }] });
+  const releasedA2 = renderResonance(a3, [], R, { held: [{ note: 45, on: 0, off: 0.4 }] });
+  assert.ok(energy(heldA2, 0.5, 1.5) > 0, 'a held A2 must ring with an A3');
+  assert.equal(energy(releasedA2, 0.5, 1.5), 0, 'a damped string must not');
+  // 鍵放開（2 s）後制音器壓掉
+  assert.ok(energy(heldA2, 2.3, 2.9) < 1e-6 * energy(heldA2, 1, 1.9), 'dampers stop it after the key is released');
+  // 按住的那條弦就是被敲的弦：它自己的聲音不算共鳴
+  const self = renderResonance(a3, [], R, { held: [{ note: 57, on: 0.5, off: 1, self: () => a3.subarray(0.5 * R) }] });
+  assert.ok(energy(self, 0, 3) < 1e-9 * energy(heldA2, 0.5, 1.5), 'a string must not resonate with its own note');
+  // 按住全部 88 鍵（不踩踏板）＝ 踩著踏板：兩條路是同一組弦
+  const all = Array.from({ length: 88 }, (_, k) => ({ note: 21 + k, on: 0, off: 2 }));
+  const modal = renderResonance(a3, [], R, { held: all });
+  const conv = renderResonance(a3, [{ time: 0, down: true }, { time: 2, down: false }], R);
+  let d = 0, s = 0;
+  for (let i = 0.1 * R; i < 1.9 * R; i++) { d += (modal.left[i] - conv.left[i]) ** 2; s += conv.left[i] ** 2; }
+  assert.ok(10 * Math.log10(d / s) < -40, `held-key modes must match the pedal convolution, off by ${(10 * Math.log10(d / s)).toFixed(1)} dB`);
+});
+
 test('the pedal fades the resonance in and damps it on release, building it only once', () => {
   const ramps = [];
   let convolvers = 0;

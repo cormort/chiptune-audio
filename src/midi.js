@@ -199,7 +199,7 @@ export function parseMidi(data) {
           for (let j = sus.length - 1; j >= 0; j--) {
             if (sus[j].note === d1) {
               const s = sus.splice(j, 1)[0];
-              raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
+              raw.push({ trk, ch, tick: s.tick, endTick: tick, upTick: s.up, note: s.note, vel: s.vel });
             }
           }
         }
@@ -221,7 +221,7 @@ export function parseMidi(data) {
           if (pedal.get(ch)) {
             let sus = sustained.get(ch);
             if (!sus) { sus = []; sustained.set(ch, sus); }
-            sus.push({ note: d1, tick: on.tick, vel: on.vel });
+            sus.push({ note: d1, tick: on.tick, vel: on.vel, up: tick });   // up：鍵真正放開的時間
           } else {
             raw.push({ trk, ch, tick: on.tick, endTick: tick, note: d1, vel: on.vel });
           }
@@ -235,7 +235,7 @@ export function parseMidi(data) {
           pedal.set(ch, false);
           const sus = sustained.get(ch);
           if (sus && sus.length) {
-            for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
+            for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, upTick: s.up, note: s.note, vel: s.vel });
             sus.length = 0;
           }
         }
@@ -250,7 +250,7 @@ export function parseMidi(data) {
       for (const on of q) raw.push({ trk, ch, tick: on.tick, endTick: tick, note, vel: on.vel });
     }
     for (const [ch, sus] of sustained) {
-      for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, note: s.note, vel: s.vel });
+      for (const s of sus) raw.push({ trk, ch, tick: s.tick, endTick: tick, upTick: s.up, note: s.note, vel: s.vel });
     }
     pos = end;
   }
@@ -266,7 +266,10 @@ export function parseMidi(data) {
     const dur = Math.max(0, toSeconds(r.endTick) - time);
     const key = `${r.trk}:${r.ch}`;
     if (!byPart.has(key)) byPart.set(key, { trk: r.trk, ch: r.ch, notes: [] });
-    byPart.get(key).notes.push({ time, dur, note: r.note, vel: r.vel / 127 });
+    const n = { time, dur, note: r.note, vel: r.vel / 127 };
+    // 被踏板延長的音：`held` 是鍵真正按住的長度（不踩踏板時按住的鍵才有共鳴，匯出要知道）
+    if (r.upTick !== undefined) n.held = Math.max(0, Math.min(dur, toSeconds(r.upTick) - time));
+    byPart.get(key).notes.push(n);
     if (time + dur > duration) duration = time + dur;
   }
 
@@ -413,10 +416,10 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
 
     let hit = 0;
     const rounds = new Map();     // 同一個鼓音連續打時輪流用不同的錄音（round robin）
-    // 鋼琴（有制音器的取樣）踩了延音踏板：另外混一條送往共鳴弦的訊號（每個音乘上
-    // 跟即時版一樣的 resonanceSend 校正），整條音軌混完再一次卷積
-    const resSend = voice && voice.release && Array.isArray(track.pedal) && track.pedal.some((p) => p.down)
-      ? new Float32Array(frames) : null;
+    // 鋼琴（有制音器的取樣）：另外混一條送往共鳴弦的訊號（每個音乘上跟即時版一樣的
+    // resonanceSend 校正），整條音軌混完再算共鳴——踩著踏板時 88 條弦，不踩時只有按住的鍵
+    const resSend = voice && voice.release ? new Float32Array(frames) : null;
+    const heldKeys = [];
     for (const n of track.notes) {
       const time = n.time / speed;
       if (time >= limit) break;
@@ -448,13 +451,27 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
         if (parts && parts.length) {
           rounds.set(note, round + 1);
           const ratio = (voice.rate / sampleRate) * pick.rate;
+          const mixOpts = { hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate };
+          const send = resonanceSend(note);
           for (const part of parts) {
-            const mixOpts = { hold: n.dur / speed, release: SAMPLE_RELEASE_SECONDS, rate: sampleRate };
             const gain = SAMPLE_VOICE_GAIN * vel * part.gain;
             // 立體樣本：左右各自混進去。單聲道時左右一樣，等於原本的行為。
             if (stereo && part.left && part.right) addStereo(at, part.left, part.right, ratio, gain, mixOpts);
             else add(at, part.pcm, ratio, gain, mixOpts);
-            if (resSend) mixSampleInto(resSend, at, part.pcm || part.left, ratio, gain * resonanceSend(note), mixOpts);
+            if (resSend) mixSampleInto(resSend, at, part.pcm || part.left, ratio, gain * send, mixOpts);
+          }
+          if (resSend) {
+            // 這個鍵按住的時間（被踏板延長的音用 held）；self() 要用時才重混這個音自己的送出，
+            // 讓共鳴扣掉「被敲的那條弦被自己帶動」的部分（見 renderResonance）
+            const keyDown = (n.held ?? n.dur) / speed;
+            heldKeys.push({
+              note, on: time, off: time + keyDown,
+              self: () => {
+                const own = new Float32Array(Math.ceil((keyDown + 0.3) * sampleRate));
+                for (const part of parts) mixSampleInto(own, 0, part.pcm || part.left, ratio, SAMPLE_VOICE_GAIN * vel * part.gain * send, mixOpts);
+                return own;
+              },
+            });
           }
           // 放開鍵：鋼琴的「制音器」聲音。延音樣本在這裡被切掉，改由這個收尾。
           const rel = voice.release && pickHit(voice.release.kit[note], vel, 0);
@@ -471,7 +488,8 @@ function renderMidiCore(midi, opts = {}, stereo = false) {
       sfx(at, p, sampleRate);
     }
     if (resSend) {
-      const wet = renderResonance(resSend, track.pedal.map((e) => ({ time: e.time / speed, down: e.down })), sampleRate);
+      const pedal = (track.pedal || []).map((e) => ({ time: e.time / speed, down: e.down }));
+      const wet = renderResonance(resSend, pedal, sampleRate, { held: heldKeys });
       if (stereo) {
         for (let k = 0; k < frames; k++) { out.l[k] += wet.left[k]; out.r[k] += wet.right[k]; }
       } else {

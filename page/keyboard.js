@@ -197,6 +197,7 @@ function noteOn(i) {
   let voice = null;
   let release = null;      // null＝讓它自己響完（鋼琴、撥弦、鐘聲）
   if (bank === 'sample') {
+    if (instrument === 'grand') sampled.setKeyHeld(n, true);   // 按住的鍵：那條弦可以共鳴
     voice = sampled.playNote(instrument, n, { vel: 0.85 });
     if (voice) {
       release = 0.2;       // 取樣：放開就是悶掉（鋼琴的制音器）
@@ -220,6 +221,7 @@ function noteOn(i) {
 }
 function noteOff(note) {
   if (!note || !held.delete(note)) return;
+  if (note.bank === 'sample' && note.instrument === 'grand') sampled.setKeyHeld(note.n, false);
   if (sustain && note.voice && note.release !== null) sustained.add(note);
   else if (note.voice && note.release !== null) note.voice.release(note.release);
   paintHeld();
