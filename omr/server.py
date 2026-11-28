@@ -1,6 +1,6 @@
 """Local OMR server: serves the repo and turns an uploaded score PDF into MusicXML.
 
-    omr/setup.sh                    # once: venv + oemer
+    omr/setup.sh                    # once: venv + homr
     omr/.venv/bin/python omr/server.py   # then open http://localhost:8765/score.html
 
 POST /omr (body = PDF bytes) -> {"pages": [{"image": "data:image/png;base64,...", "musicxml": "..."}]}
@@ -13,9 +13,9 @@ from pathlib import Path
 import pymupdf
 
 ROOT = Path(__file__).resolve().parent.parent
-OEMER = Path(sys.executable).parent / 'oemer'
+HOMR = Path(sys.executable).parent / 'homr'
 MAX_PDF = 20 * 1024 * 1024
-MAX_PAGES = 10  # oemer takes ~1 min per page
+MAX_PAGES = 10  # homr takes ~15 s per page
 
 
 def run_omr(pdf: bytes) -> list[dict]:
@@ -23,15 +23,16 @@ def run_omr(pdf: bytes) -> list[dict]:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         doc = pymupdf.open(stream=pdf, filetype='pdf')
+        pngs = []
         for i, page in enumerate(doc):
             if i >= MAX_PAGES:
                 break
-            png = tmp / f'p{i}.png'
-            page.get_pixmap(dpi=200).save(png)
-            out = tmp / f'out{i}'
-            out.mkdir()
-            r = subprocess.run([str(OEMER), '-o', str(out), str(png)], capture_output=True, text=True)
-            xml = out / f'p{i}.musicxml'
+            pngs.append(tmp / f'p{i}.png')
+            page.get_pixmap(dpi=200).save(pngs[-1])
+        # A folder (not a file list) makes homr write one p<i>.musicxml per page instead of merging them.
+        r = subprocess.run([str(HOMR), str(tmp)], capture_output=True, text=True)
+        for i, png in enumerate(pngs):
+            xml = png.with_suffix('.musicxml')
             if not xml.exists():
                 raise RuntimeError(f'第 {i + 1} 頁辨識失敗：{r.stderr.strip().splitlines()[-1:]}')
             pages.append({

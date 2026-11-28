@@ -51,7 +51,7 @@ function parseMusicXml(text) {
       return { events };
     }) };
   });
-  if (!beats) {  // oemer writes no time signature: guess the most common measure length
+  if (!beats) {  // no time signature in the OMR output: guess the most common measure length
     const seen = {};
     for (const p of parts) for (const m of p.measures) { const l = measureLen(m); seen[l] = (seen[l] || 0) + 1; }
     beats = +Object.entries(seen).sort((a, b) => b[1] - a[1])[0]?.[0] || 4;
@@ -187,7 +187,7 @@ $('file').onchange = async (e) => {
   const status = $('status');
   try {
     if (/\.pdf$/i.test(file.name)) {
-      status.textContent = '辨識中…（每頁約 1 分鐘）';
+      status.textContent = '辨識中…（每頁約 15 秒）';
       const res = await fetch('/omr', { method: 'POST', body: file });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
