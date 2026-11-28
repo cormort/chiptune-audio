@@ -188,8 +188,10 @@ $('file').onchange = async (e) => {
   try {
     if (/\.pdf$/i.test(file.name)) {
       status.textContent = '辨識中…（每頁約 15 秒）';
-      const res = await fetch('/omr', { method: 'POST', body: file });
-      const data = await res.json();
+      const res = await fetch('/omr', { method: 'POST', body: file }).catch(() => null);
+      // A static host (GitHub Pages) answers with an HTML 404/405, not omr/server.py's JSON.
+      const data = await res?.json().catch(() => null);
+      if (!data) throw new Error('辨識 PDF 需要在本機執行 omr/server.py，這個網址不能辨識。也可以在本機用 omr/pdf2midi.py --xml-dir 轉出 .musicxml 再載入。');
       if (!res.ok) throw new Error(data.error);
       const songs = data.pages.map((p) => parseMusicXml(p.musicxml));
       // ponytail: pages are joined measure-by-measure, assuming the same parts on every page.
