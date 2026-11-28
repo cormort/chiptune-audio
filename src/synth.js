@@ -15,6 +15,16 @@ function fastSin(phase) {
   return s0 + (SINE[i + 1] - s0) * (pos - i);
 }
 
+/** Note velocity 0..1 (instrumentNote passes it; a hand-built voice without it plays at full). */
+const velOf = (p) => (Number.isFinite(p.vel) ? Math.max(0.05, Math.min(1, p.vel)) : 1);
+
+/** PolyBLEP residual: subtracted at a saw's wrap it removes the step's aliasing. */
+function polyBlep(t, dt) {
+  if (t < dt) { t /= dt; return t + t - t * t - 1; }
+  if (t > 1 - dt) { t = (t - 1) / dt; return t * t + t + t + 1; }
+  return 0;
+}
+
 function sampleBounds(out, offset, p, sampleRate) {
   const seconds = p.attack + p.sustain + p.decay;
   let n = Math.ceil(seconds * sampleRate);
@@ -44,12 +54,18 @@ function renderPiano(out, offset, p, sampleRate, n) {
 
   // Accumulate partials in a local scratch array so peak stays controlled before scaling by vol
   const buf = new Float32Array(n);
+  const vel = velOf(p);
   for (let k = 1; k <= K; k++) {
     const fk = k * f0 * Math.sqrt(1 + B * k * k);
     if (fk >= nyquist) break;
-    const amp0 = 0.5 * Math.exp(-0.24 * (k - 1)) * (k === 1 ? 0.62 : 0.42 / Math.pow(k, 0.55));
+    // A softer hammer strike excites fewer upper partials: pp is darker, not just quieter.
+    const amp0 = 0.5 * Math.exp(-0.24 * (k - 1)) * (k === 1 ? 0.62 : 0.42 / Math.pow(k, 0.55)) * Math.pow(vel, 0.35 * (k - 1));
     const decayK = baseDecay / (1 + 0.62 * (k - 1) + 0.065 * (k - 1) * (k - 1));
-    const expStep = Math.exp(-1 / (decayK * sampleRate));
+    // Two unison strings with unequal level and decay: the louder one sets the
+    // long aftersound, the quieter one the fast prompt sound. Equal levels beat
+    // down to silence (~-45 dB on the fundamental around 1 s), which read as a wobble.
+    const expStep1 = Math.exp(-1 / (decayK * sampleRate));
+    const expStep2 = Math.exp(-1 / (decayK * 0.45 * sampleRate));
     const df = 0.22 * (1 + 0.08 * k);
     const w1 = (2 * Math.PI * (fk - df)) / sampleRate;
     const w2 = (2 * Math.PI * (fk + df)) / sampleRate;
@@ -57,10 +73,11 @@ function renderPiano(out, offset, p, sampleRate, n) {
     const cos2 = Math.cos(w2), sin2 = Math.sin(w2);
     let c1 = 1, s1 = 0;
     let c2 = 1, s2 = 0;
-    let env = amp0;
+    let env1 = amp0 * 1.29, env2 = amp0 * 0.71;
     for (let i = 0; i < n; i++) {
-      buf[i] += (s1 + s2) * env;
-      env *= expStep;
+      buf[i] += s1 * env1 + s2 * env2;
+      env1 *= expStep1;
+      env2 *= expStep2;
       const nc1 = c1 * cos1 - s1 * sin1;
       s1 = s1 * cos1 + c1 * sin1;
       c1 = nc1;
@@ -121,6 +138,17 @@ function renderPluck(out, offset, p, sampleRate, n) {
     mean += val;
   }
   mean /= delayLen;
+  // A soft pluck rounds the string's initial shape (zero-phase one-pole, both
+  // directions), so it starts darker; full velocity leaves the shape untouched.
+  const vel = velOf(p);
+  if (vel < 1) {
+    // Cutoff tracks the harmonic number (≈3rd at vel 0, 15th at full) so it works at any pitch.
+    const g = 1 - Math.exp((-2 * Math.PI * (3 + 12 * vel) * f0) / sampleRate);
+    let s = ring[delayLen - 1];
+    for (let i = 0; i < delayLen; i++) ring[i] = s += g * (ring[i] - s);
+    s = ring[0];
+    for (let i = delayLen - 1; i >= 0; i--) ring[i] = s += g * (ring[i] - s);
+  }
   for (let i = 0; i < delayLen; i++) {
     ring[i] -= mean;
     const a = Math.abs(ring[i]);
@@ -182,7 +210,12 @@ function renderFm(out, offset, p, sampleRate, n) {
   const f0 = p.freq;
   const vol = p.vol;
   const ratio = Number.isFinite(p.fmRatio) ? p.fmRatio : 2;
-  const index0 = Number.isFinite(p.fmIndex) ? p.fmIndex : 2.5;
+  // Softer strike = fewer sidebands (mellower). Then cap the index by Carson's
+  // rule so the sidebands stay under Nyquist: a ratio-14 tine at C7 put its
+  // modulator at 29 kHz and folded back as noise (-4.5 dB inharmonic).
+  const vel = velOf(p);
+  const maxIndex = Math.max(0, (sampleRate * 0.45 - f0) / (f0 * ratio) - 1);
+  const index0 = Math.min(maxIndex, (Number.isFinite(p.fmIndex) ? p.fmIndex : 2.5) * (0.45 + 0.55 * vel));
   const fmDecay = Number.isFinite(p.fmDecay) && p.fmDecay > 0 ? p.fmDecay : 0.35;
   const fmExp = Math.exp(-invSR / fmDecay);
 
@@ -215,10 +248,17 @@ function renderFm(out, offset, p, sampleRate, n) {
   const rng = mulberry32((p.seed ^ 0x51a7) >>> 0);
   let chiffLp = 0;
 
+  // The exponential body is still at e^-3.2 (~4%) on the last sample; fade the
+  // final 40 ms so the note does not end on a click.
+  const fadeLen = Math.min(n, Math.ceil(0.04 * sampleRate));
+  const fadeStart = n - fadeLen;
+  const invFade = 1 / fadeLen;
+
   for (let i = 0, idx = offset; i < n; i++, idx++) {
     if (i < aEnd) env = Math.min(1, env + aStep);
     else if (i < sEnd) env = 1;
     else env *= bodyExp;
+    const tailEnv = i >= fadeStart ? (n - i) * invFade : 1;
 
     let pitchMul = 1;
     if (hasVib) {
@@ -240,7 +280,7 @@ function renderFm(out, offset, p, sampleRate, n) {
       sig *= 1 - tremDepth * 0.5 * (1 - fastSin(tremPhase));
     }
 
-    sig *= env * vol;
+    sig *= env * tailEnv * vol;
     if (i < chiffLen) {
       const t = 1 - i / chiffLen;
       const white = rng() * 2 - 1;
@@ -264,7 +304,11 @@ function renderWindBow(out, offset, p, sampleRate, n) {
   const dStep = p.decay > 0 ? invSR / p.decay : Infinity;
   let env = aEnd > 0 ? 0 : 1;
 
-  const h2 = p.h2 || 0, h3 = p.h3 || 0, h4 = p.h4 || 0, h5 = p.h5 || 0;
+  // Harmonics past Nyquist would fold back as inharmonic tones; drop them (with
+  // a little headroom for vibrato and the sharp unison copy).
+  const hMax = (sampleRate * 0.45) / (f0 * 1.04);
+  const h2 = hMax > 2 ? p.h2 || 0 : 0, h3 = hMax > 3 ? p.h3 || 0 : 0;
+  const h4 = hMax > 4 ? p.h4 || 0 : 0, h5 = hMax > 5 ? p.h5 || 0 : 0;
   const copies = 1 + (p.unison || 0);
   const detune = p.detune === undefined ? 10 : p.detune;
   const ratios = new Float64Array(copies);
@@ -284,10 +328,14 @@ function renderWindBow(out, offset, p, sampleRate, n) {
   const scoopLen = scoop !== 0 ? Math.max(1, Math.floor(0.08 * sampleRate)) : 0;
 
   // Dynamic 2-pole State Variable Filter (2x oversampled so it stays unconditionally stable up to Nyquist)
-  const baseCutoff = p.cutoff > 0 ? Math.min(sampleRate * 0.42, p.cutoff) : Math.min(sampleRate * 0.42, f0 * 7);
-  const filterEnvAmt = Number.isFinite(p.filterEnv) ? p.filterEnv : 0;
+  // Played softer, a bow or breath drives fewer overtones (brass most of all):
+  // velocity scales both the cutoff and how far the attack opens it.
+  const vel = velOf(p);
+  const baseCutoff = (p.cutoff > 0 ? Math.min(sampleRate * 0.42, p.cutoff) : Math.min(sampleRate * 0.42, f0 * 7)) * (0.4 + 0.6 * vel);
+  const filterEnvAmt = (Number.isFinite(p.filterEnv) ? p.filterEnv : 0) * vel;
   const svfQ = 0.85;
   let svfLow = 0, svfBand = 0;
+  let coeffEnv = NaN, fCoeff = 0;
 
   // Optional body / vowel formant resonator (unconditionally stable)
   const bodyFreq = Number.isFinite(p.bodyFreq) && p.bodyFreq > 0 ? Math.min(sampleRate * 0.14, p.bodyFreq) : 0;
@@ -322,7 +370,8 @@ function renderWindBow(out, offset, p, sampleRate, n) {
 
     let v = 0;
     for (let u = 0; u < copies; u++) {
-      let ph = phases[u] + fi * ratios[u] * invSR;
+      const dt = fi * ratios[u] * invSR;
+      let ph = phases[u] + dt;
       if (ph >= 1) ph -= Math.floor(ph);
       phases[u] = ph;
       // Clean fundamental + rich harmonic partials using sine LUT for smooth acoustic tone
@@ -333,7 +382,8 @@ function renderWindBow(out, offset, p, sampleRate, n) {
         v += fastSin(ph) + (duty < 0.45 ? 0.35 * fastSin(ph * 2) : 0);
       } else {
         // Warm saw-like base with soft upper slope (first 2 terms + controlled partials)
-        v += 0.72 * fastSin(ph) + 0.28 * (2 * ph - 1);
+        // (PolyBLEP: the naive ramp's wrap aliased to -21..-27 dB on violin/brass highs.)
+        v += 0.72 * fastSin(ph) + 0.28 * (2 * ph - 1 - polyBlep(ph, dt));
       }
       if (h2 !== 0) v += h2 * fastSin(ph * 2);
       if (h3 !== 0) v += h3 * fastSin(ph * 3);
@@ -342,9 +392,13 @@ function renderWindBow(out, offset, p, sampleRate, n) {
     }
     v *= invAmp;
 
-    // Dynamic 2x-oversampled SVF lowpass: brightens during attack/sustain based on envelope & filterEnvAmt
-    const cut = Math.min(sampleRate * 0.42, Math.max(80, baseCutoff * (1 + filterEnvAmt * env)));
-    const fCoeff = Math.min(0.95, 2 * Math.sin((Math.PI * cut) / (2 * sampleRate)));
+    // Dynamic 2x-oversampled SVF lowpass: brightens during attack/sustain based on envelope & filterEnvAmt.
+    // env is flat through the sustain, so the coefficient (a Math.sin) is only recomputed when it moves.
+    if (env !== coeffEnv) {
+      coeffEnv = env;
+      const cut = Math.min(sampleRate * 0.42, Math.max(80, baseCutoff * (1 + filterEnvAmt * env)));
+      fCoeff = Math.min(0.95, 2 * Math.sin((Math.PI * cut) / (2 * sampleRate)));
+    }
     svfLow += fCoeff * svfBand;
     svfBand += fCoeff * (v - svfLow - svfQ * svfBand);
     svfLow += fCoeff * svfBand;

@@ -177,6 +177,8 @@ export function instrumentNote(name, note, { seconds, vel = 1, bank = 'chip' } =
   const { spec } = found;
   const p = { ...spec.params, freq: noteFreq(note) };
   p.vol = (p.vol ?? 0.5) * vel;
+  // An acoustic model also changes timbre with velocity (soft = darker).
+  if (p.model) p.vel = vel;
   // A realistic bank entry sets `tone` (cutoff / note frequency) rather than a
   // fixed cutoff, so the top of the keyboard does not go dull.
   if (spec.tone) p.cutoff = Math.min(20000, p.freq * spec.tone);

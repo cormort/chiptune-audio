@@ -76,7 +76,7 @@ const LIMITS = {
 const TIMBRE_KEYS = ['h2', 'h3', 'h4', 'h5', 'unison', 'detune', 'cutoff', 'chiff'];
 const ACOUSTIC_KEYS = [
   'fmRatio', 'fmIndex', 'fmDecay', 'damp', 'pluckBright',
-  'bodyFreq', 'bodyQ', 'vibDelay', 'tremRate', 'tremDepth', 'scoop', 'filterEnv',
+  'bodyFreq', 'bodyQ', 'vibDelay', 'tremRate', 'tremDepth', 'scoop', 'filterEnv', 'vel',
 ];
 
 /** Coerce a params object into a complete, finite, in-range parameter set.

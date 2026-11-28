@@ -39,6 +39,31 @@ test('every realistic instrument renders sane, non-silent audio at any pitch', (
   }
 });
 
+test('realistic voices end without a click and darken when played softly', () => {
+  for (const name of Object.keys(REALISTIC_INSTRUMENTS)) {
+    const pcm = renderSfx(instrumentNote(name, 72, { seconds: 0.5, bank: 'real' }));
+    // FM voices used to stop at ~4% of their peak.
+    assert.ok(Math.abs(pcm[pcm.length - 1]) < 1e-3 * peak(pcm), `${name} ends on a click`);
+  }
+  // Harmonic centroid (Goertzel on partials 1..20 of C4): soft must be darker, not just quieter.
+  const f0 = 261.63;
+  const centroid = (a) => {
+    let num = 0, den = 0;
+    for (let k = 1; k <= 20; k++) {
+      const c = 2 * Math.cos((2 * Math.PI * k * f0) / SAMPLE_RATE);
+      let s1 = 0, s2 = 0;
+      for (let i = 2000; i < 14000; i++) { const s = a[i] + c * s1 - s2; s2 = s1; s1 = s; }
+      const m = Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - c * s1 * s2));
+      num += k * m; den += m;
+    }
+    return num / den;
+  };
+  for (const name of ['piano', 'guitar', 'epiano', 'violin', 'brass']) {
+    const at = (vel) => centroid(renderSfx({ ...instrumentNote(name, 60, { seconds: 0.5, bank: 'real', vel }), vibDepth: 0 }));
+    assert.ok(at(0.3) < 0.92 * at(1), `${name} soft is not darker`);
+  }
+});
+
 test('the timbre params are clamped, rounded and carried only when set', () => {
   // A plain voice keeps exactly the object shape it always had: the render loop
   // reads it once per voice and eight extra keys cost it 2x (measured).
@@ -250,29 +275,29 @@ const GOLDEN = {
       bell: "bfa9b7ff",
     },
     real: {
-      piano: "baefbc4b",
-      epiano: "e6bf9b99",
+      piano: "6786d8b3",
+      epiano: "7fae348c",
       organ: "15f61f6f",
-      strings: "cd07d2e9",
+      strings: "17c86657",
       flute: "02f6d4aa",
-      brass: "d840b17f",
+      brass: "2719cfeb",
       guitar: "a5c7890e",
-      bell: "e7741cfc",
+      bell: "ad5be284",
       bass: "957ebdb7",
       harp: "ec591f19",
       choir: "ce0ad3a5",
-      marimba: "cccad95a",
-      violin: "f58ec26b",
-      cello: "93217edf",
-      trumpet: "4f2eca85",
+      marimba: "591f5b08",
+      violin: "c03dca19",
+      cello: "d6f989f9",
+      trumpet: "8eb2d4db",
       sax: "185d4ed8",
       clarinet: "4480588e",
       harpsichord: "ecd4504c",
-      vibraphone: "43bc58fb",
-      erhu: "e89f47b8",
+      vibraphone: "8ee07f55",
+      erhu: "198cd0e4",
       accordion: "e39a7ebd",
-      musicbox: "6c5d2ef9",
-      kalimba: "26c31616",
+      musicbox: "9841151f",
+      kalimba: "86cf7a7c",
     },
   },
 };
